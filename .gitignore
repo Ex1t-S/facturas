@@ -1,0 +1,15 @@
+node_modules/
+dist/
+frontend/dist/
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+uploads/
+analysis/
+prisma/dev.db
+coverage/
+*.log
+.vite/
+node_modules/.vite-temp/

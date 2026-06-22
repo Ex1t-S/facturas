@@ -1,0 +1,450 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  INVOICED
+}
+
+enum DocumentStatus {
+  PENDING_REVIEW
+  REVIEWED
+  REJECTED
+}
+
+enum DocumentKind {
+  QUOTE
+  INVOICE
+  PURCHASE_INVOICE
+  DELIVERY_NOTE
+  UNKNOWN
+}
+
+enum ExtractionStatus {
+  UPLOADED
+  TEXT_EXTRACTED
+  STRUCTURED
+  NEEDS_REVIEW
+  APPROVED
+  APPLIED
+  FAILED
+}
+
+enum CatalogEntityType {
+  CUSTOMER
+  PRODUCT
+  MATERIAL
+  SERVICE
+}
+
+enum MatchDecision {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CREATED
+  MERGED
+}
+
+enum StockMovementSource {
+  DOCUMENT_IMPORT
+  QUOTE_RESERVED
+  INVOICE_CONFIRMED
+  MANUAL
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING_CONFIRMATION
+  AUTHORIZED
+  REJECTED
+  CANCELLED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+model User {
+  id           String     @id @default(cuid())
+  name         String
+  email        String     @unique
+  role         UserRole   @default(OPERATOR)
+  passwordHash String
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  quotes       Quote[]
+  auditLogs    AuditLog[]
+}
+
+model Company {
+  id           String     @id @default(cuid())
+  legalName    String
+  tradeName    String?
+  cuit         String     @unique
+  taxCondition String
+  address      String?
+  phone        String?
+  email        String?
+  createdAt    DateTime   @default(now())
+  customers    Customer[]
+  products     Product[]
+  suppliers    Supplier[]
+  supplierPriceLists SupplierPriceList[]
+}
+
+model Supplier {
+  id          String   @id @default(cuid())
+  companyId   String
+  name        String
+  cuit        String?
+  phone       String?
+  email       String?
+  website     String?
+  notes       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  company     Company  @relation(fields: [companyId], references: [id])
+  priceLists  SupplierPriceList[]
+  prices      SupplierProductPrice[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model SupplierPriceList {
+  id          String   @id @default(cuid())
+  companyId   String
+  supplierId  String
+  name        String
+  sourceType  String   @default("manual")
+  documentId  String?
+  currency    String   @default("ARS")
+  validFrom   DateTime @default(now())
+  importedAt  DateTime @default(now())
+  notes       String?
+  company     Company  @relation(fields: [companyId], references: [id])
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  prices      SupplierProductPrice[]
+
+  @@index([companyId])
+  @@index([supplierId])
+}
+
+model Customer {
+  id           String            @id @default(cuid())
+  companyId    String
+  legalName    String
+  tradeName    String?
+  cuit         String?
+  taxCondition String?
+  address      String?
+  contactName  String?
+  phone        String?
+  email        String?
+  paymentTerms String?
+  notes        String?
+  createdAt    DateTime          @default(now())
+  company      Company           @relation(fields: [companyId], references: [id])
+  quotes       Quote[]
+  invoices     Invoice[]
+  whatsapp     WhatsAppMessage[]
+  candidates   CustomerCandidate[]
+
+  @@index([companyId])
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  companyId   String
+  sku         String?
+  name        String
+  type        String      @default("PRODUCT")
+  normalizedName String?
+  aliasesJson String?
+  metadataJson String?
+  description String?
+  unit        String      @default("unidad")
+  category    String?
+  baseCost    Decimal     @default(0)
+  lastCost    Decimal?
+  price       Decimal
+  taxRate     Decimal     @default(21)
+  stockTracked Boolean    @default(false)
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  company     Company     @relation(fields: [companyId], references: [id])
+  quoteItems  QuoteItem[]
+  invoiceItems InvoiceItem[]
+  itemCandidates DocumentItemCandidate[]
+  stocks      InventoryStock[]
+  stockMovements StockMovement[]
+  supplierPrices SupplierProductPrice[]
+
+  @@index([companyId])
+}
+
+model SupplierProductPrice {
+  id           String   @id @default(cuid())
+  companyId    String
+  supplierId   String
+  priceListId  String?
+  productId    String?
+  supplierSku  String?
+  rawName      String
+  normalizedName String
+  unit         String   @default("unidad")
+  currency     String  @default("ARS")
+  price        Decimal
+  taxIncluded  Boolean @default(false)
+  available    Boolean @default(true)
+  observedAt   DateTime @default(now())
+  notes        String?
+  supplier     Supplier @relation(fields: [supplierId], references: [id])
+  priceList    SupplierPriceList? @relation(fields: [priceListId], references: [id])
+  product      Product? @relation(fields: [productId], references: [id])
+
+  @@index([companyId])
+  @@index([supplierId])
+  @@index([productId])
+  @@index([normalizedName])
+}
+
+model Quote {
+  id          String      @id @default(cuid())
+  companyId   String
+  customerId  String
+  number      Int
+  version     Int         @default(1)
+  status      QuoteStatus @default(DRAFT)
+  issueDate   DateTime    @default(now())
+  validUntil  DateTime?
+  currency    String      @default("ARS")
+  subtotal    Decimal     @default(0)
+  taxTotal    Decimal     @default(0)
+  total       Decimal     @default(0)
+  notes       String?
+  createdById String?
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  createdBy   User?       @relation(fields: [createdById], references: [id])
+  items       QuoteItem[]
+  invoices    Invoice[]
+
+  @@unique([companyId, number, version])
+  @@index([customerId])
+}
+
+model QuoteItem {
+  id          String   @id @default(cuid())
+  quoteId     String
+  productId   String?
+  description String
+  quantity    Decimal
+  unit        String   @default("unidad")
+  unitPrice   Decimal
+  discount    Decimal  @default(0)
+  taxRate     Decimal  @default(21)
+  total       Decimal
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  product     Product? @relation(fields: [productId], references: [id])
+}
+
+model Document {
+  id          String                @id @default(cuid())
+  companyId   String?
+  kind        DocumentKind          @default(UNKNOWN)
+  sourceType  String
+  fileName    String
+  mimeType    String
+  storagePath String
+  sha256      String
+  status      DocumentStatus        @default(PENDING_REVIEW)
+  extractionStatus ExtractionStatus @default(UPLOADED)
+  documentDate DateTime?
+  issuerName  String?
+  issuerCuit  String?
+  externalNumber String?
+  currency    String                @default("ARS")
+  total       Decimal?
+  uploadedBy  String?
+  createdAt   DateTime              @default(now())
+  extraction  DocumentExtraction?
+  messages    WhatsAppMessage[]
+  itemCandidates DocumentItemCandidate[]
+  customerCandidates CustomerCandidate[]
+  stockMovements StockMovement[]
+}
+
+model DocumentExtraction {
+  id            String    @id @default(cuid())
+  documentId    String    @unique
+  engine        String?
+  schemaVersion String    @default("v1")
+  rawText       String?
+  rawJson       String?
+  normalizedJson String?
+  extractedJson String?
+  confidence    Decimal   @default(0)
+  fieldConfidence String?
+  errorMessage  String?
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  document      Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+model DocumentItemCandidate {
+  id               String            @id @default(cuid())
+  documentId       String
+  lineNumber       Int
+  rawDescription   String
+  normalizedName   String?
+  quantity         Decimal?
+  unit             String?
+  unitPrice        Decimal?
+  total            Decimal?
+  taxRate          Decimal?
+  sku              String?
+  category         String?
+  entityType       CatalogEntityType @default(PRODUCT)
+  matchedProductId String?
+  confidence       Decimal           @default(0)
+  decision         MatchDecision      @default(PENDING)
+  reviewNotes      String?
+  createdAt        DateTime          @default(now())
+  document         Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  matchedProduct   Product?          @relation(fields: [matchedProductId], references: [id])
+
+  @@index([documentId])
+  @@index([matchedProductId])
+}
+
+model CustomerCandidate {
+  id                String        @id @default(cuid())
+  documentId        String
+  legalName         String?
+  tradeName         String?
+  cuit              String?
+  taxCondition      String?
+  address           String?
+  matchedCustomerId String?
+  confidence        Decimal       @default(0)
+  decision          MatchDecision  @default(PENDING)
+  document          Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  matchedCustomer   Customer?     @relation(fields: [matchedCustomerId], references: [id])
+
+  @@index([documentId])
+  @@index([matchedCustomerId])
+}
+
+model InventoryStock {
+  id          String   @id @default(cuid())
+  companyId   String
+  productId   String
+  quantity    Decimal  @default(0)
+  reserved    Decimal  @default(0)
+  minQuantity Decimal?
+  location    String   @default("principal")
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@unique([companyId, productId, location])
+}
+
+model StockMovement {
+  id          String              @id @default(cuid())
+  companyId   String
+  productId   String
+  documentId  String?
+  quoteId     String?
+  invoiceId   String?
+  quantity    Decimal
+  unitCost    Decimal?
+  source      StockMovementSource
+  reason      String
+  createdAt   DateTime            @default(now())
+  product     Product             @relation(fields: [productId], references: [id])
+  document    Document?           @relation(fields: [documentId], references: [id])
+
+  @@index([companyId])
+  @@index([productId])
+}
+
+model Invoice {
+  id               String        @id @default(cuid())
+  companyId         String
+  customerId        String
+  quoteId           String?
+  type              String
+  pointOfSale       Int?
+  number            Int?
+  status            InvoiceStatus @default(DRAFT)
+  issueDate         DateTime      @default(now())
+  cae               String?
+  caeDueDate        DateTime?
+  currency          String        @default("ARS")
+  subtotal          Decimal       @default(0)
+  taxTotal          Decimal       @default(0)
+  total             Decimal       @default(0)
+  arcaResponseJson  String?
+  customer          Customer      @relation(fields: [customerId], references: [id])
+  quote             Quote?        @relation(fields: [quoteId], references: [id])
+  items             InvoiceItem[]
+
+  @@index([companyId, pointOfSale, type, number])
+}
+
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  productId   String?
+  description String
+  quantity    Decimal
+  unitPrice   Decimal
+  taxRate     Decimal
+  total       Decimal
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product     Product? @relation(fields: [productId], references: [id])
+}
+
+model WhatsAppMessage {
+  id                String           @id @default(cuid())
+  direction          MessageDirection
+  fromNumber         String
+  toNumber           String
+  customerId         String?
+  messageType        String
+  body               String?
+  mediaDocumentId    String?
+  providerMessageId  String?          @unique
+  status             String           @default("received")
+  createdAt          DateTime         @default(now())
+  customer           Customer?        @relation(fields: [customerId], references: [id])
+  mediaDocument      Document?        @relation(fields: [mediaDocumentId], references: [id])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  entityType  String
+  entityId    String
+  action      String
+  beforeJson  String?
+  afterJson   String?
+  createdAt   DateTime @default(now())
+  actor       User?    @relation(fields: [actorUserId], references: [id])
+}
