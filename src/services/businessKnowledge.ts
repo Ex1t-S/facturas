@@ -1,4 +1,4 @@
-import { DocumentKind, ExtractionStatus, DocumentStatus } from '@prisma/client';
+import { DocumentKind, ExtractionStatus, DocumentStatus } from '../../src/generated/postgres-client/index.js';
 import { prisma } from '../db.js';
 import { normalizeName } from './normalize.js';
 

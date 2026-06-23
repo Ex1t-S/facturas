@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/generated/postgres-client/index.js';
 import { calculateQuoteTotals } from '../src/domain/money.js';
 import { normalizeName } from '../src/services/normalize.js';
 
@@ -118,4 +118,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

@@ -13,3 +13,6 @@ coverage/
 *.log
 .vite/
 node_modules/.vite-temp/
+src/generated/
+tools/
+render.exe

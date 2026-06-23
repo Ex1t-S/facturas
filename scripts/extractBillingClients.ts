@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import mammoth from 'mammoth';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/generated/postgres-client/index.js';
 
 type BillingClient = {
   legalName: string;
@@ -154,4 +154,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

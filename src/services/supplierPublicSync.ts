@@ -1,5 +1,5 @@
 import { prisma } from '../db.js';
-import { normalizeName, similarity } from './normalize.js';
+import { bestTechnicalSimilarity, normalizeName, similarity } from './normalize.js';
 
 type PublicSupplierSource = {
   name: string;
@@ -132,22 +132,31 @@ async function fetchHtml(url: string) {
   return response.text();
 }
 
-async function matchProduct(companyId: string, rawName: string) {
-  const products = await prisma.product.findMany({
-    where: { companyId, active: true, type: 'MATERIAL' },
-    take: 500
-  });
+async function matchProduct(products: Awaited<ReturnType<typeof prisma.product.findMany>>, rawName: string) {
   const normalized = normalizeName(rawName);
   return products
     .map((product) => ({
       product,
-      score: Math.max(similarity(product.name, rawName), similarity(product.normalizedName || product.name, normalized))
+      score: Math.max(
+        similarity(product.name, rawName),
+        similarity(product.normalizedName || product.name, normalized),
+        bestTechnicalSimilarity(rawName, [
+          product.name,
+          product.normalizedName || '',
+          product.aliasesJson || '',
+          product.metadataJson || ''
+        ])
+      )
     }))
     .filter((item) => item.score >= 0.52)
     .sort((a, b) => b.score - a.score)[0]?.product;
 }
 
 export async function syncPublicSupplierPrices(companyId: string) {
+  const products = await prisma.product.findMany({
+    where: { companyId, active: true, type: 'MATERIAL' },
+    take: 1000
+  });
   const result = {
     startedAt: new Date(),
     sources: [] as Array<{ supplier: string; method: string; imported: number; skipped: number; errors: string[] }>
@@ -182,7 +191,21 @@ export async function syncPublicSupplierPrices(companyId: string) {
         const html = await fetchHtml(page);
         const prices = parsePublicPrices(html, source, page).slice(0, 80);
         for (const item of prices) {
-          const product = await matchProduct(companyId, item.name);
+          const product = await matchProduct(products, item.name);
+          const duplicate = await prisma.supplierProductPrice.findFirst({
+            where: {
+              companyId,
+              supplierId: supplier.id,
+              supplierSku: item.sku ?? null,
+              normalizedName: normalizeName(item.name),
+              price: item.price,
+              observedAt: { gte: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2) }
+            }
+          });
+          if (duplicate) {
+            sourceResult.skipped += 1;
+            continue;
+          }
           await prisma.supplierProductPrice.create({
             data: {
               companyId,

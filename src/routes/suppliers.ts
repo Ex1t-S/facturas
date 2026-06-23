@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
-import { normalizeName, similarity } from '../services/normalize.js';
+import { bestTechnicalSimilarity, normalizeName, similarity } from '../services/normalize.js';
 import { publicSupplierSources, syncPublicSupplierPrices } from '../services/supplierPublicSync.js';
 
 const supplierSchema = z.object({
@@ -25,6 +25,56 @@ const priceItemSchema = z.object({
   available: z.boolean().default(true),
   notes: z.string().optional()
 });
+
+async function buildMaterialPriceReferences(companyId: string, take?: number) {
+  const [products, prices] = await Promise.all([
+    prisma.product.findMany({
+      where: { companyId, active: true, type: 'MATERIAL' },
+      orderBy: { name: 'asc' },
+      take: take ? Math.max(take * 3, take) : undefined
+    }),
+    prisma.supplierProductPrice.findMany({
+      where: { companyId, available: true },
+      include: { supplier: true },
+      orderBy: [{ price: 'asc' }, { observedAt: 'desc' }]
+    })
+  ]);
+
+  return products
+    .map((product) => {
+      const normalized = product.normalizedName || normalizeName(product.name);
+      const candidates = prices
+        .map((price) => ({
+          ...price,
+          matchScore:
+            price.productId === product.id
+              ? 1
+              : Math.max(
+                  similarity(normalized, price.normalizedName),
+                  similarity(product.name, price.rawName),
+                  bestTechnicalSimilarity(price.rawName, [
+                    product.name,
+                    product.normalizedName || '',
+                    product.aliasesJson || '',
+                    product.metadataJson || ''
+                  ])
+                )
+        }))
+        .filter((price) => price.productId === product.id || price.matchScore >= 0.45)
+        .sort((a, b) => Number(a.price) - Number(b.price));
+      const best = candidates[0] ?? null;
+
+      return {
+        product,
+        best,
+        alternatives: candidates.slice(0, 5),
+        savingsVsCurrent:
+          best && Number(product.baseCost) > 0 ? Math.max(0, Number(product.baseCost) - Number(best.price)) : null
+      };
+    })
+    .filter((item) => item.best || item.alternatives.length > 0)
+    .slice(0, take ?? undefined);
+}
 
 export const supplierRoutes: FastifyPluginAsync = async (app) => {
   app.get('/suppliers', async (request) => {
@@ -105,6 +155,11 @@ export const supplierRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(201).send(result);
   });
 
+  app.get('/material-price-references', async (request) => {
+    const query = z.object({ companyId: z.string(), take: z.coerce.number().int().positive().max(100).default(20) }).parse(request.query);
+    return buildMaterialPriceReferences(query.companyId, query.take);
+  });
+
   app.get('/supplier-prices', async (request) => {
     const query = z
       .object({
@@ -151,33 +206,6 @@ export const supplierRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/price-comparison', async (request) => {
     const query = z.object({ companyId: z.string() }).parse(request.query);
-    const [products, prices] = await Promise.all([
-      prisma.product.findMany({ where: { companyId: query.companyId, active: true }, orderBy: { name: 'asc' } }),
-      prisma.supplierProductPrice.findMany({
-        where: { companyId: query.companyId, available: true },
-        include: { supplier: true },
-        orderBy: [{ price: 'asc' }, { observedAt: 'desc' }]
-      })
-    ]);
-
-    return products.map((product) => {
-      const normalized = product.normalizedName || normalizeName(product.name);
-      const candidates = prices
-        .map((price) => ({
-          ...price,
-          matchScore: price.productId === product.id ? 1 : Math.max(similarity(normalized, price.normalizedName), similarity(product.name, price.rawName))
-        }))
-        .filter((price) => price.productId === product.id || price.matchScore >= 0.45)
-        .sort((a, b) => Number(a.price) - Number(b.price));
-      const best = candidates[0] ?? null;
-
-      return {
-        product,
-        best,
-        alternatives: candidates.slice(0, 5),
-        savingsVsCurrent:
-          best && Number(product.baseCost) > 0 ? Math.max(0, Number(product.baseCost) - Number(best.price)) : null
-      };
-    });
+    return buildMaterialPriceReferences(query.companyId);
   });
 };

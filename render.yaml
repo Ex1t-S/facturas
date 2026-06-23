@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: fmh-gestion
+    runtime: node
+    plan: free
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: UPLOAD_DIR
+        value: ./uploads
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.5
+      - key: OPENAI_VECTOR_STORE_ID
+        sync: false
+      - key: SUPPLIER_PUBLIC_SYNC_ENABLED
+        value: "true"
+      - key: SUPPLIER_PUBLIC_SYNC_INTERVAL_HOURS
+        value: "4"
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: ARCA_ENVIRONMENT
+        value: homologacion
+      - key: ARCA_CUIT
+        sync: false
+      - key: ARCA_CERT_PATH
+        sync: false
+      - key: ARCA_KEY_PATH
+        sync: false
+      - key: ARCA_POINT_OF_SALE
+        sync: false

@@ -150,6 +150,43 @@ td strong, td small { display: block; }
   padding: 12px;
   background: var(--panel-2);
 }
+.lineToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.lineToggleTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.lineToggleTitle em {
+  min-width: 0;
+  font-style: normal;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lineToggle small {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.lineEditor.collapsed {
+  gap: 0;
+}
+.lineHint {
+  color: var(--muted);
+  font-size: 13px;
+}
 .lineGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

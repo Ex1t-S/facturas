@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, Bot, FileText, Folder, FolderOpen, Home, PackageSearch, ReceiptText, Search, Send, Settings, Upload, Users } from 'lucide-react';
+import { Archive, Bot, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Home, PackageSearch, ReceiptText, Search, Send, Settings, Upload, Users } from 'lucide-react';
 import { api, dateFmt, money, postJson } from './api';
 
 type View = 'dashboard' | 'assistant' | 'documents' | 'quotes' | 'inventory' | 'customers' | 'whatsapp' | 'settings';
@@ -452,6 +452,7 @@ function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: strin
     { productId: '', description: 'Fabricación y montaje según detalle técnico', quantity: 1, unit: 'trabajo', unitPrice: 0, taxRate: 21 }
   ]);
   const [marginPercent, setMarginPercent] = useState(0);
+  const [expandedLine, setExpandedLine] = useState(0);
 
   const preview = useMemo(() => {
     const priced = lines.map((line) => ({
@@ -465,6 +466,28 @@ function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: strin
 
   function updateLine(index: number, patch: Partial<QuoteDraftLine>) {
     setLines((current) => current.map((line, itemIndex) => (itemIndex === index ? { ...line, ...patch } : line)));
+  }
+
+  function addLine() {
+    setLines((current) => [...current, { productId: '', description: '', quantity: 1, unit: 'trabajo', unitPrice: 0, taxRate: 21 }]);
+    setExpandedLine(lines.length);
+  }
+
+  function removeLine(index: number) {
+    setLines((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setExpandedLine((current) => {
+      if (current === index) return Math.max(0, index - 1);
+      return current > index ? current - 1 : current;
+    });
+  }
+
+  function lineSummary(line: QuoteDraftLine) {
+    const linkedName = products.find((item: AnyRecord) => item.id === line.productId)?.name;
+    const title = line.description.trim() || linkedName || 'Sin completar';
+    return {
+      title,
+      total: Number(line.quantity || 0) * Number(line.unitPrice || 0)
+    };
   }
 
   function selectProduct(index: number, productId: string) {
@@ -504,24 +527,42 @@ function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: strin
     <Page title="Presupuestos" text="Armá borradores con varios productos, margen editable y salida DOCX/PDF con formato FMH.">
       <section className="grid two">
         <form className="card form quoteBuilder" onSubmit={submit}>
-          <div className="sectionRow"><h2>Nuevo borrador FMH</h2><button type="button" onClick={() => setLines((current) => [...current, { productId: '', description: '', quantity: 1, unit: 'trabajo', unitPrice: 0, taxRate: 21 }])}>Agregar ítem</button></div>
+          <div className="sectionRow"><h2>Nuevo borrador FMH</h2><button type="button" onClick={addLine}>Agregar ítem</button></div>
           <SelectField label="Cliente" name="customerId">{customers.map((c: AnyRecord) => <option value={c.id} key={c.id}>{c.legalName}</option>)}</SelectField>
-          {lines.map((line, index) => (
-            <div className="lineEditor" key={index}>
-              <div className="lineHead"><strong>Ítem {index + 1}</strong>{lines.length > 1 && <button type="button" onClick={() => setLines((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Quitar</button>}</div>
-              <SelectField label="Producto / trabajo técnico" value={line.productId} onChange={(event) => selectProduct(index, event.target.value)}>
-                <option value="">Manual / sin vincular</option>
-                {products.map((p: AnyRecord) => <option value={p.id} key={p.id}>{p.name} {p.category ? `(${p.category})` : ''}</option>)}
-              </SelectField>
-              <label className="field full"><span>Descripción para el presupuesto</span><textarea value={line.description} onChange={(event) => updateLine(index, { description: event.target.value })} rows={4} required /></label>
-              <div className="lineGrid">
-                <Field label="Cantidad" type="number" step="0.01" value={line.quantity} onChange={(event) => updateLine(index, { quantity: Number(event.target.value) })} required />
-                <Field label="Unidad" value={line.unit} onChange={(event) => updateLine(index, { unit: event.target.value })} />
-                <Field label="Precio base" type="number" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: Number(event.target.value) })} required />
-                <Field label="IVA %" type="number" step="0.01" value={line.taxRate} onChange={(event) => updateLine(index, { taxRate: Number(event.target.value) })} />
+          {lines.map((line, index) => {
+            const summary = lineSummary(line);
+            return (
+              <div className={`lineEditor ${expandedLine === index ? 'expanded' : 'collapsed'}`} key={index}>
+                <button type="button" className="lineToggle" onClick={() => setExpandedLine((current) => current === index ? -1 : index)}>
+                  <span className="lineToggleTitle">
+                    {expandedLine === index ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    <strong>Ítem {index + 1}</strong>
+                    <em>{summary.title}</em>
+                  </span>
+                  <small>{money.format(summary.total)}</small>
+                </button>
+                {expandedLine === index && (
+                  <>
+                    <div className="lineHead">
+                      <span className="lineHint">Completá este bloque y al crear otro queda resumido para evitar scroll largo.</span>
+                      {lines.length > 1 && <button type="button" onClick={() => removeLine(index)}>Quitar</button>}
+                    </div>
+                    <SelectField label="Producto / trabajo técnico" value={line.productId} onChange={(event) => selectProduct(index, event.target.value)}>
+                      <option value="">Manual / sin vincular</option>
+                      {products.map((p: AnyRecord) => <option value={p.id} key={p.id}>{p.name} {p.category ? `(${p.category})` : ''}</option>)}
+                    </SelectField>
+                    <label className="field full"><span>Descripción para el presupuesto</span><textarea value={line.description} onChange={(event) => updateLine(index, { description: event.target.value })} rows={4} required /></label>
+                    <div className="lineGrid">
+                      <Field label="Cantidad" type="number" step="0.01" value={line.quantity} onChange={(event) => updateLine(index, { quantity: Number(event.target.value) })} required />
+                      <Field label="Unidad" value={line.unit} onChange={(event) => updateLine(index, { unit: event.target.value })} />
+                      <Field label="Precio base" type="number" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: Number(event.target.value) })} required />
+                      <Field label="IVA %" type="number" step="0.01" value={line.taxRate} onChange={(event) => updateLine(index, { taxRate: Number(event.target.value) })} />
+                    </div>
+                  </>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
           <Field label="Margen general %" type="number" step="0.01" value={marginPercent} onChange={(event) => setMarginPercent(Number(event.target.value))} />
           <Field label="Notas" name="notes" />
           <div className="quoteTotals">
@@ -541,6 +582,7 @@ function Inventory({ data, companyId, notify }: { data: AnyRecord; companyId: st
   const [filters, setFilters] = useState({ q: '', category: '', type: 'MATERIAL', priceStatus: 'all', supplierStatus: 'all', active: 'true', sort: 'name' });
   const [products, setProducts] = useState<AnyRecord[]>((data.products || []).filter((product: AnyRecord) => product.type === 'MATERIAL'));
   const [publicSources, setPublicSources] = useState<AnyRecord[]>([]);
+  const [materialReferences, setMaterialReferences] = useState<AnyRecord[]>([]);
 
   useEffect(() => {
     setProducts((data.products || []).filter((product: AnyRecord) => product.type === 'MATERIAL'));
@@ -550,10 +592,16 @@ function Inventory({ data, companyId, notify }: { data: AnyRecord; companyId: st
     api<AnyRecord[]>('/api/supplier-public-sources').then(setPublicSources).catch(() => setPublicSources([]));
   }, []);
 
+  useEffect(() => {
+    if (!companyId) return;
+    api<AnyRecord[]>(`/api/material-price-references?companyId=${companyId}&take=12`).then(setMaterialReferences).catch(() => setMaterialReferences([]));
+  }, [companyId, data.products]);
+
   async function loadProducts(next = filters) {
     if (!companyId) return;
     const qs = queryString({ companyId, take: 500, ...next, active: next.active === '' ? undefined : next.active });
     setProducts(await api<AnyRecord[]>(`/api/products?${qs}`));
+    setMaterialReferences(await api<AnyRecord[]>(`/api/material-price-references?companyId=${companyId}&take=12`));
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -595,6 +643,20 @@ function Inventory({ data, companyId, notify }: { data: AnyRecord; companyId: st
             {publicSources.map((source) => <a href={source.website} target="_blank" key={source.name}><strong>{source.name}</strong><span>{source.method}</span></a>)}
           </div>
         </div>
+      </section>
+      <section className="card">
+        <h2>Materiales con referencia</h2>
+        <Table
+          headers={['Material', 'Precio base', 'Mejor referencia', 'Alternativas']}
+          rows={materialReferences.map((item: AnyRecord) => (
+            <tr key={item.product.id}>
+              <td><strong>{item.product.name}</strong><small>{item.product.category || item.product.unit || '-'}</small></td>
+              <td>{money.format(Number(item.product.price || item.product.baseCost || 0))}</td>
+              <td>{item.best ? `${item.best.supplier.name}: ${money.format(Number(item.best.price))}` : 'Sin referencia'}</td>
+              <td>{(item.alternatives || []).slice(0, 3).map((alt: AnyRecord) => `${alt.supplier.name}: ${money.format(Number(alt.price))}`).join(' | ') || '-'}</td>
+            </tr>
+          ))}
+        />
       </section>
       <section className="card"><h2>Materiales</h2><Table headers={['Nombre', 'Categoría', 'Tipo', 'Venta', 'Estado', 'Mejores precios']} rows={products.map((p: AnyRecord) => <tr key={p.id}><td><strong>{p.name}</strong><small>{p.normalizedName || p.unit}</small></td><td>{p.category || '-'}</td><td>{p.type}</td><td>{money.format(Number(p.price || 0))}</td><td>{Number(p.price || 0) === 0 ? <Badge value="Sin precio" /> : <Badge value="Completo" />}</td><td>{(p.supplierPrices || []).slice(0, 3).map((sp: AnyRecord) => `${sp.supplier.name}: ${money.format(Number(sp.price))}`).join(' | ') || 'Sin proveedor'}</td></tr>)} /></section>
     </Page>

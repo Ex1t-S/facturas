@@ -162,3 +162,34 @@ Antes de producción:
 - Configurar URL pública para webhooks de WhatsApp.
 - Usar certificados ARCA de homologación antes de producción.
 - Validar permisos y backups de documentos.
+
+## Render + Neon
+
+Se descargaron herramientas locales para preparar un deploy económico:
+
+- Render CLI: `tools/render/render.exe`
+- Neon CLI: `npx neonctl`
+
+Scripts útiles:
+
+```powershell
+npm run render:login
+npm run render:services
+npm run render:blueprint:validate
+npm run neon:auth
+npm run neon:projects
+```
+
+Blueprint inicial:
+
+```text
+render.yaml
+```
+
+Guía corta:
+
+```text
+docs/deploy-render-neon.md
+```
+
+Importante: hoy Prisma sigue con `SQLite`, así que antes de usar Neon hay que migrar la aplicación a `PostgreSQL`.

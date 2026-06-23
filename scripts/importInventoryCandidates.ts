@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/generated/postgres-client/index.js';
 import { normalizeName } from '../src/services/normalize.js';
 
 type InventoryCandidate = {
@@ -87,4 +87,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

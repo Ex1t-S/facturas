@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import type { QuoteItem } from '@prisma/client';
+import type { QuoteItem } from '../../src/generated/postgres-client/index.js';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { calculateQuoteTotals } from '../domain/money.js';

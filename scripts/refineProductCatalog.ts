@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/generated/postgres-client/index.js';
 import { normalizeName } from '../src/services/normalize.js';
 
 const prisma = new PrismaClient();
@@ -94,4 +94,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

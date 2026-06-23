@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/generated/postgres-client/index.js';
 import { calculateQuoteTotals } from '../src/domain/money.js';
 
 const prisma = new PrismaClient();
