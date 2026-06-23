@@ -24,6 +24,10 @@ services:
         value: gpt-5.5
       - key: OPENAI_VECTOR_STORE_ID
         sync: false
+      - key: BASIC_AUTH_USERNAME
+        sync: false
+      - key: BASIC_AUTH_PASSWORD
+        sync: false
       - key: SUPPLIER_PUBLIC_SYNC_ENABLED
         value: "true"
       - key: SUPPLIER_PUBLIC_SYNC_INTERVAL_HOURS

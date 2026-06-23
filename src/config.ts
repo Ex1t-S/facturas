@@ -14,6 +14,8 @@ const configSchema = z.object({
   OPENAI_API_KEY: z.string().default(''),
   OPENAI_MODEL: z.string().default('gpt-5.5'),
   OPENAI_VECTOR_STORE_ID: z.string().default(''),
+  BASIC_AUTH_USERNAME: z.string().default(''),
+  BASIC_AUTH_PASSWORD: z.string().default(''),
   SUPPLIER_PUBLIC_SYNC_ENABLED: z.coerce.boolean().default(true),
   SUPPLIER_PUBLIC_SYNC_INTERVAL_HOURS: z.coerce.number().positive().default(4),
   ARCA_ENVIRONMENT: z.enum(['homologacion', 'produccion']).default('homologacion'),

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { timingSafeEqual } from 'node:crypto';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
@@ -24,6 +25,12 @@ import { whatsappRoutes } from './routes/whatsapp.js';
 import { webRoutes } from './routes/web.js';
 import { syncPublicSupplierPrices } from './services/supplierPublicSync.js';
 
+function sameSecret(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
 export async function buildServer() {
   const uploadRoot = path.resolve(config.UPLOAD_DIR);
   const publicRoot = path.resolve('public');
@@ -39,6 +46,24 @@ export async function buildServer() {
   await app.register(staticPlugin, { root: uploadRoot, prefix: '/uploads/' });
   await app.register(staticPlugin, { root: frontendAssetsRoot, prefix: '/ui-assets/', decorateReply: false });
   await app.register(staticPlugin, { root: publicRoot, prefix: '/assets/', decorateReply: false });
+
+  if (config.BASIC_AUTH_USERNAME && config.BASIC_AUTH_PASSWORD) {
+    app.addHook('onRequest', async (request, reply) => {
+      if (request.url.startsWith('/api/health') || request.url.startsWith('/webhooks/whatsapp')) return;
+      const header = request.headers.authorization;
+      if (!header?.startsWith('Basic ')) {
+        return reply.header('WWW-Authenticate', 'Basic realm="FMH Gestion"').code(401).send('Authentication required');
+      }
+
+      const decoded = Buffer.from(header.slice('Basic '.length), 'base64').toString('utf8');
+      const separator = decoded.indexOf(':');
+      const username = separator >= 0 ? decoded.slice(0, separator) : '';
+      const password = separator >= 0 ? decoded.slice(separator + 1) : '';
+      if (!sameSecret(username, config.BASIC_AUTH_USERNAME) || !sameSecret(password, config.BASIC_AUTH_PASSWORD)) {
+        return reply.header('WWW-Authenticate', 'Basic realm="FMH Gestion"').code(401).send('Authentication required');
+      }
+    });
+  }
 
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     app.log.error(error);
