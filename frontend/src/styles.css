@@ -306,7 +306,8 @@ td strong, td small { display: block; }
 }
 .treeSection > button:first-child,
 .treeYear > button,
-.treeClient {
+.treeClient,
+.treeBrowserItem {
   width: 100%;
   justify-content: flex-start;
   gap: 8px;
@@ -316,7 +317,8 @@ td strong, td small { display: block; }
 }
 .treeSection > button:first-child span,
 .treeYear > button span,
-.treeClient span {
+.treeClient span,
+.treeBrowserItem span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -324,7 +326,8 @@ td strong, td small { display: block; }
 }
 .treeSection small,
 .treeYear small,
-.treeClient small {
+.treeClient small,
+.treeBrowserItem small {
   margin-left: auto;
   color: var(--muted);
   font-size: 12px;

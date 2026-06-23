@@ -275,7 +275,7 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
   const [filters, setFilters] = useState({ q: '', kind: '', extractionStatus: '', customer: '', cuit: '', dateFrom: '', dateTo: '', hasText: '' });
   const [documents, setDocuments] = useState<AnyRecord[]>(data.documents || []);
   const [tree, setTree] = useState<AnyRecord | null>(null);
-  const [selectedPath, setSelectedPath] = useState<{ kind?: string; year?: string; client?: string }>({});
+  const [selectedPath, setSelectedPath] = useState<{ kind?: string; year?: string; month?: number }>({});
   const [preview, setPreview] = useState<{ document: AnyRecord; data: AnyRecord } | null>(null);
 
   async function loadDocuments(next = filters) {
@@ -286,7 +286,8 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
       ...next,
       kind: selectedPath.kind || next.kind,
       year: selectedPath.year,
-      customer: selectedPath.client || next.customer,
+      month: selectedPath.month,
+      customer: next.customer,
       hasText: next.hasText === '' ? undefined : next.hasText
     });
     const [rows, treeData] = await Promise.all([
@@ -303,11 +304,11 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
 
   useEffect(() => {
     if (companyId) loadDocuments().catch(() => undefined);
-  }, [companyId, selectedPath.kind, selectedPath.year, selectedPath.client]);
+  }, [companyId, selectedPath.kind, selectedPath.year, selectedPath.month]);
 
-  function selectFolder(path: { kind?: string; year?: string; client?: string }) {
+  function selectFolder(path: { kind?: string; year?: string; month?: number }) {
     setSelectedPath(path);
-    setFilters((current) => ({ ...current, kind: path.kind || '', customer: path.client || '' }));
+    setFilters((current) => ({ ...current, kind: path.kind || '' }));
   }
 
   async function openPreview(document: AnyRecord) {
@@ -315,9 +316,55 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
     setPreview({ document, data });
   }
 
-  const rows = documents.map((d: AnyRecord) => (
+  const currentSection = (tree?.sections || []).find((section: AnyRecord) => section.kind === selectedPath.kind);
+  const currentYear = currentSection?.years?.find((year: AnyRecord) => year.year === selectedPath.year);
+  const currentMonth = currentYear?.months?.find((month: AnyRecord) => month.month === selectedPath.month);
+  const browserItems =
+    !selectedPath.kind
+      ? (tree?.sections || []).map((section: AnyRecord) => ({
+          key: section.kind,
+          label: section.label,
+          count: section.count,
+          folder: true,
+          onClick: () => selectFolder({ kind: section.kind })
+        }))
+      : !selectedPath.year
+        ? (currentSection?.years || []).map((year: AnyRecord) => ({
+            key: `${selectedPath.kind}-${year.year}`,
+            label: year.year,
+            count: year.count,
+            folder: true,
+            onClick: () => selectFolder({ kind: selectedPath.kind, year: year.year })
+          }))
+        : !selectedPath.month
+          ? (currentYear?.months || []).map((month: AnyRecord) => ({
+              key: `${selectedPath.kind}-${selectedPath.year}-${month.month}`,
+              label: month.label,
+              count: month.count,
+              folder: true,
+              onClick: () => selectFolder({ kind: selectedPath.kind, year: selectedPath.year, month: month.month })
+            }))
+          : [];
+
+  const currentTitle =
+    !selectedPath.kind
+      ? 'Carpetas'
+      : !selectedPath.year
+        ? documentKinds.find(([kind]) => kind === selectedPath.kind)?.[1] || selectedPath.kind
+        : !selectedPath.month
+          ? selectedPath.year
+          : `${currentMonth?.label || ''} ${selectedPath.year || ''}`.trim();
+
+  function goBack() {
+    if (selectedPath.month) return selectFolder({ kind: selectedPath.kind, year: selectedPath.year });
+    if (selectedPath.year) return selectFolder({ kind: selectedPath.kind });
+    if (selectedPath.kind) return selectFolder({});
+  }
+
+  const visibleDocuments = selectedPath.month ? documents : [];
+  const rows = visibleDocuments.map((d: AnyRecord) => (
     <tr key={d.id}>
-      <td><strong>{d.fileName}</strong><small>{d.issuerName || d.extraction?.engine || d.mimeType}</small></td>
+      <td><strong>{d.displayName || d.fileName}</strong><small>{d.displayCustomer || d.issuerName || d.extraction?.engine || d.mimeType}</small></td>
       <td><Badge value={d.kind} /></td>
       <td><Badge value={d.extractionStatus} /></td>
       <td>{d.documentDate || d.inferredDate ? dateFmt.format(new Date(d.documentDate || d.inferredDate)) : d.createdAt ? dateFmt.format(new Date(d.createdAt)) : ''}</td>
@@ -348,36 +395,26 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
       </section>
       <section className="documentLayout">
         <div className="card fileTree">
-          <div className="sectionRow"><h2>Ficheros</h2><button type="button" onClick={() => selectFolder({})}>Todo</button></div>
+          <div className="sectionRow"><h2>Ficheros</h2>{(selectedPath.kind || selectedPath.year || selectedPath.month) ? <button type="button" onClick={goBack}>Volver</button> : <button type="button" onClick={() => selectFolder({})}>Raíz</button>}</div>
           <div className="breadcrumbs">
             <button type="button" onClick={() => selectFolder({})}>Raíz</button>
             {selectedPath.kind && <button type="button" onClick={() => selectFolder({ kind: selectedPath.kind })}>{documentKinds.find(([kind]) => kind === selectedPath.kind)?.[1] || selectedPath.kind}</button>}
             {selectedPath.year && <button type="button" onClick={() => selectFolder({ kind: selectedPath.kind, year: selectedPath.year })}>{selectedPath.year}</button>}
-            {selectedPath.client && <span>{selectedPath.client}</span>}
+            {selectedPath.month && <span>{currentMonth?.label}</span>}
           </div>
-          {(tree?.sections || []).map((section: AnyRecord) => (
-            <div className="treeSection" key={section.kind}>
-              <button type="button" className={selectedPath.kind === section.kind && !selectedPath.year ? 'treeActive' : ''} onClick={() => selectFolder({ kind: section.kind })}>
-                {selectedPath.kind === section.kind ? <FolderOpen size={16} /> : <Folder size={16} />}
-                <span>{section.label}</span><small>{section.count}</small>
+          <div className="treeSection">
+            {browserItems.map((item: AnyRecord) => (
+              <button type="button" key={item.key} className="treeBrowserItem" onClick={item.onClick}>
+                {item.folder ? <FolderOpen size={16} /> : <FileText size={16} />}
+                <span>{item.label}</span>
+                <small>{item.count}</small>
               </button>
-              {section.years.map((year: AnyRecord) => (
-                <div className="treeYear" key={`${section.kind}-${year.year}`}>
-                  <button type="button" className={selectedPath.kind === section.kind && selectedPath.year === year.year && !selectedPath.client ? 'treeActive' : ''} onClick={() => selectFolder({ kind: section.kind, year: year.year })}>
-                    <Folder size={15} /><span>{year.year}</span><small>{year.count}</small>
-                  </button>
-                  {year.clients.map((client: AnyRecord) => (
-                    <button type="button" className={`treeClient ${selectedPath.kind === section.kind && selectedPath.year === year.year && selectedPath.client === client.client ? 'treeActive' : ''}`} key={`${section.kind}-${year.year}-${client.client}`} onClick={() => selectFolder({ kind: section.kind, year: year.year, client: client.client })}>
-                      <span>{client.client}</span><small>{client.count}</small>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-          ))}
+            ))}
+            {!browserItems.length && <Empty title="Sin subcarpetas" text="Entrá a una carpeta para ver sus archivos." />}
+          </div>
         </div>
         <div className="card">
-          <div className="sectionRow"><h2>{selectedPath.client || selectedPath.year || (selectedPath.kind ? documentKinds.find(([kind]) => kind === selectedPath.kind)?.[1] : 'Todos los documentos')}</h2><span className="mutedText">{documents.length} archivos</span></div>
+          <div className="sectionRow"><h2>{currentTitle}</h2><span className="mutedText">{visibleDocuments.length} archivos</span></div>
           <Table headers={['Archivo', 'Tipo', 'Extracción', 'Fecha', 'Total', 'Acciones']} rows={rows} />
         </div>
       </section>
@@ -385,7 +422,7 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
         <div className="previewOverlay" role="dialog" aria-modal="true">
           <div className="previewPanel">
             <div className="previewHead">
-              <div><strong>{preview.document.fileName}</strong><span>{preview.document.displayCustomer || preview.document.issuerName || preview.document.kind}</span></div>
+              <div><strong>{preview.document.displayName || preview.document.fileName}</strong><span>{preview.document.displayCustomer || preview.document.issuerName || preview.document.kind}</span></div>
               <button type="button" onClick={() => setPreview(null)}>Cerrar</button>
             </div>
             {preview.data.type === 'pdf' && <iframe title={preview.document.fileName} src={preview.data.url} />}

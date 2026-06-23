@@ -60,6 +60,10 @@ function documentKindLabel(kind: string) {
   return 'Sin clasificar';
 }
 
+function monthLabel(month: number) {
+  return ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][month] ?? 'Sin mes';
+}
+
 function readOriginalPath(fieldConfidence?: string | null) {
   if (!fieldConfidence) return '';
   try {
@@ -97,6 +101,19 @@ function inferDocumentDate(document: { documentDate?: Date | null; createdAt?: D
 
 function documentYear(document: { documentDate?: Date | null; createdAt?: Date; fileName: string; extraction?: { fieldConfidence?: string | null } | null }) {
   return String(inferDocumentDate(document).getFullYear());
+}
+
+function documentMonth(document: { documentDate?: Date | null; createdAt?: Date; fileName: string; extraction?: { fieldConfidence?: string | null } | null }) {
+  return inferDocumentDate(document).getMonth() + 1;
+}
+
+function shortDocumentName(fileName: string) {
+  return fileName
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/^(presupuesto|factura|fact|remito)\s*/i, '')
+    .replace(/[._-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function safeCustomerName(document: { issuerName?: string | null; fileName?: string; customerCandidates?: Array<{ legalName?: string | null }> }) {
@@ -179,6 +196,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         customer: z.string().trim().optional(),
         cuit: z.string().trim().optional(),
         year: z.coerce.number().int().optional(),
+        month: z.coerce.number().int().min(1).max(12).optional(),
         dateFrom: z.coerce.date().optional(),
         dateTo: z.coerce.date().optional(),
         hasText: z.coerce.boolean().optional(),
@@ -223,10 +241,12 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     });
     return documents
       .filter((document) => (query.year ? Number(documentYear(document)) === query.year : true))
+      .filter((document) => (query.month ? documentMonth(document) === query.month : true))
       .map((document) => ({
         ...document,
         inferredDate: inferDocumentDate(document),
-        displayCustomer: safeCustomerName(document)
+        displayCustomer: safeCustomerName(document),
+        displayName: shortDocumentName(document.fileName)
       }));
   });
 
@@ -269,23 +289,42 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     });
 
     const filtered = query.year ? documents.filter((document) => Number(documentYear(document)) === query.year) : documents;
-    const sections = new Map<string, { kind: string; label: string; count: number; years: Map<string, { year: string; count: number; clients: Map<string, { client: string; count: number; documents: typeof filtered }> }> }>();
+    const sections = new Map<
+      string,
+      {
+        kind: string;
+        label: string;
+        count: number;
+        years: Map<
+          string,
+          {
+            year: string;
+            count: number;
+            months: Map<
+              string,
+              { month: number; label: string; count: number; documents: typeof filtered }
+            >;
+          }
+        >;
+      }
+    >();
 
     for (const document of filtered) {
       const kind = document.kind;
       const inferredDate = inferDocumentDate(document);
       const year = documentYear(document);
-      const client = safeCustomerName(document);
+      const month = documentMonth(document);
       if (!sections.has(kind)) sections.set(kind, { kind, label: documentKindLabel(kind), count: 0, years: new Map() });
       const section = sections.get(kind)!;
       section.count += 1;
-      if (!section.years.has(year)) section.years.set(year, { year, count: 0, clients: new Map() });
+      if (!section.years.has(year)) section.years.set(year, { year, count: 0, months: new Map() });
       const yearNode = section.years.get(year)!;
       yearNode.count += 1;
-      if (!yearNode.clients.has(client)) yearNode.clients.set(client, { client, count: 0, documents: [] });
-      const clientNode = yearNode.clients.get(client)!;
-      clientNode.count += 1;
-      clientNode.documents.push(document);
+      const monthKey = String(month).padStart(2, '0');
+      if (!yearNode.months.has(monthKey)) yearNode.months.set(monthKey, { month, label: monthLabel(month - 1), count: 0, documents: [] });
+      const monthNode = yearNode.months.get(monthKey)!;
+      monthNode.count += 1;
+      monthNode.documents.push(document);
     }
 
     return {
@@ -299,19 +338,22 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
           .map((year) => ({
             year: year.year,
             count: year.count,
-            clients: [...year.clients.values()]
-              .sort((a, b) => a.client.localeCompare(b.client, 'es-AR'))
-              .map((client) => ({
-                client: client.client,
-                count: client.count,
-                documents: client.documents.map((document) => ({
+            months: [...year.months.values()]
+              .sort((a, b) => b.month - a.month)
+              .map((month) => ({
+                month: month.month,
+                label: month.label,
+                count: month.count,
+                documents: month.documents.map((document) => ({
                   id: document.id,
                   fileName: document.fileName,
+                  displayName: shortDocumentName(document.fileName),
                   kind: document.kind,
                   documentDate: document.documentDate,
                   inferredDate: inferDocumentDate(document),
                   createdAt: document.createdAt,
                   issuerName: document.issuerName,
+                  displayCustomer: safeCustomerName(document),
                   issuerCuit: document.issuerCuit,
                   externalNumber: document.externalNumber,
                   currency: document.currency,
