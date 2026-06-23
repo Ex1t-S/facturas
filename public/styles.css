@@ -98,6 +98,7 @@ code {
 }
 
 .brand-mark {
+  position: relative;
   display: grid;
   place-items: center;
   width: 52px;
@@ -108,6 +109,18 @@ code {
   color: var(--brand-2);
   font-weight: 950;
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
+}
+
+.brand-mark img {
+  position: absolute;
+  inset: 6px;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
+  object-fit: contain;
+}
+
+.brand-mark img:not([style*="display: none"]) + span {
+  visibility: hidden;
 }
 
 .brand strong,
@@ -185,7 +198,7 @@ code {
   display: flex;
   gap: 14px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-bottom: 24px;
 }
 

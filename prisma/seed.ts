@@ -10,23 +10,23 @@ async function main() {
     where: { cuit: '30700000001' },
     update: {},
     create: {
-      legalName: 'Metalúrgica Demo SRL',
-      tradeName: 'Metalúrgica Demo',
+      legalName: 'FMH',
+      tradeName: 'FMH',
       cuit: '30700000001',
       taxCondition: 'Responsable Inscripto',
       address: 'Parque industrial',
       phone: '+54 9 11 0000-0000',
-      email: 'admin@metalurgica-demo.local'
+      email: null
     }
   });
 
   const customer = await prisma.customer.upsert({
-    where: { id: 'demo-customer' },
+    where: { id: 'base-customer' },
     update: { companyId: company.id },
     create: {
-      id: 'demo-customer',
+      id: 'base-customer',
       companyId: company.id,
-      legalName: 'Cliente Industrial Demo SA',
+      legalName: 'Cliente pendiente de completar',
       cuit: '30711111118',
       taxCondition: 'Responsable Inscripto',
       contactName: 'Compras',
@@ -42,13 +42,13 @@ async function main() {
 
   for (const product of products) {
     await prisma.product.upsert({
-      where: { id: `demo-${product.sku}` },
+      where: { id: `base-${product.sku}` },
       update: {
         companyId: company.id,
         normalizedName: normalizedName(product.name)
       },
       create: {
-        id: `demo-${product.sku}`,
+        id: `base-${product.sku}`,
         companyId: company.id,
         sku: product.sku,
         name: product.name,
@@ -78,7 +78,7 @@ async function main() {
         subtotal: totals.subtotal,
         taxTotal: totals.taxTotal,
         total: totals.total,
-        notes: 'Presupuesto demo para validar el flujo operativo.',
+        notes: 'Presupuesto base para validar el flujo operativo.',
         items: {
           create: items.map((item, index) => ({
             ...item,
@@ -92,7 +92,7 @@ async function main() {
   const suppliers = [
     { name: 'Codimat', website: 'https://codimat.com.ar/', phone: '(0291) 459-2400' },
     { name: 'Rattini', website: 'https://rattini.com.ar/', phone: '+54 9 3585 483 356' },
-    { name: 'Proveedor Local Demo', website: 'https://example.local/' }
+    { name: 'Proveedor local', website: '' }
   ];
 
   const supplierRecords = new Map<string, string>();
@@ -108,26 +108,26 @@ async function main() {
   const priceLists = [
     {
       supplier: 'Codimat',
-      name: 'Lista Codimat demo',
+      name: 'Lista Codimat base',
       items: [
-        { productId: 'demo-MAT-CH-18', rawName: 'Chapa 1/8 1.22x2.44', unit: 'unidad', price: 40500 },
-        { productId: 'demo-FAB-PIEZA', rawName: 'Fabricación de pieza según plano', unit: 'unidad', price: 62000 }
+        { productId: 'base-MAT-CH-18', rawName: 'Chapa 1/8 1.22x2.44', unit: 'unidad', price: 40500 },
+        { productId: 'base-FAB-PIEZA', rawName: 'Fabricación de pieza según plano', unit: 'unidad', price: 62000 }
       ]
     },
     {
       supplier: 'Rattini',
-      name: 'Lista Rattini demo',
+      name: 'Lista Rattini base',
       items: [
         { rawName: 'Reductor rosca transportadora', unit: 'unidad', price: 285000 },
         { rawName: 'Caja inversora diametro 25', unit: 'unidad', price: 198000 }
       ]
     },
     {
-      supplier: 'Proveedor Local Demo',
-      name: 'Lista local demo',
+      supplier: 'Proveedor local',
+      name: 'Lista local base',
       items: [
-        { productId: 'demo-MAT-CH-18', rawName: 'Chapa 1/8 1.22 x 2.44', unit: 'unidad', price: 39750 },
-        { productId: 'demo-SRV-PLEG', rawName: 'Servicio plegado', unit: 'hora', price: 17000 }
+        { productId: 'base-MAT-CH-18', rawName: 'Chapa 1/8 1.22 x 2.44', unit: 'unidad', price: 39750 },
+        { productId: 'base-SRV-PLEG', rawName: 'Servicio plegado', unit: 'hora', price: 17000 }
       ]
     }
   ];
@@ -142,7 +142,7 @@ async function main() {
         companyId: company.id,
         supplierId,
         name: list.name,
-        sourceType: 'demo',
+        sourceType: 'seed',
         prices: {
           create: list.items.map((item) => ({
             companyId: company.id,

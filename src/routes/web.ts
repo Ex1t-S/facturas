@@ -17,7 +17,7 @@ export const webRoutes: FastifyPluginAsync = async (app) => {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Orden Metalúrgica</title>
+    <title>FMH Gestion</title>
     <link rel="stylesheet" href="/assets/styles.css" />
   </head>
   <body>

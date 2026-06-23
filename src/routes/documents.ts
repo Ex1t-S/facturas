@@ -9,7 +9,6 @@ import { calculateQuoteTotals } from '../domain/money.js';
 import { extractDocumentFromFile } from '../services/documentExtraction.js';
 import { buildPreview, isImageMime, isPdfMime } from '../services/documentPreview.js';
 import { assertInsideUploads, writeDocumentFile } from '../services/documentStorage.js';
-import { createDemoDocuments } from '../services/demoDocuments.js';
 import { importHistoricalDocuments, scanHistoricalDocuments } from '../services/historicalImport.js';
 
 const normalizedDocumentSchema = z.object({
@@ -125,11 +124,6 @@ function safeCustomerName(document: { issuerName?: string | null; fileName?: str
 }
 
 export const documentRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/documents/demo', async (request, reply) => {
-    const documents = await createDemoDocuments();
-    return reply.code(201).send({ created: documents.length, documents });
-  });
-
   app.post('/documents', async (request, reply) => {
     const data = await request.file();
     if (!data) return reply.code(400).send({ error: 'File is required' });

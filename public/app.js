@@ -83,8 +83,32 @@ function toast(message) {
 
 function badge(value) {
   const key = String(value || 'UNKNOWN').toLowerCase();
-  const tone = key.includes('pending') || key.includes('needs') ? 'warn' : key.includes('review') || key.includes('sent') ? 'ok' : '';
-  return `<span class="status ${tone}">${value || 'Sin estado'}</span>`;
+  const labels = {
+    unknown: 'Sin clasificar',
+    draft: 'Borrador',
+    sent: 'Enviado',
+    accepted: 'Aceptado',
+    rejected: 'Rechazado',
+    pending_review: 'Pendiente de revision',
+    reviewed: 'Revisado',
+    archived: 'Archivado',
+    uploaded: 'Subido',
+    needs_review: 'Revisar',
+    extracted: 'Extraido',
+    failed: 'Error',
+    pending_confirmation: 'Pendiente de confirmar',
+    authorized: 'Autorizada',
+    cancelled: 'Cancelada',
+    paid: 'Pagada',
+    invoice: 'Factura',
+    quote: 'Presupuesto',
+    receipt: 'Remito',
+    remittance: 'Remito',
+    supplier_price_list: 'Lista de precios',
+    other: 'Otro'
+  };
+  const tone = key.includes('pending') || key.includes('needs') || key.includes('failed') ? 'warn' : key.includes('review') || key.includes('sent') || key.includes('authorized') ? 'ok' : '';
+  return `<span class="status ${tone}">${labels[key] || String(value || 'Sin estado').replaceAll('_', ' ')}</span>`;
 }
 
 function emptyState(title, text, action = '') {
@@ -110,17 +134,16 @@ function appShell(content) {
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">OM</div>
-          <div><strong>Orden Metalúrgica</strong><small>Gestión documental, fiscal y compras</small></div>
+          <div class="brand-mark"><img src="/assets/fmh-logo.png" alt="" onerror="this.style.display='none'" /><span>FMH</span></div>
+          <div><strong>FMH Gestion</strong><small>Documentos, presupuestos y compras</small></div>
         </div>
         <nav class="nav">
           ${routes.map(([id, label, icon]) => `<button class="${state.view === id ? 'active' : ''}" data-nav="${id}"><span>${icon}</span>${label}</button>`).join('')}
         </nav>
-        <div class="sidebar-card"><span class="pulse"></span><div><strong>Demo local activo</strong><small>ARCA bloqueado · WhatsApp demo</small></div></div>
+        <div class="sidebar-card"><span class="pulse"></span><div><strong>Sistema operativo</strong><small>ARCA con autorizacion manual · WhatsApp preparado</small></div></div>
       </aside>
       <main class="main">
         <div class="topbar">
-          <div class="search-box"><span>⌕</span><input placeholder="Buscar cliente, CUIT, proveedor, producto, archivo..." /></div>
           <div class="company-chip"><small>Empresa activa</small><strong>${companyName}</strong></div>
         </div>
         <section class="view-enter">${content}</section>
@@ -164,9 +187,9 @@ function filesView() {
   `);
 
   return `
-    ${pageHeader('Ficheros', 'Archivo central de PDFs, Word, facturas, presupuestos y adjuntos de WhatsApp.', '<button class="btn btn-secondary" data-demo-docs>Crear demos</button> <button class="btn btn-primary" data-view="import">Importar</button>')}
+    ${pageHeader('Ficheros', 'Archivo central de PDFs, Word, facturas, presupuestos y adjuntos de WhatsApp.', '<button class="btn btn-primary" data-view="import">Importar</button>')}
     <section class="grid">
-      <div class="card span-7"><div class="section-head"><h2>Registros documentales</h2><span>${state.documents.length} archivos</span></div>${table(['Archivo', 'Tipo', 'Proceso', 'Fecha', 'Acciones'], rows, 'Subí documentos o generá demos para probar la vista previa.')}</div>
+      <div class="card span-7"><div class="section-head"><h2>Registros documentales</h2><span>${state.documents.length} archivos</span></div>${table(['Archivo', 'Tipo', 'Proceso', 'Fecha', 'Acciones'], rows, 'Subi documentos para revisar y previsualizar dentro del sistema.')}</div>
       <div class="card preview-card span-5"><div class="section-head"><h2>Vista previa</h2>${state.selectedDocument ? `<a class="btn btn-ghost" href="/api/documents/${state.selectedDocument.id}/content" target="_blank">Abrir aparte</a>` : ''}</div>${renderPreview()}</div>
     </section>
   `;
@@ -283,16 +306,16 @@ function billingView() {
 
 function whatsappView() {
   return `
-    ${pageHeader('WhatsApp Demo', 'Inbox del número de prueba de Meta Cloud API y adjuntos recibidos como ficheros.', '<button class="btn btn-primary" data-copy-webhook>Copiar webhook</button>')}
+    ${pageHeader('WhatsApp', 'Bandeja de mensajes de Meta Cloud API y adjuntos recibidos como ficheros.', '<button class="btn btn-primary" data-copy-webhook>Copiar webhook</button>')}
     <section class="grid">
-      <div class="card span-5 feature-card"><h2>Configuración para Meta</h2><p>Exponer con Cloudflare Tunnel apuntando a <code>localhost:3000</code>.</p><p><strong>Callback:</strong> <code>https://TU-TUNEL/webhooks/whatsapp</code></p><p><strong>Verify token:</strong> el valor de <code>WHATSAPP_VERIFY_TOKEN</code></p><p><strong>Evento:</strong> messages</p></div>
+      <div class="card span-5 feature-card"><h2>Configuracion para Meta</h2><p>Usar la URL publica de Render cuando se cargue el webhook.</p><p><strong>Callback:</strong> <code>https://fmh-gestion.onrender.com/webhooks/whatsapp</code></p><p><strong>Verify token:</strong> el valor de <code>WHATSAPP_VERIFY_TOKEN</code></p><p><strong>Evento:</strong> mensajes</p></div>
       <div class="card span-7"><h2>Mensajes recientes</h2>${table(['De', 'Tipo', 'Mensaje', 'Adjunto'], state.whatsappMessages.map((m) => `<tr><td>${m.fromNumber}</td><td>${m.messageType}</td><td>${m.body || ''}</td><td>${m.mediaDocument ? `<button class="btn btn-ghost" data-preview="${m.mediaDocument.id}">Ver fichero</button>` : ''}</td></tr>`), 'Todavía no llegaron mensajes al webhook.')}</div>
     </section>
   `;
 }
 
 function settingsView() {
-  return `${pageHeader('Configuración', 'Alta de empresa, ARCA y canales externos.')}<section class="grid"><div class="card span-6"><h2>Empresa</h2><form id="companyForm" class="form-grid"><label class="field full">Razón social<input name="legalName" value="Metalúrgica Demo" /></label><label class="field">CUIT<input name="cuit" value="30700000001" /></label><label class="field">Condición fiscal<input name="taxCondition" value="Responsable Inscripto" /></label><button class="btn btn-primary">Crear empresa</button></form></div><div class="card span-6 feature-card"><h2>ARCA</h2><p>Pendiente: cargar certificado, clave privada, CUIT y punto de venta Web Services. No guardar clave fiscal.</p></div></section>`;
+  return `${pageHeader('Configuración', 'Alta de empresa, ARCA y canales externos.')}<section class="grid"><div class="card span-6"><h2>Empresa</h2><form id="companyForm" class="form-grid"><label class="field full">Razón social<input name="legalName" value="FMH" /></label><label class="field">CUIT<input name="cuit" placeholder="CUIT de la empresa" /></label><label class="field">Condición fiscal<input name="taxCondition" value="Responsable Inscripto" /></label><button class="btn btn-primary">Crear empresa</button></form></div><div class="card span-6 feature-card"><h2>ARCA</h2><p>Pendiente: cargar certificado, clave privada, CUIT y punto de venta Web Services. No guardar clave fiscal.</p></div></section>`;
 }
 
 function currentView() {
@@ -409,12 +432,6 @@ function bindEvents() {
     button.addEventListener('click', async () => openPreview(button.dataset.preview).catch((error) => toast(error.message)));
   });
 
-  document.querySelector('[data-demo-docs]')?.addEventListener('click', async () => {
-    await postJson('/api/documents/demo', {});
-    toast('Documentos demo creados.');
-    await loadData();
-  });
-
   document.querySelectorAll('[data-pdf]').forEach((button) => {
     button.addEventListener('click', () => window.open(`/api/quotes/${button.dataset.pdf}/pdf`, '_blank'));
   });
@@ -433,7 +450,7 @@ function bindEvents() {
   });
 
   document.querySelector('[data-copy-webhook]')?.addEventListener('click', async () => {
-    await navigator.clipboard.writeText('https://TU-TUNEL/webhooks/whatsapp');
+    await navigator.clipboard.writeText('https://fmh-gestion.onrender.com/webhooks/whatsapp');
     toast('Webhook copiado.');
   });
 }
