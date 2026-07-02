@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
-import { answerAssistant, type AssistantMessage } from '../services/assistant.js';
+import { answerAssistant, type AssistantMessage, type PendingDeliveryDraft } from '../services/assistant.js';
 
 const assistantSchema = z.object({
   companyId: z.string().optional(),
@@ -35,9 +35,20 @@ function chatTitleFromMessage(message: string) {
 function parseSources(value?: string | null) {
   if (!value) return [];
   try {
-    return JSON.parse(value);
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : parsed.sources ?? [];
   } catch {
     return [];
+  }
+}
+
+function parsePendingDeliveryDraft(value?: string | null): PendingDeliveryDraft | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed.pendingDeliveryDraft;
+  } catch {
+    return undefined;
   }
 }
 
@@ -139,11 +150,16 @@ export const assistantRoutes: FastifyPluginAsync = async (app) => {
       .filter((message) => message.role === 'user' || message.role === 'assistant')
       .slice(-12)
       .map((message) => ({ role: message.role as AssistantMessage['role'], content: message.content }));
+    const latestDeliveryAction = [...chat.messages]
+      .reverse()
+      .find((message) => message.role === 'assistant' && (message.actionType === 'delivery_note_draft_pending' || message.actionType === 'delivery_note_created'));
+    const pendingDeliveryDraft = latestDeliveryAction?.actionType === 'delivery_note_draft_pending' ? latestDeliveryAction : undefined;
 
     const response = await answerAssistant({
       companyId: chat.companyId,
       message: body.message,
-      history: [...history, { role: 'user', content: body.message }]
+      history: [...history, { role: 'user', content: body.message }],
+      pendingDeliveryDraft: parsePendingDeliveryDraft(pendingDeliveryDraft?.sourcesJson)
     });
 
     const assistantMessage = await prisma.assistantMessage.create({
@@ -152,7 +168,7 @@ export const assistantRoutes: FastifyPluginAsync = async (app) => {
         role: 'assistant',
         content: response.answer,
         mode: response.mode,
-        sourcesJson: JSON.stringify(response.sources ?? []),
+        sourcesJson: JSON.stringify({ sources: response.sources ?? [], pendingDeliveryDraft: response.pendingDeliveryDraft }),
         actionType: response.action?.type,
         quoteId: response.action?.quoteId,
         documentId: response.action?.documentId

@@ -250,7 +250,7 @@ function SearchPanel({ results }: { results: AnyRecord }) {
 function AssistantView({ companyId }: { companyId: string }) {
   const [chats, setChats] = useState<AnyRecord[]>([]);
   const [activeChatId, setActiveChatId] = useState('');
-  const [messages, setMessages] = useState<Array<{ id?: string; role: 'user' | 'assistant'; content: string; mode?: string; sources?: AnyRecord[]; actionType?: string }>>([]);
+  const [messages, setMessages] = useState<Array<{ id?: string; role: 'user' | 'assistant'; content: string; mode?: string; sources?: AnyRecord[]; actionType?: string; documentId?: string }>>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -334,14 +334,11 @@ function AssistantView({ companyId }: { companyId: string }) {
             )}
             {messages.map((message, index) => (
               <div className={`bubble ${message.role}`} key={message.id || index}>
-                <span>{message.role === 'assistant' ? `Asistente${message.mode ? ` (${labelFor(message.mode)})` : ''}` : 'Vos'}</span>
+                <span>{message.role === 'assistant' ? 'Asistente' : 'Vos'}</span>
                 <p>{message.content}</p>
-                {!!message.sources?.length && (
-                  <div className="sourceList">
-                    <strong>Fuentes</strong>
-                    {message.sources.slice(0, 8).map((source) => source.url
-                      ? <a key={`${source.type}-${source.id}`} href={source.url} target="_blank">{source.title}<small>{source.subtitle ? labelFor(source.subtitle) : ''}</small></a>
-                      : <span key={`${source.type}-${source.id}`}>{source.title}<small>{source.subtitle ? labelFor(source.subtitle) : ''}</small></span>)}
+                {message.documentId && message.actionType === 'delivery_note_created' && (
+                  <div className="messageActions">
+                    <a href={`/api/documents/${message.documentId}/content`} target="_blank"><FileText size={16} /> Ver remito</a>
                   </div>
                 )}
               </div>

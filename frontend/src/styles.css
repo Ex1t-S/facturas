@@ -300,6 +300,15 @@ td strong, td small { display: block; }
   margin: 0;
   white-space: pre-wrap;
 }
+.messageActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.messageActions a {
+  background: white;
+}
 .assistantSide {
   display: grid;
   gap: 10px;

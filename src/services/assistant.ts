@@ -9,7 +9,7 @@ import {
   searchBusinessKnowledge,
   type KnowledgeSource
 } from './businessKnowledge.js';
-import { writeDocumentFile } from './documentStorage.js';
+import { safeFileName, writeDocumentFile } from './documentStorage.js';
 import { renderDeliveryNotePdf, renderQuotePdf } from './pdf.js';
 
 export type AssistantMessage = {
@@ -21,6 +21,7 @@ export type AssistantInput = {
   companyId?: string;
   message: string;
   history?: AssistantMessage[];
+  pendingDeliveryDraft?: PendingDeliveryDraft;
 };
 
 export type AssistantResponse = {
@@ -29,10 +30,11 @@ export type AssistantResponse = {
   sources: KnowledgeSource[];
   suggestions: string[];
   action?: {
-    type: 'quote_draft_created' | 'delivery_note_created' | 'invoice_unavailable';
+    type: 'quote_draft_created' | 'delivery_note_created' | 'delivery_note_draft_pending' | 'invoice_unavailable';
     quoteId?: string;
     documentId?: string;
   };
+  pendingDeliveryDraft?: PendingDeliveryDraft;
 };
 
 type DraftIntent = 'quote' | 'delivery_note' | 'invoice' | 'none';
@@ -54,8 +56,15 @@ type DraftPayload = {
   items: DraftItem[];
 };
 
+export type PendingDeliveryDraft = {
+  type: 'delivery_note';
+  payload: DraftPayload;
+  suggestedFileName: string;
+};
+
 function wantsCreation(message: string) {
   const normalized = message.toLocaleLowerCase('es-AR');
+  if (/\b(lista|listar|pasame|mostrame|mostrar|ver|buscar|busca|quienes)\b/i.test(normalized)) return false;
   return /\b(arm|cre|gener|hac|prepar|carg|guard)/i.test(normalized);
 }
 
@@ -78,6 +87,92 @@ function parseNumber(value?: unknown) {
 function firstCustomerGuess(message: string) {
   const match = message.match(/\b(?:para|cliente)\s+([^,.;\n]+?)(?:\s+con\b|\s+por\b|\s+de\b|,|\.|;|$)/i);
   return match?.[1]?.trim();
+}
+
+function normalizeText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('es-AR');
+}
+
+function slugify(value: string) {
+  const slug = normalizeText(value)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 70);
+  return slug || 'remito';
+}
+
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function suggestedDeliveryFileName(payload: DraftPayload) {
+  return safeFileName(`remito-${slugify(payload.customerName || 'cliente-pendiente')}-${todayIsoDate()}.pdf`);
+}
+
+function ensurePdfFileName(value: string) {
+  const cleaned = safeFileName(value.trim().replace(/^["']|["']$/g, ''));
+  if (!cleaned) return '';
+  return cleaned.toLowerCase().endsWith('.pdf') ? cleaned : `${cleaned}.pdf`;
+}
+
+function extractRequestedFileName(message: string) {
+  const match = message.match(/\b(?:como|nombre|archivo)\s+["']?([^"'\n]+?\.pdf|[^"'\n]+?)["']?\s*$/i);
+  return match?.[1] ? ensurePdfFileName(match[1]) : undefined;
+}
+
+function confirmsPendingDraft(message: string) {
+  const normalized = normalizeText(message);
+  return /\b(guardar|guardalo|confirmar|confirmalo|crear|crealo|generar|generalo|dale|ok|listo)\b/.test(normalized);
+}
+
+function formatDeliveryDraft(pending: PendingDeliveryDraft) {
+  const items = pending.payload.items.length
+    ? pending.payload.items.map((item, index) => `${index + 1}. ${item.quantity || 1} ${item.unit || 'unidad'} - ${item.description}`).join('\n')
+    : 'Sin items cargados.';
+  return [
+    'Borrador de remito:',
+    `Cliente: ${pending.payload.customerName || 'Cliente pendiente'}`,
+    'Items:',
+    items,
+    `Nombre sugerido: ${pending.suggestedFileName}`,
+    '',
+    'Si esta bien, escribi "guardalo". Si queres cambiar el nombre, escribi por ejemplo: "guardalo como remito-mario-alvarez-espira.pdf".'
+  ].join('\n');
+}
+
+function wantsCustomerList(message: string) {
+  const normalized = normalizeText(message);
+  return /\b(clientes?|clietnnes|clietnes)\b/.test(normalized) && /\b(lista|listar|pasame|mostrame|mostrar|tenemos|cuales|quienes|ver)\b/.test(normalized);
+}
+
+function wantsCapabilities(message: string) {
+  const normalized = normalizeText(message);
+  return /\b(que podes hacer|que puedes hacer|ayuda|como me ayudas|para que servis|funciones)\b/.test(normalized);
+}
+
+function pendingDeliveryNote(history?: AssistantMessage[]) {
+  const recent = (history ?? []).slice(-6).map((message) => normalizeText(message.content)).join('\n');
+  return recent.includes('remito') && (recent.includes('necesito estos datos') || recent.includes('armar un remito') || recent.includes('borrador'));
+}
+
+async function listCustomers(companyId: string) {
+  const customers = await prisma.customer.findMany({
+    where: { companyId },
+    orderBy: { legalName: 'asc' },
+    take: 80
+  });
+  if (!customers.length) return 'Todavia no hay clientes cargados.';
+
+  return [
+    `Clientes cargados (${customers.length}):`,
+    ...customers.map((customer, index) => {
+      const details = [customer.cuit ? `CUIT ${customer.cuit}` : undefined, customer.address].filter(Boolean).join(' - ');
+      return `${index + 1}. ${customer.legalName}${details ? ` (${details})` : ''}`;
+    })
+  ].join('\n');
 }
 
 function parseLocalDraft(message: string): DraftPayload {
@@ -109,6 +204,20 @@ function parseLocalDraft(message: string): DraftPayload {
   }
 
   return { customerName, currency, items, notes: 'Borrador generado desde el asistente IA. Revisar antes de enviar.' };
+}
+
+function parseFollowUpDeliveryNote(message: string): DraftPayload {
+  const customerName = firstCustomerGuess(message);
+  const description = message
+    .replace(/\bpara\s+([^,.;\n]+?)(?:,|$)/i, '')
+    .replace(/\b(armame|arma|crear|crea|generar|genera|hacer|hace|preparar|prepara|remito)\b/gi, '')
+    .trim();
+  return {
+    customerName,
+    currency: 'ARS',
+    notes: 'Remito generado desde el asistente IA. Revisar antes de entregar.',
+    items: description ? [{ description, quantity: 1, unit: 'trabajo' }] : []
+  };
 }
 
 async function parseOpenAiDraft(message: string, intent: DraftIntent): Promise<DraftPayload | null> {
@@ -353,7 +462,7 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
   };
 }
 
-async function createDeliveryNote(companyId: string, message: string, payload: DraftPayload): Promise<AssistantResponse['action'] & { answer: string; sources: KnowledgeSource[] }> {
+async function createDeliveryNote(companyId: string, message: string, payload: DraftPayload, fileName?: string): Promise<AssistantResponse['action'] & { answer: string; sources: KnowledgeSource[] }> {
   const customer = await resolveCustomer({
     companyId,
     name: payload.customerName,
@@ -372,7 +481,7 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
     notes: payload.notes || 'Remito generado desde el asistente IA. Revisar antes de entregar.',
     items: items.map((item) => ({ description: item.description, quantity: item.quantity || 1, unit: item.unit || 'unidad' }))
   });
-  const filename = `remito-ia-${number}.pdf`;
+  const filename = ensurePdfFileName(fileName || suggestedDeliveryFileName(payload)) || `remito-ia-${number}.pdf`;
   const stored = await writeDocumentFile({
     buffer: pdf,
     filename,
@@ -411,8 +520,9 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
     type: 'delivery_note_created',
     documentId: document.id,
     answer: [
-      `Listo. Cree el remito borrador #${number} para ${customer.legalName}.`,
-      'Quedo guardado como PDF en Documentos, tipo Remito, para revisar antes de entregar o enviar.'
+      `Listo. Guarde el remito borrador #${number} para ${customer.legalName}.`,
+      `Archivo: ${filename}`,
+      'Quedo como PDF en Documentos, tipo Remito, para revisar antes de entregar o enviar.'
     ].join('\n'),
     sources: [{ type: 'document', id: document.id, title: document.fileName, subtitle: 'Remito / Estructurado', url: `/api/documents/${document.id}/content` }]
   };
@@ -444,37 +554,36 @@ async function buildBusinessContext(companyId?: string) {
 
 function localAssistant(input: AssistantInput, knowledge: string, weakPoints: string) {
   const message = input.message.toLowerCase();
-  const evidence = `\n\nInformacion encontrada:\n${knowledge}`;
+  const evidence = knowledge && !knowledge.startsWith('No encontre') ? `\n\nDatos encontrados:\n${knowledge}` : '';
 
   if (message.includes('presupuesto')) {
     return [
       'Puedo ayudarte a armar un presupuesto FMH como borrador editable. Necesito cliente, descripcion de trabajos o productos, cantidades y precios si ya los tenes.',
       'Si faltan precios, puedo dejar lineas en cero para revisar antes de enviar.',
-      evidence
+      evidence || 'Decime cliente, descripcion, cantidad y precio si lo tenes.'
     ].join('\n\n');
   }
 
   if (message.includes('remito')) {
     return [
       'Puedo armar un remito borrador y guardarlo como PDF en Documentos. Necesito cliente, cantidades y descripcion de lo entregado.',
-      evidence
+      evidence || 'Decime cliente, cantidades y descripcion de lo entregado.'
     ].join('\n\n');
   }
 
   if (message.includes('arca') || message.includes('factura')) {
     return [
       'Facturas no estan disponibles por ahora desde la IA. Puedo ayudarte a preparar un presupuesto o remito borrador.',
-      evidence
+      ''
     ].join('\n\n');
   }
 
   if (message.includes('debil') || message.includes('mejorar') || message.includes('problema') || message.includes('analisis')) {
-    return ['Analisis operativo de puntos debiles:', weakPoints, evidence].join('\n\n');
+    return ['Analisis operativo de puntos debiles:', weakPoints].join('\n\n');
   }
 
   return [
     'Puedo responder consultas y buscar datos internos de clientes, documentos, productos, precios, presupuestos y remitos.',
-    evidence,
     config.OPENAI_API_KEY ? '' : 'Ahora estoy en modo ayuda local porque no hay OPENAI_API_KEY configurada.'
   ]
     .filter(Boolean)
@@ -486,7 +595,8 @@ async function answerWithOpenAi(input: AssistantInput, context: string, knowledg
     'Sos un asistente operativo para FMH/metalurgica.',
     'Ayudas con presupuestos, remitos, inventario, clientes, WhatsApp y documentos.',
     'Facturas no estan disponibles: no crees ni prometas facturas.',
-    'Usa la informacion encontrada como evidencia. Si no hay evidencia, aclaralo.',
+    'Usa la informacion interna para responder, pero no pegues bloques crudos de contexto ni nombres de campos tecnicos.',
+    'No muestres secciones de fuentes.',
     'Si faltan datos para crear un borrador, pedilos de forma concreta.',
     'Responde en espanol argentino, claro y breve.'
   ].join('\n');
@@ -533,6 +643,63 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     return { mode: 'local', answer: 'No hay empresa activa cargada para consultar o guardar datos.', sources: [], suggestions };
   }
 
+  if (input.pendingDeliveryDraft) {
+    const requestedFileName = extractRequestedFileName(input.message);
+    if (confirmsPendingDraft(input.message) || requestedFileName) {
+      const created = await createDeliveryNote(companyId, input.message, input.pendingDeliveryDraft.payload, requestedFileName || input.pendingDeliveryDraft.suggestedFileName);
+      return {
+        mode: config.OPENAI_API_KEY ? 'openai' : 'local',
+        answer: created.answer,
+        sources: created.sources,
+        suggestions,
+        action: {
+          type: created.type,
+          documentId: created.documentId
+        }
+      };
+    }
+
+    if (normalizeText(input.message).includes('nombre')) {
+      const fileName = requestedFileName || input.pendingDeliveryDraft.suggestedFileName;
+      const pending = { ...input.pendingDeliveryDraft, suggestedFileName: fileName };
+      return {
+        mode: config.OPENAI_API_KEY ? 'openai' : 'local',
+        answer: formatDeliveryDraft(pending),
+        sources: [],
+        suggestions,
+        pendingDeliveryDraft: pending,
+        action: { type: 'delivery_note_draft_pending' }
+      };
+    }
+  }
+
+  if (wantsCustomerList(input.message)) {
+    return {
+      mode: config.OPENAI_API_KEY ? 'openai' : 'local',
+      answer: await listCustomers(companyId),
+      sources: [],
+      suggestions
+    };
+  }
+
+  if (wantsCapabilities(input.message)) {
+    return {
+      mode: config.OPENAI_API_KEY ? 'openai' : 'local',
+      answer: [
+        'Puedo ayudarte con:',
+        '- buscar clientes, presupuestos, remitos, documentos y productos cargados',
+        '- listar clientes o datos operativos de la base',
+        '- armar borradores de remitos y presupuestos',
+        '- revisar faltantes de inventario, precios o proveedores',
+        '- preparar textos breves para trabajo interno o WhatsApp',
+        '',
+        'Por ahora no genero facturas.'
+      ].join('\n'),
+      sources: [],
+      suggestions
+    };
+  }
+
   if (intent === 'invoice') {
     return {
       mode: config.OPENAI_API_KEY ? 'openai' : 'local',
@@ -543,21 +710,41 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     };
   }
 
-  if (intent === 'quote' || intent === 'delivery_note') {
-    const payload = (await parseOpenAiDraft(input.message, intent)) ?? parseLocalDraft(input.message);
+  if (intent === 'quote' || intent === 'delivery_note' || (pendingDeliveryNote(input.history) && firstCustomerGuess(input.message))) {
+    const effectiveIntent: DraftIntent = intent === 'none' ? 'delivery_note' : intent;
+    const payload =
+      effectiveIntent === 'delivery_note' && intent === 'none'
+        ? parseFollowUpDeliveryNote(input.message)
+        : (await parseOpenAiDraft(input.message, effectiveIntent)) ?? parseLocalDraft(input.message);
     const missing: string[] = [];
     if (!payload.customerName && !payload.customerCuit) missing.push('cliente');
     if (payload.items.length === 0) missing.push('items o descripcion');
     if (missing.length) {
       return {
         mode: config.OPENAI_API_KEY ? 'openai' : 'local',
-        answer: `Para crear el ${intent === 'quote' ? 'presupuesto' : 'remito'} necesito estos datos: ${missing.join(', ')}. Pasamelos en un mensaje y lo guardo como borrador editable.`,
+        answer: `Para crear el ${effectiveIntent === 'quote' ? 'presupuesto' : 'remito'} necesito estos datos: ${missing.join(', ')}. Pasamelos en un mensaje y lo guardo como borrador editable.`,
         sources: [],
         suggestions
       };
     }
 
-    const created = intent === 'quote' ? await createQuoteDraft(companyId, input.message, payload) : await createDeliveryNote(companyId, input.message, payload);
+    if (effectiveIntent === 'delivery_note') {
+      const pending: PendingDeliveryDraft = {
+        type: 'delivery_note',
+        payload,
+        suggestedFileName: suggestedDeliveryFileName(payload)
+      };
+      return {
+        mode: config.OPENAI_API_KEY ? 'openai' : 'local',
+        answer: formatDeliveryDraft(pending),
+        sources: [],
+        suggestions,
+        pendingDeliveryDraft: pending,
+        action: { type: 'delivery_note_draft_pending' }
+      };
+    }
+
+    const created = await createQuoteDraft(companyId, input.message, payload);
     return {
       mode: config.OPENAI_API_KEY ? 'openai' : 'local',
       answer: created.answer,

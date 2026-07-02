@@ -17,4 +17,8 @@ describe('detectDraftIntent', () => {
   it('ignores informational questions', () => {
     expect(detectDraftIntent('busca remitos de Pasman de enero')).toBe('none');
   });
+
+  it('does not treat customer list requests as delivery note creation', () => {
+    expect(detectDraftIntent('Quiero armar un remito pasame la lista de clietnnes q tenemos')).toBe('none');
+  });
 });
