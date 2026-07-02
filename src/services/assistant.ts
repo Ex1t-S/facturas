@@ -158,6 +158,18 @@ function pendingDeliveryNote(history?: AssistantMessage[]) {
   return recent.includes('remito') && (recent.includes('necesito estos datos') || recent.includes('armar un remito') || recent.includes('borrador'));
 }
 
+function isCustomerOnlyDeliverySetup(message: string) {
+  const normalized = normalizeText(message);
+  const withoutCustomer = normalized
+    .replace(/\b(vamos\s+a\s+armarlo|armarlo|lo\s+armamos|hacerlo|hacelo|hacer\s+remito|remito)\b/g, ' ')
+    .replace(/\b(para|cliente)\s+[^,.;\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const hasCustomer = Boolean(firstCustomerGuess(message));
+  const hasWorkVerb = /\b(retirar|retiramos|colocar|colocamos|atornillar|atornillamos|reparar|reparamos|entregar|entregamos|llevar|llevamos|instalar|instalamos|cambiar|cambiamos|hacer|hicimos|fabricar|fabricamos)\b/.test(normalized);
+  return hasCustomer && !hasWorkVerb && withoutCustomer.length <= 8;
+}
+
 async function listCustomers(companyId: string) {
   const customers = await prisma.customer.findMany({
     where: { companyId },
@@ -206,8 +218,16 @@ function parseLocalDraft(message: string): DraftPayload {
   return { customerName, currency, items, notes: 'Borrador generado desde el asistente IA. Revisar antes de enviar.' };
 }
 
-function parseFollowUpDeliveryNote(message: string): DraftPayload {
+export function parseFollowUpDeliveryNoteForTest(message: string): DraftPayload {
   const customerName = firstCustomerGuess(message);
+  if (isCustomerOnlyDeliverySetup(message)) {
+    return {
+      customerName,
+      currency: 'ARS',
+      notes: 'Remito generado desde el asistente IA. Revisar antes de entregar.',
+      items: []
+    };
+  }
   const description = message
     .replace(/\bpara\s+([^,.;\n]+?)(?:,|$)/i, '')
     .replace(/\b(armame|arma|crear|crea|generar|genera|hacer|hace|preparar|prepara|remito)\b/gi, '')
@@ -714,15 +734,19 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     const effectiveIntent: DraftIntent = intent === 'none' ? 'delivery_note' : intent;
     const payload =
       effectiveIntent === 'delivery_note' && intent === 'none'
-        ? parseFollowUpDeliveryNote(input.message)
+        ? parseFollowUpDeliveryNoteForTest(input.message)
         : (await parseOpenAiDraft(input.message, effectiveIntent)) ?? parseLocalDraft(input.message);
     const missing: string[] = [];
     if (!payload.customerName && !payload.customerCuit) missing.push('cliente');
     if (payload.items.length === 0) missing.push('items o descripcion');
     if (missing.length) {
+      const answer =
+        effectiveIntent === 'delivery_note' && payload.customerName && missing.length === 1 && missing[0] === 'items o descripcion'
+          ? `Perfecto, lo armamos para ${payload.customerName}. Decime que tenemos que agregar al remito: trabajos, materiales, cantidades o descripcion.`
+          : `Para crear el ${effectiveIntent === 'quote' ? 'presupuesto' : 'remito'} necesito estos datos: ${missing.join(', ')}. Pasamelos en un mensaje y lo guardo como borrador editable.`;
       return {
         mode: config.OPENAI_API_KEY ? 'openai' : 'local',
-        answer: `Para crear el ${effectiveIntent === 'quote' ? 'presupuesto' : 'remito'} necesito estos datos: ${missing.join(', ')}. Pasamelos en un mensaje y lo guardo como borrador editable.`,
+        answer,
         sources: [],
         suggestions
       };

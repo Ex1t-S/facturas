@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectDraftIntent } from './assistant.js';
+import { detectDraftIntent, parseFollowUpDeliveryNoteForTest } from './assistant.js';
 
 describe('detectDraftIntent', () => {
   it('detects quote draft requests', () => {
@@ -20,5 +20,19 @@ describe('detectDraftIntent', () => {
 
   it('does not treat customer list requests as delivery note creation', () => {
     expect(detectDraftIntent('Quiero armar un remito pasame la lista de clietnnes q tenemos')).toBe('none');
+  });
+});
+
+describe('parseFollowUpDeliveryNoteForTest', () => {
+  it('treats customer-only setup as missing items', () => {
+    const parsed = parseFollowUpDeliveryNoteForTest('vamos a armarlo para mario alvarez');
+    expect(parsed.customerName).toBe('mario alvarez');
+    expect(parsed.items).toEqual([]);
+  });
+
+  it('extracts work description when the message includes actual work', () => {
+    const parsed = parseFollowUpDeliveryNoteForTest('para mario alvarez, retiramos espira y atornillamos la malla');
+    expect(parsed.customerName).toBe('mario alvarez');
+    expect(parsed.items[0]?.description).toBe('retiramos espira y atornillamos la malla');
   });
 });
