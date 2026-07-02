@@ -25,6 +25,50 @@ const documentKinds = [
   ['UNKNOWN', 'Sin tipo']
 ];
 
+const labels: Record<string, string> = {
+  DRAFT: 'Borrador',
+  SENT: 'Enviado',
+  ACCEPTED: 'Aceptado',
+  REJECTED: 'Rechazado',
+  EXPIRED: 'Vencido',
+  INVOICED: 'Facturado',
+  PENDING_REVIEW: 'Pendiente de revision',
+  REVIEWED: 'Revisado',
+  QUOTE: 'Presupuesto',
+  INVOICE: 'Factura',
+  PURCHASE_INVOICE: 'Factura compra',
+  DELIVERY_NOTE: 'Remito',
+  UNKNOWN: 'Sin tipo',
+  UPLOADED: 'Subido',
+  TEXT_EXTRACTED: 'Texto extraido',
+  STRUCTURED: 'Estructurado',
+  NEEDS_REVIEW: 'Revisar',
+  APPROVED: 'Aprobado',
+  APPLIED: 'Aplicado',
+  FAILED: 'Fallido',
+  PRODUCT: 'Componente/equipo',
+  MATERIAL: 'Material',
+  SERVICE: 'Trabajo',
+  customer: 'Cliente',
+  product: 'Producto',
+  supplierPrice: 'Precio proveedor',
+  quote: 'Presupuesto',
+  document: 'Documento',
+  local: 'Modo local',
+  openai: 'IA remota',
+  catalog: 'Catalogo',
+  scrape: 'Web publica',
+  manual_quote: 'Presupuesto manual',
+  received: 'Recibido',
+  text: 'Texto',
+  document_message: 'Documento'
+};
+
+function labelFor(value?: string) {
+  if (!value) return 'Sin estado';
+  return labels[value] || labels[value.toLowerCase()] || value;
+}
+
 function useHashView() {
   const [view, setView] = useState<View>((location.hash.replace('#/', '') as View) || 'dashboard');
   useEffect(() => {
@@ -40,7 +84,7 @@ function useHashView() {
 
 function Badge({ value }: { value?: string }) {
   const tone = String(value || '').toLowerCase().includes('pending') || String(value || '').toLowerCase().includes('needs') || String(value || '').toLowerCase().includes('uploaded') ? 'warn' : 'ok';
-  return <span className={`badge ${tone}`}>{value || 'Sin estado'}</span>;
+  return <span className={`badge ${tone}`}>{labelFor(value)}</span>;
 }
 
 function Empty({ title, text }: { title: string; text: string }) {
@@ -197,32 +241,66 @@ function SearchPanel({ results }: { results: AnyRecord }) {
         {(results.customers || []).map((c: AnyRecord) => <span key={c.id}>Cliente: {c.legalName}</span>)}
         {productRows.map((p: AnyRecord) => <span key={p.id}>{p.rawName || p.name} {p.price ? money.format(Number(p.price)) : ''}</span>)}
         {(results.documents || []).map((d: AnyRecord) => <span key={d.id}>Doc: {d.fileName}</span>)}
-        {(results.sources || []).slice(0, 8).map((s: AnyRecord) => <span key={`${s.type}-${s.id}`}>{s.type}: {s.title}</span>)}
+        {(results.sources || []).slice(0, 8).map((s: AnyRecord) => <span key={`${s.type}-${s.id}`}>{labelFor(s.type)}: {s.title}</span>)}
       </div>
     </section>
   );
 }
 
 function AssistantView({ companyId }: { companyId: string }) {
-  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; mode?: string; sources?: AnyRecord[]; suggestions?: string[] }>>([
-    { role: 'assistant', content: 'Soy el asistente de FMH. Puedo ayudarte con presupuestos, documentos, inventario, clientes y consultas generales. Si uso datos de la app, te muestro las fuentes.' }
-  ]);
+  const [chats, setChats] = useState<AnyRecord[]>([]);
+  const [activeChatId, setActiveChatId] = useState('');
+  const [messages, setMessages] = useState<Array<{ id?: string; role: 'user' | 'assistant'; content: string; mode?: string; sources?: AnyRecord[]; actionType?: string }>>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
 
+  async function loadChats(selectFirst = false) {
+    if (!companyId) return;
+    const rows = await api<AnyRecord[]>(`/api/assistant/chats?companyId=${companyId}`);
+    setChats(rows);
+    if (selectFirst && rows[0] && !activeChatId) setActiveChatId(rows[0].id);
+  }
+
+  async function loadMessages(chatId: string) {
+    if (!chatId) return;
+    const chat = await api<AnyRecord>(`/api/assistant/chats/${chatId}/messages`);
+    setMessages(chat.messages || []);
+  }
+
+  async function createChat() {
+    if (!companyId) return '';
+    const chat = await postJson<AnyRecord>('/api/assistant/chats', { companyId });
+    setChats((current) => [chat, ...current]);
+    setActiveChatId(chat.id);
+    setMessages([]);
+    return chat.id as string;
+  }
+
+  useEffect(() => {
+    loadChats(true).catch(() => undefined);
+  }, [companyId]);
+
+  useEffect(() => {
+    if (activeChatId) loadMessages(activeChatId).catch(() => undefined);
+  }, [activeChatId]);
+
   async function ask(message: string) {
     if (!message.trim()) return;
-    const nextMessages = [...messages, { role: 'user' as const, content: message.trim() }];
-    setMessages(nextMessages);
+    const chatId = activeChatId || (await createChat());
+    if (!chatId) return;
+    const localUserMessage = { role: 'user' as const, content: message.trim() };
+    setMessages((current) => [...current, localUserMessage]);
     setText('');
     setLoading(true);
     try {
-      const response = await postJson<{ answer: string; mode: string; sources?: AnyRecord[]; suggestions?: string[] }>('/api/assistant', {
-        companyId,
-        message,
-        history: nextMessages.slice(-8)
+      const response = await postJson<{ assistantMessage: AnyRecord; userMessage: AnyRecord }>(`/api/assistant/chats/${chatId}/messages`, {
+        message
       });
-      setMessages((current) => [...current, { role: 'assistant', content: response.answer, mode: response.mode, sources: response.sources || [], suggestions: response.suggestions || [] }]);
+      setMessages((current) => {
+        const withoutLocal = current.filter((item) => item !== localUserMessage);
+        return [...withoutLocal, response.userMessage, response.assistantMessage];
+      });
+      await loadChats();
     } catch (error) {
       setMessages((current) => [...current, { role: 'assistant', content: error instanceof Error ? error.message : 'No pude responder.' }]);
     } finally {
@@ -230,41 +308,51 @@ function AssistantView({ companyId }: { companyId: string }) {
     }
   }
 
-  const suggestions = [
-    'Analizá puntos débiles de la app y del inventario.',
-    'Buscá documentos o presupuestos a nombre de un cliente.',
-    'Qué productos faltan completar con precio o proveedor?',
-    'Cómo armo un presupuesto FMH con varios productos?'
-  ];
-
   return (
-    <Page title="Asistente IA" text="Consulta general y agente orientado a FMH con acceso controlado a documentos, clientes, productos y presupuestos.">
+    <Page title="Asistente IA" text="Chat operativo con historial, documentos, presupuestos y remitos de FMH.">
       <section className="assistantLayout">
-        <div className="card chat">
-          {messages.map((message, index) => (
-            <div className={`bubble ${message.role}`} key={index}>
-              <span>{message.role === 'assistant' ? `Asistente${message.mode ? ` (${message.mode})` : ''}` : 'Vos'}</span>
-              <p>{message.content}</p>
-              {!!message.sources?.length && (
-                <div className="sourceList">
-                  <strong>Fuentes</strong>
-                  {message.sources.slice(0, 8).map((source) => source.url
-                    ? <a key={`${source.type}-${source.id}`} href={source.url} target="_blank">{source.title}<small>{source.subtitle}</small></a>
-                    : <span key={`${source.type}-${source.id}`}>{source.title}<small>{source.subtitle}</small></span>)}
-                </div>
-              )}
-            </div>
-          ))}
-          {loading && <div className="bubble assistant"><span>Asistente</span><p>Consultando la base y preparando respuesta...</p></div>}
-        </div>
-        <aside className="card assistantSide">
-          <h2>Preguntas rápidas</h2>
-          {suggestions.map((suggestion) => <button type="button" key={suggestion} onClick={() => ask(suggestion)}>{suggestion}</button>)}
-          <form onSubmit={(event) => { event.preventDefault(); ask(text); }}>
-            <label className="field full"><span>Consulta</span><textarea value={text} onChange={(event) => setText(event.target.value)} rows={5} placeholder="Ej: buscá remitos de Pasman de enero 2026..." /></label>
-            <button disabled={loading || !text.trim()}>Enviar</button>
-          </form>
+        <aside className="assistantHistory">
+          <button type="button" className="newChatButton" onClick={() => createChat()}><Bot size={16} /> Nuevo chat</button>
+          <div className="chatList">
+            {chats.map((chat) => (
+              <button type="button" key={chat.id} className={chat.id === activeChatId ? 'active' : ''} onClick={() => setActiveChatId(chat.id)}>
+                <strong>{chat.title}</strong>
+                <span>{chat.lastMessage?.content || 'Sin mensajes'}</span>
+                <small>{chat.updatedAt ? dateFmt.format(new Date(chat.updatedAt)) : ''}</small>
+              </button>
+            ))}
+            {!chats.length && <div className="empty"><strong>Sin chats</strong><span>Creá una conversación para empezar.</span></div>}
+          </div>
         </aside>
+        <div className="assistantChatPanel">
+          <div className="chat">
+            {!messages.length && (
+              <div className="bubble assistant">
+                <span>Asistente</span>
+                <p>Soy el asistente de FMH. Puedo buscar presupuestos y remitos, y crear borradores editables de presupuestos o remitos. Facturas no estan disponibles por ahora.</p>
+              </div>
+            )}
+            {messages.map((message, index) => (
+              <div className={`bubble ${message.role}`} key={message.id || index}>
+                <span>{message.role === 'assistant' ? `Asistente${message.mode ? ` (${labelFor(message.mode)})` : ''}` : 'Vos'}</span>
+                <p>{message.content}</p>
+                {!!message.sources?.length && (
+                  <div className="sourceList">
+                    <strong>Fuentes</strong>
+                    {message.sources.slice(0, 8).map((source) => source.url
+                      ? <a key={`${source.type}-${source.id}`} href={source.url} target="_blank">{source.title}<small>{source.subtitle ? labelFor(source.subtitle) : ''}</small></a>
+                      : <span key={`${source.type}-${source.id}`}>{source.title}<small>{source.subtitle ? labelFor(source.subtitle) : ''}</small></span>)}
+                  </div>
+                )}
+              </div>
+            ))}
+            {loading && <div className="bubble assistant"><span>Asistente</span><p>Consultando la base y preparando respuesta...</p></div>}
+          </div>
+          <form className="chatComposer" onSubmit={(event) => { event.preventDefault(); ask(text); }}>
+            <textarea value={text} onChange={(event) => setText(event.target.value)} rows={3} placeholder="Ej: armame un remito para Pasman con 2 motores y 4 correas..." />
+            <button disabled={loading || !text.trim()}><Send size={16} />Enviar</button>
+          </form>
+        </div>
       </section>
     </Page>
   );
@@ -428,7 +516,7 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
             {preview.data.type === 'pdf' && <iframe title={preview.document.fileName} src={preview.data.url} />}
             {preview.data.type === 'image' && <img src={preview.data.url} alt={preview.document.fileName} />}
             {preview.data.type === 'html' && <article className="docHtml" dangerouslySetInnerHTML={{ __html: preview.data.html }} />}
-            {preview.data.type === 'unsupported' && <Empty title="Vista no disponible" text={preview.data.message} />}
+            {preview.data.type === 'unsupported' && <Empty title="Vista no disponible" text={preview.data.message || 'Este formato todavia no tiene vista previa.'} />}
           </div>
         </div>
       )}
@@ -640,7 +728,7 @@ function Inventory({ data, companyId, notify }: { data: AnyRecord; companyId: st
         <div className="card">
           <h2>Fuentes públicas</h2>
           <div className="sourceGrid">
-            {publicSources.map((source) => <a href={source.website} target="_blank" key={source.name}><strong>{source.name}</strong><span>{source.method}</span></a>)}
+            {publicSources.map((source) => <a href={source.website} target="_blank" key={source.name}><strong>{source.name}</strong><span>{labelFor(source.method)}</span></a>)}
           </div>
         </div>
       </section>
@@ -658,7 +746,7 @@ function Inventory({ data, companyId, notify }: { data: AnyRecord; companyId: st
           ))}
         />
       </section>
-      <section className="card"><h2>Materiales</h2><Table headers={['Nombre', 'Categoría', 'Tipo', 'Venta', 'Estado', 'Mejores precios']} rows={products.map((p: AnyRecord) => <tr key={p.id}><td><strong>{p.name}</strong><small>{p.normalizedName || p.unit}</small></td><td>{p.category || '-'}</td><td>{p.type}</td><td>{money.format(Number(p.price || 0))}</td><td>{Number(p.price || 0) === 0 ? <Badge value="Sin precio" /> : <Badge value="Completo" />}</td><td>{(p.supplierPrices || []).slice(0, 3).map((sp: AnyRecord) => `${sp.supplier.name}: ${money.format(Number(sp.price))}`).join(' | ') || 'Sin proveedor'}</td></tr>)} /></section>
+      <section className="card"><h2>Materiales</h2><Table headers={['Nombre', 'Categoría', 'Tipo', 'Venta', 'Estado', 'Mejores precios']} rows={products.map((p: AnyRecord) => <tr key={p.id}><td><strong>{p.name}</strong><small>{p.normalizedName || p.unit}</small></td><td>{p.category || '-'}</td><td>{labelFor(p.type)}</td><td>{money.format(Number(p.price || 0))}</td><td>{Number(p.price || 0) === 0 ? <Badge value="Sin precio" /> : <Badge value="Completo" />}</td><td>{(p.supplierPrices || []).slice(0, 3).map((sp: AnyRecord) => `${sp.supplier.name}: ${money.format(Number(sp.price))}`).join(' | ') || 'Sin proveedor'}</td></tr>)} /></section>
     </Page>
   );
 }
@@ -673,7 +761,7 @@ function Customers({ data, companyId, notify }: { data: AnyRecord; companyId: st
 }
 
 function WhatsApp({ data }: { data: AnyRecord }) {
-  return <Page title="WhatsApp" text="Mensajes recibidos desde Meta Cloud API y adjuntos listos para revisión."><div className="card"><Table headers={['De', 'Tipo', 'Mensaje', 'Adjunto']} rows={(data.whatsapp || []).map((m: AnyRecord) => <tr key={m.id}><td>{m.fromNumber}</td><td>{m.messageType}</td><td>{m.body}</td><td>{m.mediaDocument ? m.mediaDocument.fileName : ''}</td></tr>)} /></div></Page>;
+  return <Page title="WhatsApp" text="Mensajes recibidos desde Meta Cloud API y adjuntos listos para revisión."><div className="card"><Table headers={['De', 'Tipo', 'Mensaje', 'Adjunto']} rows={(data.whatsapp || []).map((m: AnyRecord) => <tr key={m.id}><td>{m.fromNumber}</td><td>{labelFor(m.messageType)}</td><td>{m.body}</td><td>{m.mediaDocument ? m.mediaDocument.fileName : ''}</td></tr>)} /></div></Page>;
 }
 
 function SettingsView({ notify }: { notify: Function }) {

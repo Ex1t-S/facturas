@@ -82,3 +82,68 @@ export async function renderQuotePdf(input: QuotePdfInput): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
   });
 }
+
+export type DeliveryNotePdfInput = {
+  number?: string;
+  customerName: string;
+  issueDate: Date;
+  notes?: string | null;
+  items: Array<{
+    description: string;
+    quantity: string | number;
+    unit: string;
+  }>;
+};
+
+export async function renderDeliveryNotePdf(input: DeliveryNotePdfInput): Promise<Buffer> {
+  const doc = new PDFDocument({ margin: 54, size: 'A4' });
+  const chunks: Buffer[] = [];
+  doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+
+  const formatDate = (date: Date) => date.toLocaleDateString('es-AR');
+
+  doc.font('Helvetica-Bold').fontSize(16).text('F.M.H.', { align: 'left' });
+  doc.font('Helvetica').fontSize(10).text('De: Adalberto R. Arroyo');
+  doc.text('SILOS-NORIAS- SINFINES - ESTRUCTURAS METALICAS');
+  doc.text('Fabricacion y montaje');
+  doc.text('contacto: 2923 648947');
+  doc.text('Parque Industrial - Huanguelen');
+  doc.text('fmharroyo@gmail.com');
+  doc.moveDown(1.4);
+
+  doc.font('Helvetica-Bold').fontSize(14).text(`Remito${input.number ? ` N ${input.number}` : ''}`, { align: 'center' });
+  doc.moveDown(1.2);
+  doc.font('Helvetica-Bold').fontSize(11).text(`CLIENTE: ${input.customerName}`);
+  doc.font('Helvetica').text(`Fecha de emision: ${formatDate(input.issueDate)}`);
+  doc.moveDown(1.2);
+
+  const tableTop = doc.y;
+  doc.font('Helvetica-Bold').fontSize(10);
+  doc.text('Cant.', 54, tableTop, { width: 58 });
+  doc.text('Unidad', 116, tableTop, { width: 72 });
+  doc.text('Descripcion', 196, tableTop, { width: 340 });
+  doc.moveTo(54, tableTop + 18).lineTo(540, tableTop + 18).stroke();
+  doc.y = tableTop + 26;
+
+  doc.font('Helvetica').fontSize(10);
+  input.items.forEach((item) => {
+    const y = doc.y;
+    doc.text(String(item.quantity), 54, y, { width: 58 });
+    doc.text(item.unit, 116, y, { width: 72 });
+    doc.text(item.description, 196, y, { width: 340, lineGap: 2 });
+    doc.moveDown(0.8);
+  });
+
+  if (input.notes) {
+    doc.moveDown(1);
+    doc.font('Helvetica').fontSize(10).text(input.notes, { lineGap: 3 });
+  }
+
+  doc.moveDown(2);
+  doc.text('Firma y aclaracion: ________________________________');
+  doc.end();
+
+  return new Promise((resolve) => {
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+}

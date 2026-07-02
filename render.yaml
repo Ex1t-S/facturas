@@ -21,7 +21,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
-        value: gpt-5.5
+        value: gpt-5.4-mini
       - key: OPENAI_VECTOR_STORE_ID
         sync: false
       - key: BASIC_AUTH_USERNAME

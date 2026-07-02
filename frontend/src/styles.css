@@ -38,7 +38,7 @@ button, a {
 button:hover, a:hover { border-color: #b8c2b8; box-shadow: 0 8px 18px rgba(24, 32, 29, 0.08); }
 
 .shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; }
-aside {
+.shell > aside {
   position: sticky;
   top: 0;
   height: 100vh;
@@ -208,15 +208,74 @@ td strong, td small { display: block; }
 }
 .assistantLayout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: 320px minmax(0, 1fr);
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
+  min-height: calc(100vh - 170px);
+}
+.assistantHistory {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  min-height: 0;
+}
+.newChatButton {
+  width: 100%;
+  background: var(--brand);
+  color: white;
+  border-color: var(--brand);
+}
+.chatList {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
+}
+.chatList button {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  width: 100%;
+  min-height: 78px;
+  text-align: left;
+  background: var(--panel);
+}
+.chatList button.active {
+  border-color: #bfd2c6;
+  background: #e8f0ec;
+}
+.chatList strong,
+.chatList span {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chatList span,
+.chatList small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.assistantChatPanel {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
 }
 .chat {
   display: grid;
   gap: 12px;
-  min-height: 520px;
   align-content: start;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
 }
 .bubble {
   max-width: 82%;
@@ -278,6 +337,30 @@ td strong, td small { display: block; }
   font-size: 12px;
 }
 .sourceList small { color: var(--muted); }
+.chatComposer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  border-top: 1px solid var(--line);
+  padding: 12px;
+  background: var(--panel-2);
+}
+.chatComposer textarea {
+  width: 100%;
+  min-height: 68px;
+  max-height: 180px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 11px;
+  background: white;
+}
+.chatComposer button {
+  min-height: 42px;
+  background: var(--brand);
+  color: white;
+  border-color: var(--brand);
+}
 .sourceGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -460,7 +543,7 @@ td strong, td small { display: block; }
 
 @media (max-width: 980px) {
   .shell { grid-template-columns: 1fr; }
-  aside { position: relative; height: auto; }
+  .shell > aside { position: relative; height: auto; }
   nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .topbar, .pageHead { display: grid; align-items: stretch; }
   .company { min-width: 0; }
@@ -469,7 +552,9 @@ td strong, td small { display: block; }
   .fileTree { max-height: none; }
   .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lineGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .assistantLayout { grid-template-columns: 1fr; }
+  .assistantLayout { grid-template-columns: 1fr; min-height: auto; }
+  .assistantHistory { max-height: 300px; }
+  .assistantChatPanel { min-height: 560px; }
 }
 
 @media (max-width: 560px) {
@@ -479,4 +564,5 @@ td strong, td small { display: block; }
   h1 { font-size: 32px; }
   .lineGrid { grid-template-columns: 1fr; }
   .filters { grid-template-columns: 1fr; }
+  .chatComposer { grid-template-columns: 1fr; }
 }

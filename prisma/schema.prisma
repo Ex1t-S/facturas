@@ -108,6 +108,7 @@ model Company {
   products     Product[]
   suppliers    Supplier[]
   supplierPriceLists SupplierPriceList[]
+  assistantChats AssistantChat[]
 }
 
 model Supplier {
@@ -448,4 +449,34 @@ model AuditLog {
   afterJson   String?
   createdAt   DateTime @default(now())
   actor       User?    @relation(fields: [actorUserId], references: [id])
+}
+
+model AssistantChat {
+  id        String             @id @default(cuid())
+  companyId String
+  title     String             @default("Nuevo chat")
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  company   Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  messages  AssistantMessage[]
+
+  @@index([companyId, updatedAt])
+}
+
+model AssistantMessage {
+  id         String        @id @default(cuid())
+  chatId     String
+  role       String
+  content    String
+  mode       String?
+  sourcesJson String?
+  actionType String?
+  quoteId    String?
+  documentId String?
+  createdAt  DateTime      @default(now())
+  chat       AssistantChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+  @@index([quoteId])
+  @@index([documentId])
 }

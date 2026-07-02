@@ -12,7 +12,7 @@ const configSchema = z.object({
   WHATSAPP_PHONE_NUMBER_ID: z.string().default(''),
   HISTORICAL_DOCUMENT_ROOT: z.string().default('C:\\Users\\German\\Documents\\Adalberto'),
   OPENAI_API_KEY: z.string().default(''),
-  OPENAI_MODEL: z.string().default('gpt-5.5'),
+  OPENAI_MODEL: z.string().default('gpt-5.4-mini'),
   OPENAI_VECTOR_STORE_ID: z.string().default(''),
   BASIC_AUTH_USERNAME: z.string().default(''),
   BASIC_AUTH_PASSWORD: z.string().default(''),
