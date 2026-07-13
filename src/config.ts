@@ -20,6 +20,7 @@ const configSchema = z.object({
   BASIC_AUTH_USERNAME: z.string().default(''),
   BASIC_AUTH_PASSWORD: z.string().default(''),
   WHATSAPP_ALLOWED_FROM: z.string().default(''),
+  WHATSAPP_TEST_MODE: z.coerce.boolean().default(false),
   SUPPLIER_PUBLIC_SYNC_ENABLED: z.coerce.boolean().default(true),
   SUPPLIER_PUBLIC_SYNC_INTERVAL_HOURS: z.coerce.number().positive().default(4),
   ARCA_ENVIRONMENT: z.enum(['homologacion', 'produccion']).default('homologacion'),

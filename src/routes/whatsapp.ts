@@ -206,6 +206,8 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
           stored.push(inbound.id);
           if (!company || !inbound.body?.trim()) continue;
 
+          if (config.WHATSAPP_TEST_MODE) continue;
+
           const conversation = await prisma.whatsAppConversation.upsert({
             where: { companyId_fromNumber: { companyId: company.id, fromNumber: message.from } },
             update: {},
