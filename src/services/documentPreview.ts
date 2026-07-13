@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import mammoth from 'mammoth';
 import sanitizeHtml from 'sanitize-html';
-import { assertInsideUploads } from './documentStorage.js';
+import { resolveStoredDocumentPath } from './documentStorage.js';
 
 export type DocumentPreview =
   | { type: 'pdf'; url: string }
@@ -34,7 +34,7 @@ export async function buildPreview(document: { id: string; mimeType: string; fil
   }
 
   if (isWordMime(document.mimeType, document.fileName)) {
-    const filePath = assertInsideUploads(document.storagePath);
+    const filePath = resolveStoredDocumentPath(document.storagePath);
     await fs.access(filePath);
     const result = await mammoth.convertToHtml({ path: filePath });
     return {

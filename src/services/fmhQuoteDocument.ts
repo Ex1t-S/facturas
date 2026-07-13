@@ -3,7 +3,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import AdmZip from 'adm-zip';
-import type { Quote, QuoteItem, Customer } from '../../src/generated/postgres-client/index.js';
+import type { Quote, QuoteItem, Customer } from '../generated/postgres-client/index.js';
 import { config } from '../config.js';
 
 const execFileAsync = promisify(execFile);

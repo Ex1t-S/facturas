@@ -1,4 +1,4 @@
-import { DocumentKind } from '../../src/generated/postgres-client/index.js';
+import { DocumentKind } from '../generated/postgres-client/index.js';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { calculateQuoteTotals } from '../domain/money.js';

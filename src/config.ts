@@ -10,6 +10,8 @@ const configSchema = z.object({
   WHATSAPP_APP_SECRET: z.string().default('change-me'),
   WHATSAPP_ACCESS_TOKEN: z.string().default(''),
   WHATSAPP_PHONE_NUMBER_ID: z.string().default(''),
+  WHATSAPP_APP_ID: z.string().default(''),
+  WHATSAPP_WABA_ID: z.string().default(''),
   HISTORICAL_DOCUMENT_ROOT: z.string().default('C:\\Users\\German\\Documents\\Adalberto'),
   OPENAI_API_KEY: z.string().default(''),
   OPENAI_MODEL: z.string().default('gpt-5.4-mini'),

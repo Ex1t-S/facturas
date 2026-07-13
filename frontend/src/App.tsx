@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, Bot, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Home, PackageSearch, ReceiptText, Search, Send, Settings, Upload, Users } from 'lucide-react';
+import { Archive, Bot, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Home, PackageSearch, ReceiptText, Send, Settings, Upload, Users } from 'lucide-react';
 import { api, dateFmt, money, postJson } from './api';
 
 type View = 'dashboard' | 'assistant' | 'documents' | 'quotes' | 'inventory' | 'customers' | 'whatsapp' | 'settings';
@@ -123,8 +123,6 @@ export function App() {
   const [view, setView] = useHashView();
   const [companyId, setCompanyId] = useState(localStorage.getItem('companyId') || '');
   const [data, setData] = useState<AnyRecord>({});
-  const [query, setQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<AnyRecord | null>(null);
   const [toast, setToast] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -169,11 +167,6 @@ export function App() {
     load().catch((error) => setToast(error.message));
   }, [companyId]);
 
-  async function runSearch(value = query) {
-    if (!companyId || !value.trim()) return setSearchResults(null);
-    setSearchResults(await api<AnyRecord>(`/api/search?companyId=${companyId}&q=${encodeURIComponent(value.trim())}`));
-  }
-
   const content = useMemo(() => {
     if (view === 'documents') return <Documents data={data} companyId={companyId} notify={notify} />;
     if (view === 'assistant') return <AssistantView companyId={companyId} />;
@@ -190,18 +183,11 @@ export function App() {
       <aside>
         <div className="brand"><strong>FMH Gestión</strong><span>Presupuestos, remitos, inventario y ARCA</span></div>
         <nav>{nav.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}><Icon size={18} />{label}</button>)}</nav>
-        <div className="sideNote"><strong>Modo revisión</strong><span>WhatsApp e IA preparan borradores; una persona confirma.</span></div>
       </aside>
       <main>
         <header className="topbar">
-          <form className="search" onSubmit={(e) => { e.preventDefault(); runSearch(); }}>
-            <Search size={18} />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar chapa galvanizada 3/8, cliente, factura..." />
-            <button>Buscar</button>
-          </form>
           <div className="company"><span>Empresa activa</span><strong>{companyName}</strong></div>
         </header>
-        {searchResults && <SearchPanel results={searchResults} />}
         {busy && <div className="loading">Procesando...</div>}
         {content}
       </main>
@@ -229,21 +215,6 @@ function Dashboard({ data, setView }: { data: AnyRecord; setView: (view: View) =
         <div className="card"><h2>Documentos recientes</h2><Table headers={['Archivo', 'Tipo', 'Estado']} rows={(data.dashboard?.recentDocuments || []).map((d: AnyRecord) => <tr key={d.id}><td>{d.fileName}</td><td><Badge value={d.kind} /></td><td><Badge value={d.extractionStatus} /></td></tr>)} /></div>
       </section>
     </Page>
-  );
-}
-
-function SearchPanel({ results }: { results: AnyRecord }) {
-  const productRows = [...(results.products || []), ...(results.supplierPrices || [])].slice(0, 8);
-  return (
-    <section className="searchPanel">
-      <h2>Resultados para "{results.q}"</h2>
-      <div className="chips">
-        {(results.customers || []).map((c: AnyRecord) => <span key={c.id}>Cliente: {c.legalName}</span>)}
-        {productRows.map((p: AnyRecord) => <span key={p.id}>{p.rawName || p.name} {p.price ? money.format(Number(p.price)) : ''}</span>)}
-        {(results.documents || []).map((d: AnyRecord) => <span key={d.id}>Doc: {d.fileName}</span>)}
-        {(results.sources || []).slice(0, 8).map((s: AnyRecord) => <span key={`${s.type}-${s.id}`}>{labelFor(s.type)}: {s.title}</span>)}
-      </div>
-    </section>
   );
 }
 
@@ -309,7 +280,7 @@ function AssistantView({ companyId }: { companyId: string }) {
   }
 
   return (
-    <Page title="Asistente IA" text="Chat operativo con historial, documentos, presupuestos y remitos de FMH.">
+    <Page title="Asistente IA" text="Consultas y acciones sobre documentos reales.">
       <section className="assistantLayout">
         <aside className="assistantHistory">
           <button type="button" className="newChatButton" onClick={() => createChat()}><Bot size={16} /> Nuevo chat</button>
@@ -326,12 +297,6 @@ function AssistantView({ companyId }: { companyId: string }) {
         </aside>
         <div className="assistantChatPanel">
           <div className="chat">
-            {!messages.length && (
-              <div className="bubble assistant">
-                <span>Asistente</span>
-                <p>Soy el asistente de FMH. Puedo buscar presupuestos y remitos, y crear borradores editables de presupuestos o remitos. Facturas no estan disponibles por ahora.</p>
-              </div>
-            )}
             {messages.map((message, index) => (
               <div className={`bubble ${message.role}`} key={message.id || index}>
                 <span>{message.role === 'assistant' ? 'Asistente' : 'Vos'}</span>
@@ -343,10 +308,10 @@ function AssistantView({ companyId }: { companyId: string }) {
                 )}
               </div>
             ))}
-            {loading && <div className="bubble assistant"><span>Asistente</span><p>Consultando la base y preparando respuesta...</p></div>}
+            {loading && <div className="bubble assistant"><span>Asistente</span><p>Procesando...</p></div>}
           </div>
           <form className="chatComposer" onSubmit={(event) => { event.preventDefault(); ask(text); }}>
-            <textarea value={text} onChange={(event) => setText(event.target.value)} rows={3} placeholder="Ej: armame un remito para Pasman con 2 motores y 4 correas..." />
+            <textarea value={text} onChange={(event) => setText(event.target.value)} rows={3} placeholder="Escribi la consulta o pedido..." />
             <button disabled={loading || !text.trim()}><Send size={16} />Enviar</button>
           </form>
         </div>
@@ -534,7 +499,7 @@ function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: strin
   const customers = data.customers || [];
   const products = data.products || [];
   const [lines, setLines] = useState<QuoteDraftLine[]>([
-    { productId: '', description: 'Fabricación y montaje según detalle técnico', quantity: 1, unit: 'trabajo', unitPrice: 0, taxRate: 21 }
+    { productId: '', description: '', quantity: 1, unit: 'unidad', unitPrice: 0, taxRate: 21 }
   ]);
   const [marginPercent, setMarginPercent] = useState(0);
   const [expandedLine, setExpandedLine] = useState(0);
@@ -566,9 +531,9 @@ function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: strin
     });
   }
 
-  function lineSummary(line: QuoteDraftLine) {
+  function lineSummary(line: QuoteDraftLine, index: number) {
     const linkedName = products.find((item: AnyRecord) => item.id === line.productId)?.name;
-    const title = line.description.trim() || linkedName || 'Sin completar';
+    const title = line.description.trim() || linkedName || Item ;
     return {
       title,
       total: Number(line.quantity || 0) * Number(line.unitPrice || 0)
@@ -609,38 +574,35 @@ function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: strin
   }
 
   return (
-    <Page title="Presupuestos" text="Armá borradores con varios productos, margen editable y salida DOCX/PDF con formato FMH.">
+    <Page title="Presupuestos" text="Crear y descargar presupuestos.">
       <section className="grid two">
         <form className="card form quoteBuilder" onSubmit={submit}>
-          <div className="sectionRow"><h2>Nuevo borrador FMH</h2><button type="button" onClick={addLine}>Agregar ítem</button></div>
+          <div className="sectionRow"><h2>Nuevo borrador FMH</h2><button type="button" onClick={addLine}>Agregar item</button></div>
           <SelectField label="Cliente" name="customerId">{customers.map((c: AnyRecord) => <option value={c.id} key={c.id}>{c.legalName}</option>)}</SelectField>
           {lines.map((line, index) => {
-            const summary = lineSummary(line);
+            const summary = lineSummary(line, index);
             return (
               <div className={`lineEditor ${expandedLine === index ? 'expanded' : 'collapsed'}`} key={index}>
                 <button type="button" className="lineToggle" onClick={() => setExpandedLine((current) => current === index ? -1 : index)}>
                   <span className="lineToggleTitle">
                     {expandedLine === index ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    <strong>Ítem {index + 1}</strong>
+                    <strong>Item {index + 1}</strong>
                     <em>{summary.title}</em>
                   </span>
                   <small>{money.format(summary.total)}</small>
                 </button>
                 {expandedLine === index && (
                   <>
-                    <div className="lineHead">
-                      <span className="lineHint">Completá este bloque y al crear otro queda resumido para evitar scroll largo.</span>
-                      {lines.length > 1 && <button type="button" onClick={() => removeLine(index)}>Quitar</button>}
-                    </div>
-                    <SelectField label="Producto / trabajo técnico" value={line.productId} onChange={(event) => selectProduct(index, event.target.value)}>
+                    <div className="lineHead"><strong>Datos del item</strong>{lines.length > 1 && <button type="button" onClick={() => removeLine(index)}>Quitar</button>}</div>
+                    <SelectField label="Producto o trabajo" value={line.productId} onChange={(event) => selectProduct(index, event.target.value)}>
                       <option value="">Manual / sin vincular</option>
                       {products.map((p: AnyRecord) => <option value={p.id} key={p.id}>{p.name} {p.category ? `(${p.category})` : ''}</option>)}
                     </SelectField>
-                    <label className="field full"><span>Descripción para el presupuesto</span><textarea value={line.description} onChange={(event) => updateLine(index, { description: event.target.value })} rows={4} required /></label>
+                    <label className="field full"><span>Descripcion</span><textarea value={line.description} onChange={(event) => updateLine(index, { description: event.target.value })} rows={3} required /></label>
                     <div className="lineGrid">
                       <Field label="Cantidad" type="number" step="0.01" value={line.quantity} onChange={(event) => updateLine(index, { quantity: Number(event.target.value) })} required />
                       <Field label="Unidad" value={line.unit} onChange={(event) => updateLine(index, { unit: event.target.value })} />
-                      <Field label="Precio base" type="number" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: Number(event.target.value) })} required />
+                      <Field label="Precio" type="number" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: Number(event.target.value) })} required />
                       <Field label="IVA %" type="number" step="0.01" value={line.taxRate} onChange={(event) => updateLine(index, { taxRate: Number(event.target.value) })} />
                     </div>
                   </>
@@ -732,7 +694,7 @@ function Inventory({ data, companyId, notify }: { data: AnyRecord; companyId: st
       <section className="card">
         <h2>Materiales con referencia</h2>
         <Table
-          headers={['Material', 'Precio base', 'Mejor referencia', 'Alternativas']}
+          headers={['Material', 'Precio', 'Mejor referencia', 'Alternativas']}
           rows={materialReferences.map((item: AnyRecord) => (
             <tr key={item.product.id}>
               <td><strong>{item.product.name}</strong><small>{item.product.category || item.product.unit || '-'}</small></td>
@@ -762,6 +724,12 @@ function WhatsApp({ data }: { data: AnyRecord }) {
 }
 
 function SettingsView({ notify }: { notify: Function }) {
+  const [whatsappConfig, setWhatsappConfig] = useState<AnyRecord | null>(null);
+
+  useEffect(() => {
+    api<AnyRecord>('/api/whatsapp/config').then(setWhatsappConfig).catch(() => setWhatsappConfig(null));
+  }, []);
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -769,5 +737,35 @@ function SettingsView({ notify }: { notify: Function }) {
     localStorage.setItem('companyId', company.id);
     location.reload();
   }
-  return <Page title="Ajustes" text="Datos base de empresa y recordatorio de configuración ARCA/WhatsApp."><section className="grid two"><form className="card form" onSubmit={submit}><h2>Empresa</h2><Field label="Razón social" name="legalName" required /><Field label="Nombre comercial" name="tradeName" /><Field label="CUIT" name="cuit" required /><Field label="Condición fiscal" name="taxCondition" defaultValue="Responsable Inscripto" required /><button>Guardar empresa</button></form><div className="card"><h2>ARCA y Meta</h2><p>Configurar certificado, clave privada, CUIT, punto de venta, tokens de WhatsApp y URL pública antes de operar en producción.</p></div></section></Page>;
+
+  return (
+    <Page title="Ajustes" text="Datos base de empresa y configuraci�n de WhatsApp/ARCA.">
+      <section className="grid two settingsLayout">
+        <form className="card form" onSubmit={submit}>
+          <h2>Empresa</h2>
+          <Field label="Raz�n social" name="legalName" required />
+          <Field label="Nombre comercial" name="tradeName" />
+          <Field label="CUIT" name="cuit" required />
+          <Field label="Condici�n fiscal" name="taxCondition" defaultValue="Responsable Inscripto" required />
+          <button>Guardar empresa</button>
+        </form>
+        <div className="settingsStack">
+          <div className="card">
+            <h2>WhatsApp</h2>
+            <div className="statusList">
+              <div className="statusRow"><span>Webhook</span><code>{whatsappConfig?.webhookUrl || 'No disponible'}</code></div>
+              <div className="statusRow"><span>App ID</span><strong>{whatsappConfig?.appId || 'No configurado'}</strong></div>
+              <div className="statusRow"><span>WABA ID</span><strong>{whatsappConfig?.wabaId || 'No configurado'}</strong></div>
+              <div className="statusRow"><span>Recibir mensajes</span><Badge value={whatsappConfig?.canReceive ? 'OK' : 'Falta config'} /></div>
+              <div className="statusRow"><span>Enviar documentos</span><Badge value={whatsappConfig?.canSend ? 'OK' : 'Falta token'} /></div>
+            </div>
+          </div>
+          <div className="card">
+            <h2>ARCA y Meta</h2>
+            <p>Configur� certificado, clave privada, CUIT, punto de venta y las variables de WhatsApp en Render. El webhook a registrar es el que figura arriba.</p>
+          </div>
+        </div>
+      </section>
+    </Page>
+  );
 }

@@ -4,8 +4,16 @@ import { config } from '../config.js';
 export function verifyMetaSignature(rawBody: Buffer, signatureHeader?: string): boolean {
   if (!signatureHeader || config.WHATSAPP_APP_SECRET === 'change-me') return false;
   const expected = `sha256=${crypto.createHmac('sha256', config.WHATSAPP_APP_SECRET).update(rawBody).digest('hex')}`;
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(signatureHeader);
+  if (expectedBuffer.length !== signatureBuffer.length) return false;
+  return crypto.timingSafeEqual(expectedBuffer, signatureBuffer);
 }
+
+export type WhatsAppSendTextInput = {
+  to: string;
+  body: string;
+};
 
 export type WhatsAppSendDocumentInput = {
   to: string;
@@ -14,7 +22,7 @@ export type WhatsAppSendDocumentInput = {
   caption?: string;
 };
 
-export async function sendWhatsAppDocument(input: WhatsAppSendDocumentInput): Promise<{ providerMessageId?: string }> {
+async function sendWhatsAppMessage(body: Record<string, unknown>): Promise<{ providerMessageId?: string }> {
   if (!config.WHATSAPP_ACCESS_TOKEN || !config.WHATSAPP_PHONE_NUMBER_ID) {
     return {};
   }
@@ -25,16 +33,7 @@ export async function sendWhatsAppDocument(input: WhatsAppSendDocumentInput): Pr
       Authorization: `Bearer ${config.WHATSAPP_ACCESS_TOKEN}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: input.to,
-      type: 'document',
-      document: {
-        link: input.documentUrl,
-        filename: input.filename,
-        caption: input.caption
-      }
-    })
+    body: JSON.stringify({ messaging_product: 'whatsapp', ...body })
   });
 
   if (!response.ok) {
@@ -43,6 +42,26 @@ export async function sendWhatsAppDocument(input: WhatsAppSendDocumentInput): Pr
 
   const data = (await response.json()) as { messages?: Array<{ id: string }> };
   return { providerMessageId: data.messages?.[0]?.id };
+}
+
+export async function sendWhatsAppText(input: WhatsAppSendTextInput): Promise<{ providerMessageId?: string }> {
+  return sendWhatsAppMessage({
+    to: input.to,
+    type: 'text',
+    text: { body: input.body }
+  });
+}
+
+export async function sendWhatsAppDocument(input: WhatsAppSendDocumentInput): Promise<{ providerMessageId?: string }> {
+  return sendWhatsAppMessage({
+    to: input.to,
+    type: 'document',
+    document: {
+      link: input.documentUrl,
+      filename: input.filename,
+      caption: input.caption
+    }
+  });
 }
 
 export async function getWhatsAppMedia(mediaId: string): Promise<{ buffer: Buffer; mimeType: string; filename: string }> {

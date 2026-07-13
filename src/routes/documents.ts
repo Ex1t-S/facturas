@@ -8,7 +8,7 @@ import { prisma } from '../db.js';
 import { calculateQuoteTotals } from '../domain/money.js';
 import { extractDocumentFromFile } from '../services/documentExtraction.js';
 import { buildPreview, isImageMime, isPdfMime } from '../services/documentPreview.js';
-import { assertInsideUploads, writeDocumentFile } from '../services/documentStorage.js';
+import { readStoredDocumentFile, resolveStoredDocumentPath, writeDocumentFile } from '../services/documentStorage.js';
 import { importHistoricalDocuments, scanHistoricalDocuments } from '../services/historicalImport.js';
 
 const normalizedDocumentSchema = z.object({
@@ -367,8 +367,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const document = await prisma.document.findUnique({ where: { id: params.id } });
     if (!document) return reply.code(404).send({ error: 'Document not found' });
 
-    const filePath = assertInsideUploads(document.storagePath);
-    const buffer = await fs.readFile(filePath);
+    const buffer = await readStoredDocumentFile(document.storagePath);
     const disposition = isPdfMime(document.mimeType, document.fileName) || isImageMime(document.mimeType, document.fileName) ? 'inline' : 'attachment';
 
     return reply
@@ -382,8 +381,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const document = await prisma.document.findUnique({ where: { id: params.id } });
     if (!document) return reply.code(404).send({ error: 'Document not found' });
 
-    const filePath = assertInsideUploads(document.storagePath);
-    const buffer = await fs.readFile(filePath);
+    const buffer = await readStoredDocumentFile(document.storagePath);
 
     return reply
       .header('Content-Type', document.mimeType)
@@ -404,7 +402,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const document = await prisma.document.findUnique({ where: { id: params.id } });
     if (!document) return reply.code(404).send({ error: 'Document not found' });
 
-    const filePath = assertInsideUploads(document.storagePath);
+    const filePath = resolveStoredDocumentPath(document.storagePath);
     const extracted = await extractDocumentFromFile(filePath, document.fileName);
     return prisma.document.update({
       where: { id: document.id },
@@ -437,6 +435,36 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
         }
       },
       include: { extraction: true }
+    });
+  });
+
+  app.post('/documents/:id/restore-file', async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const document = await prisma.document.findUnique({ where: { id: params.id } });
+    if (!document) return reply.code(404).send({ error: 'Document not found' });
+
+    const data = await request.file();
+    if (!data) return reply.code(400).send({ error: 'File is required' });
+
+    const buffer = await data.toBuffer();
+    const restored = await writeDocumentFile({
+      buffer,
+      filename: document.fileName || data.filename,
+      mimeType: document.mimeType || data.mimetype,
+      sourceType: 'restore'
+    });
+
+    if (document.sha256 && document.sha256 !== restored.sha256) {
+      return reply.code(409).send({ error: 'Uploaded file does not match stored document hash' });
+    }
+
+    return prisma.document.update({
+      where: { id: document.id },
+      data: {
+        storagePath: restored.storagePath,
+        sha256: restored.sha256,
+        mimeType: document.mimeType || data.mimetype
+      }
     });
   });
 

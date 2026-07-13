@@ -1,15 +1,15 @@
 :root {
-  --bg: #f4f5f2;
+  --bg: #f3f4f6;
   --panel: #ffffff;
-  --panel-2: #f9faf7;
-  --ink: #18201d;
-  --muted: #66716b;
-  --line: #dfe4dd;
-  --brand: #214f3f;
-  --brand-2: #c26d2d;
+  --panel-2: #f8fafc;
+  --ink: #000000;
+  --muted: #1f2933;
+  --line: #b8c0cc;
+  --brand: #111827;
+  --brand-2: #8a3d0f;
   --warn: #9a5b12;
   --ok: #276749;
-  --shadow: 0 16px 38px rgba(24, 32, 29, 0.08);
+  --shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
 }
 
 * { box-sizing: border-box; }
@@ -35,7 +35,7 @@ button, a {
   text-decoration: none;
   cursor: pointer;
 }
-button:hover, a:hover { border-color: #b8c2b8; box-shadow: 0 8px 18px rgba(24, 32, 29, 0.08); }
+button:hover, a:hover { border-color: #111827; box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12); }
 
 .shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; }
 .shell > aside {
@@ -43,8 +43,8 @@ button:hover, a:hover { border-color: #b8c2b8; box-shadow: 0 8px 18px rgba(24, 3
   top: 0;
   height: 100vh;
   padding: 22px 16px;
-  background: #17392f;
-  color: #f7fbf7;
+  background: #111827;
+  color: #ffffff;
 }
 .brand { display: grid; gap: 4px; margin-bottom: 22px; }
 .brand strong { font-size: 20px; }
@@ -82,7 +82,7 @@ main { min-width: 0; padding: 22px clamp(16px, 3vw, 34px) 36px; }
   padding: 10px 12px;
   background: var(--panel);
 }
-.company span, .field span, td small, .pageHead p, .empty span { color: var(--muted); font-size: 13px; }
+.company span, .field span, td small, .pageHead p, .empty span { color: var(--muted); font-size: 14px; font-weight: 600; }
 .company strong { display: block; }
 
 .pageHead { display: flex; gap: 16px; align-items: end; justify-content: space-between; margin-bottom: 18px; }
@@ -111,8 +111,8 @@ p { line-height: 1.5; }
 
 .tableWrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
 table { width: 100%; min-width: 720px; border-collapse: collapse; }
-th, td { border-bottom: 1px solid var(--line); padding: 10px 11px; text-align: left; vertical-align: middle; }
-th { position: sticky; top: 0; background: var(--panel-2); color: var(--muted); font-size: 12px; text-transform: uppercase; }
+th, td { border-bottom: 1px solid var(--line); padding: 12px 12px; text-align: left; vertical-align: middle; color: #000; }
+th { position: sticky; top: 0; background: #e5e7eb; color: #000; font-size: 13px; text-transform: uppercase; }
 td strong, td small { display: block; }
 .actions { display: flex; gap: 7px; flex-wrap: wrap; }
 .badge { display: inline-flex; border-radius: 999px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: #e9f4ee; color: var(--ok); }
