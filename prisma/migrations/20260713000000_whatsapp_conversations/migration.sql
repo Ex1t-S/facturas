@@ -1,4 +1,4 @@
-﻿CREATE TABLE IF NOT EXISTS "WhatsAppConversation" (
+CREATE TABLE IF NOT EXISTS "WhatsAppConversation" (
   "id" TEXT NOT NULL,
   "companyId" TEXT NOT NULL,
   "fromNumber" TEXT NOT NULL,
