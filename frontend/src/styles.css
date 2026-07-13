@@ -206,6 +206,10 @@ td strong, td small { display: block; }
   padding: 7px 10px;
   background: white;
 }
+.invoiceCreateGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.invoiceQuoteCard { display: grid; gap: 7px; border: 1px solid var(--line); border-radius: 9px; padding: 13px; background: var(--panel-2); }
+.invoiceQuoteCard span { color: var(--muted); }
+.invoiceQuoteCard b { font-size: 18px; }
 .assistantLayout {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);

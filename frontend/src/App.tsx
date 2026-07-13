@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Archive, Bot, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Home, PackageSearch, ReceiptText, Send, Settings, Upload, Users } from 'lucide-react';
 import { api, dateFmt, money, postJson } from './api';
 
-type View = 'dashboard' | 'assistant' | 'documents' | 'quotes' | 'inventory' | 'customers' | 'whatsapp' | 'settings';
+type View = 'dashboard' | 'assistant' | 'documents' | 'quotes' | 'invoices' | 'inventory' | 'customers' | 'whatsapp' | 'settings';
 type AnyRecord = Record<string, any>;
 
 const nav: Array<{ id: View; label: string; icon: typeof Home }> = [
@@ -10,6 +10,7 @@ const nav: Array<{ id: View; label: string; icon: typeof Home }> = [
   { id: 'assistant', label: 'Asistente', icon: Bot },
   { id: 'documents', label: 'Documentos', icon: Archive },
   { id: 'quotes', label: 'Presupuestos', icon: ReceiptText },
+  { id: 'invoices', label: 'Facturas', icon: ReceiptText },
   { id: 'inventory', label: 'Inventario', icon: PackageSearch },
   { id: 'customers', label: 'Clientes', icon: Users },
   { id: 'whatsapp', label: 'WhatsApp', icon: Send },
@@ -149,18 +150,19 @@ export function App() {
     const activeCompanyId = dashboard.company?.id || companyId;
     if (activeCompanyId) localStorage.setItem('companyId', activeCompanyId);
     setCompanyId(activeCompanyId);
-    const [customers, products, quotes, documents, inventory, suppliers, whatsapp] = activeCompanyId
+  const [customers, products, quotes, invoices, documents, inventory, suppliers, whatsapp] = activeCompanyId
       ? await Promise.all([
           api<AnyRecord[]>(`/api/customers?companyId=${activeCompanyId}`),
           api<AnyRecord[]>(`/api/products?companyId=${activeCompanyId}&take=300`),
           api<AnyRecord[]>(`/api/quotes?companyId=${activeCompanyId}`),
+          api<AnyRecord[]>(`/api/invoices?companyId=${activeCompanyId}`),
           api<AnyRecord[]>(`/api/documents?companyId=${activeCompanyId}&take=300`),
           api<AnyRecord>(`/api/inventory?companyId=${activeCompanyId}`),
           api<AnyRecord[]>(`/api/suppliers?companyId=${activeCompanyId}`),
           api<AnyRecord[]>('/api/whatsapp/messages')
         ])
-      : [[], [], [], await api<AnyRecord[]>('/api/documents?take=300'), {}, [], await api<AnyRecord[]>('/api/whatsapp/messages')];
-    setData({ dashboard, customers, products, quotes, documents, inventory, suppliers, whatsapp });
+      : [[], [], [], [], await api<AnyRecord[]>('/api/documents?take=300'), {}, [], await api<AnyRecord[]>('/api/whatsapp/messages')];
+    setData({ dashboard, customers, products, quotes, invoices, documents, inventory, suppliers, whatsapp });
   }
 
   useEffect(() => {
@@ -171,6 +173,7 @@ export function App() {
     if (view === 'documents') return <Documents data={data} companyId={companyId} notify={notify} />;
     if (view === 'assistant') return <AssistantView companyId={companyId} />;
     if (view === 'quotes') return <Quotes data={data} companyId={companyId} notify={notify} />;
+    if (view === 'invoices') return <Invoices data={data} companyId={companyId} notify={notify} />;
     if (view === 'inventory') return <Inventory data={data} companyId={companyId} notify={notify} />;
     if (view === 'customers') return <Customers data={data} companyId={companyId} notify={notify} />;
     if (view === 'whatsapp') return <WhatsApp data={data} />;
@@ -533,7 +536,7 @@ function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: strin
 
   function lineSummary(line: QuoteDraftLine, index: number) {
     const linkedName = products.find((item: AnyRecord) => item.id === line.productId)?.name;
-    const title = line.description.trim() || linkedName || Item ;
+    const title = line.description.trim() || linkedName || ('Item ' + (index + 1));
     return {
       title,
       total: Number(line.quantity || 0) * Number(line.unitPrice || 0)
@@ -620,6 +623,41 @@ function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: strin
           <button>Crear borrador</button>
         </form>
         <div className="card"><h2>Listado</h2><Table headers={['N°', 'Cliente', 'Estado', 'Total', 'Descargas']} rows={(data.quotes || []).map((q: AnyRecord) => <tr key={q.id}><td>#{q.number}</td><td>{q.customer.legalName}</td><td><Badge value={q.status} /></td><td>{money.format(Number(q.total))}</td><td className="actions"><a href={`/api/quotes/${q.id}/docx`} target="_blank"><FileText size={16} /> DOCX</a><a href={`/api/quotes/${q.id}/pdf`} target="_blank"><FileText size={16} /> PDF</a></td></tr>)} /></div>
+      </section>
+    </Page>
+  );
+}
+
+function Invoices({ data, notify }: { data: AnyRecord; companyId: string; notify: Function }) {
+  const invoices = data.invoices || [];
+  const quotes = data.quotes || [];
+
+  async function createDraft(quoteId: string, type: 'A' | 'B') {
+    await notify('Borrador de factura creado.', () => postJson('/api/quotes/' + quoteId + '/invoice-draft', { type }));
+  }
+
+  async function authorize(invoiceId: string) {
+    await notify('Factura enviada a ARCA.', () => postJson('/api/invoices/' + invoiceId + '/authorize-arca', {}));
+  }
+
+  return (
+    <Page title="Facturas" text="Prepará comprobantes A o B y revisalos antes de enviarlos a ARCA.">
+      <section className="card invoiceCreate">
+        <div className="sectionRow"><div><h2>Crear desde presupuesto</h2><p className="mutedText">Elegí un presupuesto y el tipo de comprobante.</p></div></div>
+        <div className="invoiceCreateGrid">
+          {quotes.slice(0, 12).map((quote: AnyRecord) => (
+            <div className="invoiceQuoteCard" key={quote.id}>
+              <strong>Presupuesto #{quote.number}</strong>
+              <span>{quote.customer?.legalName || 'Cliente sin nombre'}</span>
+              <b>{money.format(Number(quote.total || 0))}</b>
+              <div className="actions"><button type="button" onClick={() => createDraft(quote.id, 'A')}>Factura A</button><button type="button" onClick={() => createDraft(quote.id, 'B')}>Factura B</button></div>
+            </div>
+          ))}
+          {!quotes.length && <Empty title="Sin presupuestos" text="Creá un presupuesto para preparar una factura." />}
+        </div>
+      </section>
+      <section className="card"><div className="sectionRow"><h2>Comprobantes</h2><span className="mutedText">{invoices.length} registrados</span></div>
+        <Table headers={['Tipo', 'Cliente', 'Estado', 'Total', 'CAE', 'Acciones']} rows={invoices.map((invoice: AnyRecord) => <tr key={invoice.id}><td><Badge value={invoice.type} /></td><td>{invoice.customer?.legalName || '-'}</td><td><Badge value={invoice.status} /></td><td>{money.format(Number(invoice.total || 0))}</td><td>{invoice.cae || 'Pendiente'}</td><td className="actions">{invoice.status === 'PENDING_CONFIRMATION' && <button type="button" onClick={() => authorize(invoice.id)}>Autorizar ARCA</button>}</td></tr>)} />
       </section>
     </Page>
   );

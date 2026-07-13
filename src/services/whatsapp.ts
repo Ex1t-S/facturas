@@ -88,11 +88,27 @@ export async function getWhatsAppMedia(mediaId: string): Promise<{ buffer: Buffe
 
   const arrayBuffer = await mediaResponse.arrayBuffer();
   const mimeType = metadata.mime_type ?? mediaResponse.headers.get('content-type') ?? 'application/octet-stream';
-  const extension = mimeType.includes('pdf') ? 'pdf' : mimeType.includes('image') ? 'jpg' : 'bin';
+  const extension = mimeType.includes('pdf') ? 'pdf' : mimeType.includes('image') ? 'jpg' : mimeType.includes('audio') ? 'ogg' : 'bin';
 
   return {
     buffer: Buffer.from(arrayBuffer),
     mimeType,
     filename: `whatsapp-${mediaId}.${extension}`
   };
+}
+export async function transcribeWhatsAppAudio(buffer: Buffer, mimeType: string): Promise<string> {
+  if (!config.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required to transcribe WhatsApp audio');
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(buffer)], { type: mimeType }), 'whatsapp-audio.ogg');
+  form.append('model', config.OPENAI_TRANSCRIBE_MODEL);
+  form.append('language', 'es');
+  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + config.OPENAI_API_KEY },
+    body: form
+  });
+  if (!response.ok) throw new Error('Audio transcription failed: ' + response.status + ' ' + await response.text());
+  const data = await response.json() as { text?: string };
+  if (!data.text?.trim()) throw new Error('Audio transcription returned no text');
+  return data.text.trim();
 }

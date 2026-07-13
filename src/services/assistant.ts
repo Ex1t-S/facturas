@@ -359,17 +359,8 @@ async function resolveCustomer(input: { companyId: string; name?: string; cuit?:
     if (byName) return byName;
   }
 
-  return prisma.customer.create({
-    data: {
-      companyId: input.companyId,
-      legalName: input.name || 'Cliente pendiente - Asistente IA',
-      cuit: input.cuit,
-      address: input.address,
-      notes: `Creado automaticamente desde ${input.source}. Revisar datos antes de enviar o facturar.`
-    }
-  });
+  return null;
 }
-
 function normalizeDraftItems(payload: DraftPayload, defaultUnitPrice: number) {
   return payload.items.map((item) => ({
     productId: undefined,
@@ -390,6 +381,7 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
     address: payload.customerAddress,
     source: 'asistente IA'
   });
+  if (!customer) throw new Error('El cliente no está registrado. Confirmá el CUIT antes de guardar el presupuesto.');
   const items = normalizeDraftItems(payload, 0);
   const totals = calculateQuoteTotals(items);
   const last = await prisma.quote.findFirst({ where: { companyId }, orderBy: { number: 'desc' } });
@@ -490,6 +482,7 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
     address: payload.customerAddress,
     source: 'remito generado por asistente IA'
   });
+  if (!customer) throw new Error('El cliente no está registrado. Confirmá el CUIT antes de guardar el remito.');
   const count = await prisma.document.count({ where: { companyId, kind: DocumentKind.DELIVERY_NOTE, sourceType: 'ai_generated' } });
   const number = String(count + 1).padStart(5, '0');
   const items = payload.items.length ? payload.items : [{ description: message, quantity: 1, unit: 'trabajo' }];
@@ -736,8 +729,12 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
       effectiveIntent === 'delivery_note' && intent === 'none'
         ? parseFollowUpDeliveryNoteForTest(input.message)
         : (await parseOpenAiDraft(input.message, effectiveIntent)) ?? parseLocalDraft(input.message);
+    const matchedCustomer = (payload.customerName || payload.customerCuit)
+      ? await resolveCustomer({ companyId, name: payload.customerName, cuit: payload.customerCuit, address: payload.customerAddress, source: 'asistente IA' })
+      : null;
     const missing: string[] = [];
-    if (!payload.customerName && !payload.customerCuit) missing.push('cliente');
+    if (!payload.customerName && !payload.customerCuit) missing.push('cliente y CUIT');
+    else if (!matchedCustomer) missing.push('CUIT de un cliente registrado');
     if (payload.items.length === 0) missing.push('items o descripcion');
     if (missing.length) {
       const answer =
