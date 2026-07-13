@@ -72,7 +72,7 @@ function whatsappConfigStatus() {
     appId: config.WHATSAPP_APP_ID || '',
     wabaId: config.WHATSAPP_WABA_ID || '',
     audioConfigured: Boolean(config.OPENAI_API_KEY),
-    canReceive: config.WHATSAPP_VERIFY_TOKEN !== 'change-me' && config.WHATSAPP_APP_SECRET !== 'change-me',
+    canReceive: config.WHATSAPP_VERIFY_TOKEN !== 'change-me' && Boolean(config.WHATSAPP_ACCESS_TOKEN && config.WHATSAPP_PHONE_NUMBER_ID),
     canSend: Boolean(config.WHATSAPP_ACCESS_TOKEN && config.WHATSAPP_PHONE_NUMBER_ID)
   };
 }
