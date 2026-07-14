@@ -117,6 +117,8 @@ model Company {
   engineeringConversations EngineeringConversation[]
   engineeringCases EngineeringCase[]
   engineeringRegulations EngineeringRegulation[]
+  engineeringDrawings EngineeringDrawingDocument[]
+  engineeringDrawingTemplates EngineeringDrawingTemplate[]
 }
 
 model Supplier {
@@ -714,6 +716,59 @@ model EngineeringRegulation {
   company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
   @@unique([companyId, code, revision])
   @@index([companyId, status])
+}
+
+model EngineeringDrawingTemplate {
+  id String @id @default(cuid())
+  companyId String?
+  code String
+  name String
+  version String?
+  sheetSize String?
+  titleBlockPosition String?
+  layoutJson String @default("{}")
+  sampleCount Int @default(0)
+  confidence Decimal @default(0)
+  isDefault Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  drawings EngineeringDrawingDocument[]
+  @@unique([companyId, code])
+  @@index([companyId, isDefault])
+}
+
+model EngineeringDrawingDocument {
+  id String @id @default(cuid())
+  companyId String
+  templateId String?
+  fileName String
+  relativePath String
+  sourcePath String
+  sha256 String
+  mimeType String @default("application/pdf")
+  byteSize Int
+  pageCount Int @default(0)
+  status String @default("DISCOVERED")
+  extractedText String?
+  extractionJson String @default("{}")
+  thumbnailPath String?
+  drawingNumber String?
+  projectName String?
+  customerName String?
+  projectType String?
+  drawingTitle String?
+  revision String?
+  drawingDate DateTime?
+  sheetSize String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  template EngineeringDrawingTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  @@unique([companyId, sha256])
+  @@index([companyId, status])
+  @@index([companyId, projectType])
+  @@index([companyId, customerName])
 }
 
 model AssistantChat {

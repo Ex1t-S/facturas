@@ -152,8 +152,8 @@ export const assistantRoutes: FastifyPluginAsync = async (app) => {
       .map((message) => ({ role: message.role as AssistantMessage['role'], content: message.content }));
     const latestDeliveryAction = [...chat.messages]
       .reverse()
-      .find((message) => message.role === 'assistant' && (message.actionType === 'delivery_note_draft_pending' || message.actionType === 'delivery_note_created'));
-    const pendingDeliveryDraft = latestDeliveryAction?.actionType === 'delivery_note_draft_pending' ? latestDeliveryAction : undefined;
+      .find((message) => message.role === 'assistant' && (message.actionType === 'document_draft_pending' || message.actionType === 'delivery_note_draft_pending' || message.actionType === 'delivery_note_created' || message.actionType === 'quote_draft_created'));
+    const pendingDeliveryDraft = latestDeliveryAction?.actionType === 'document_draft_pending' || latestDeliveryAction?.actionType === 'delivery_note_draft_pending' ? latestDeliveryAction : undefined;
 
     const response = await answerAssistant({
       companyId: chat.companyId,

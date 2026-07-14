@@ -9,7 +9,9 @@ import { ingestEngineeringKnowledge } from '../services/engineering/engineeringI
 import { projectTypes } from '../services/engineering/engineeringSchemas.js';
 import { answerEngineeringConversation, createEngineeringConversation, getEngineeringConversation, listEngineeringConversations, saveEngineeringCase } from '../services/engineering/engineeringConversation.js';
 import { searchOfficialEngineeringRegulations } from '../services/engineering/regulations.js';
-import { renderPreliminaryEngineeringSvg, type EngineeringDrawingSpec } from '../services/engineering/drawing.js';
+import { renderPreliminaryEngineeringPdf, renderPreliminaryEngineeringSvg, type EngineeringDrawingSpec } from '../services/engineering/drawing.js';
+import { getEngineeringDrawing, getEngineeringDrawingStatus, ingestEngineeringDrawings, listEngineeringDrawings, readEngineeringDrawingFile } from '../services/engineering/drawingLibrary.js';
+import { readStoredDocumentFile } from '../services/documentStorage.js';
 
 const companyQuery = z.object({ companyId: z.string().min(1) });
 const chatSchema = z.object({ companyId: z.string().min(1), message: z.string().trim().min(1).max(6000) });
@@ -17,10 +19,10 @@ const startSchema = z.object({ companyId: z.string().min(1), rootPath: z.string(
 const reviewSchema = z.object({ status: z.enum(['VERIFIED', 'CORRECTED', 'REJECTED', 'OBSOLETE']), correctedJson: z.string().optional(), note: z.string().max(2000).optional(), reviewerName: z.string().max(120).optional() });
 const conversationCreateSchema = z.object({ companyId: z.string().min(1), title: z.string().trim().max(120).optional() });
 const conversationMessageSchema = z.object({ companyId: z.string().min(1), message: z.string().trim().min(1).max(12000) });
-const drawingSchema = z.object({ drawingType: z.enum(['SILO', 'HOPPER', 'WAREHOUSE', 'SUPPORT_STRUCTURE']), width: z.number().positive().optional(), length: z.number().positive().optional(), diameter: z.number().positive().optional(), height: z.number().positive().optional(), freeHeight: z.number().positive().optional(), lowerOpening: z.number().positive().optional(), roofSlope: z.number().positive().optional(), notes: z.array(z.string().max(300)).max(20).optional() });
+const drawingSchema = z.object({ drawingType: z.enum(['SILO', 'HOPPER', 'WAREHOUSE', 'SUPPORT_STRUCTURE']), width: z.number().positive().optional(), length: z.number().positive().optional(), diameter: z.number().positive().optional(), height: z.number().positive().optional(), bodyHeight: z.number().positive().optional(), coneHeight: z.number().positive().optional(), freeHeight: z.number().positive().optional(), lowerOpening: z.number().positive().optional(), roofSlope: z.number().positive().optional(), capacityT: z.number().positive().optional(), supportCount: z.number().int().positive().optional(), customerName: z.string().max(160).optional(), projectName: z.string().max(160).optional(), quoteNumber: z.string().max(80).optional(), notes: z.array(z.string().max(300)).max(20).optional() });
 
 function allowedRoot(rootPath: string) {
-  const configured = [config.ENGINEERING_KNOWLEDGE_ROOT, config.HISTORICAL_DOCUMENT_ROOT].filter(Boolean).map((root) => path.resolve(root));
+  const configured = [config.ENGINEERING_DRAWINGS_ROOT, config.ENGINEERING_KNOWLEDGE_ROOT, config.HISTORICAL_DOCUMENT_ROOT].filter(Boolean).map((root) => path.resolve(root));
   const resolved = path.resolve(rootPath);
   if (!configured.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`))) throw new Error('La carpeta debe estar dentro de ENGINEERING_KNOWLEDGE_ROOT o HISTORICAL_DOCUMENT_ROOT.');
   return resolved;
@@ -58,6 +60,13 @@ export const engineeringRoutes: FastifyPluginAsync = async (app) => {
     return searchOfficialEngineeringRegulations(query.companyId, query.q);
   });
   app.post('/engineering/drawing', async (request) => { const spec = drawingSchema.parse(request.body) as EngineeringDrawingSpec; return { spec, svg: renderPreliminaryEngineeringSvg(spec) }; });
+  app.post('/engineering/drawing/pdf', async (request, reply) => { const spec = drawingSchema.parse(request.body) as EngineeringDrawingSpec; return reply.type('application/pdf').send(await renderPreliminaryEngineeringPdf(spec)); });
+  app.get('/engineering/drawings', async (request) => { const query = z.object({ companyId: z.string(), q: z.string().optional(), projectType: z.string().optional(), customerName: z.string().optional(), take: z.coerce.number().int().min(1).max(300).default(100) }).parse(request.query); return listEngineeringDrawings(query); });
+  app.get('/engineering/drawings/status', async (request) => getEngineeringDrawingStatus(companyQuery.parse(request.query).companyId));
+  app.get('/engineering/drawings/:id', async (request, reply) => { const params = z.object({ id: z.string() }).parse(request.params); const item = await getEngineeringDrawing(params.id, companyQuery.parse(request.query).companyId); if (!item) return reply.code(404).send({ error: 'Plano no encontrado' }); const { sourcePath: _sourcePath, ...publicItem } = item; return publicItem; });
+  app.get('/engineering/drawings/:id/file', async (request, reply) => { const params = z.object({ id: z.string() }).parse(request.params); const item = await readEngineeringDrawingFile(params.id, companyQuery.parse(request.query).companyId); if (!item) return reply.code(404).send({ error: 'Plano no encontrado' }); return reply.type('application/pdf').header('Content-Disposition', `inline; filename="${item.fileName}"`).send(item.buffer); });
+  app.get('/engineering/drawings/:id/thumbnail', async (request, reply) => { const params = z.object({ id: z.string() }).parse(request.params); const item = await getEngineeringDrawing(params.id, companyQuery.parse(request.query).companyId); if (!item?.thumbnailPath) return reply.code(404).send({ error: 'Miniatura no disponible' }); const buffer = await readStoredDocumentFile(item.thumbnailPath); return reply.type('image/png').send(buffer); });
+  app.post('/engineering/drawings/ingestion/start', async (request, reply) => { const body = startSchema.parse(request.body); const rootPath = allowedRoot(body.rootPath || config.ENGINEERING_DRAWINGS_ROOT || config.ENGINEERING_KNOWLEDGE_ROOT || config.HISTORICAL_DOCUMENT_ROOT); void ingestEngineeringDrawings({ companyId: body.companyId, rootPath }).catch(() => undefined); return reply.code(202).send({ status: 'RUNNING', rootPath }); });
 
   app.get('/engineering/knowledge', async (request) => {
     const query = z.object({ ...companyQuery.shape, q: z.string().default(''), projectType: z.enum(projectTypes).optional(), material: z.string().optional(), verified: z.coerce.boolean().optional(), dateFrom: z.string().optional(), dateTo: z.string().optional(), take: z.coerce.number().int().min(1).max(100).default(30) }).parse(request.query);

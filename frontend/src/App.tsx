@@ -63,7 +63,17 @@ const labels: Record<string, string> = {
   manual_quote: 'Presupuesto manual',
   received: 'Recibido',
   text: 'Texto',
-  document_message: 'Documento'
+  document_message: 'Documento',
+  PRELIMINARY_DESIGN: 'Predimensionamiento preliminar',
+  SUPPORTED_DETERMINISTIC: 'Cálculo realizado por el sistema',
+  PRELIMINARY_ASSISTED: 'Análisis preliminar',
+  CRITICAL: 'Necesario para continuar',
+  IMPORTANT: 'Importante',
+  OPTIONAL: 'Opcional',
+  CURRENT: 'Versión comprobada',
+  HISTORICAL: 'Precio histórico',
+  NO_PRICE: 'Sin precio',
+  ORIENTATION: 'Orientación'
 };
 
 function labelFor(value?: string) {
@@ -306,9 +316,9 @@ function AssistantView({ companyId }: { companyId: string }) {
               <div className={`bubble ${message.role}`} key={message.id || index}>
                 <span>{message.role === 'assistant' ? 'Asistente' : 'Vos'}</span>
                 <p>{message.content}</p>
-                {message.documentId && message.actionType === 'delivery_note_created' && (
+                {message.documentId && (message.actionType === 'delivery_note_created' || message.actionType === 'quote_draft_created') && (
                   <div className="messageActions">
-                    <a href={`/api/documents/${message.documentId}/content`} target="_blank"><FileText size={16} /> Ver remito</a>
+                    <a href={`/api/documents/${message.documentId}/content`} target="_blank"><FileText size={16} /> Ver PDF</a>
                   </div>
                 )}
               </div>
@@ -330,6 +340,7 @@ function EngineeringWorkspaceView({ companyId }: { companyId: string }) {
   const [conversations, setConversations] = useState<AnyRecord[]>([]);
   const [conversation, setConversation] = useState<AnyRecord | null>(null);
   const [library, setLibrary] = useState(false);
+  const [drawings, setDrawings] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function loadConversations() {
@@ -374,30 +385,36 @@ function EngineeringWorkspaceView({ companyId }: { companyId: string }) {
     const inputs = state.knownInputs || [];
     const value = (key: string) => inputs.find((item: AnyRecord) => item.key === key && item.status !== 'SUPERSEDED')?.value;
     const type = state.projectType === 'HOPPER' ? 'HOPPER' : state.projectType === 'WAREHOUSE' ? 'WAREHOUSE' : 'SILO';
-    const response = await postJson<AnyRecord>('/api/engineering/drawing', { drawingType: type, diameter: Number(value('diameter')) || undefined, width: Number(value('width')) || undefined, length: Number(value('length')) || undefined, height: Number(value('height')) || undefined, freeHeight: Number(value('freeHeight')) || undefined, notes: ['Generado desde el caso conversacional FMH'] });
+    const response = await postJson<AnyRecord>('/api/engineering/drawing', { drawingType: type, diameter: Number(value('diameter')) || undefined, bodyHeight: Number(value('bodyHeight')) || undefined, coneHeight: Number(value('coneHeight')) || undefined, width: Number(value('width')) || undefined, length: Number(value('length')) || undefined, height: Number(value('height')) || undefined, freeHeight: Number(value('freeHeight')) || undefined, capacityT: Number(value('capacity')) || undefined, supportCount: Number(value('supportCount')) || undefined, notes: ['Generado desde el caso conversacional FMH'] });
     const url = URL.createObjectURL(new Blob([response.svg], { type: 'image/svg+xml' }));
     const link = document.createElement('a'); link.href = url; link.download = 'esquema-preliminar-fmh.svg'; link.click(); URL.revokeObjectURL(url);
   }
   const messages = conversation?.messages || [];
   return <Page title="Ingeniería FMH" text="Asistente técnico conversacional con memoria, cálculos y antecedentes trazables.">
     <div className="engineeringTabs"><button className={!library ? 'active' : ''} onClick={() => setLibrary(false)}>Asistente</button><button className={library ? 'active' : ''} onClick={() => setLibrary(true)}>Biblioteca FMH</button></div>
-    {!library ? <section className="engineeringWorkspace">
+    <div className="engineeringDrawingShortcut"><button type="button" onClick={() => { setLibrary(false); setDrawings(false); }}>Asistente</button><button type="button" onClick={() => { setLibrary(true); setDrawings(false); }}>Biblioteca técnica</button><button type="button" className={drawings ? 'active' : ''} onClick={() => { setLibrary(false); setDrawings(true); }}>Planos FMH</button></div>
+    {!library && !drawings ? <section className="engineeringWorkspace">
       <aside className="card engineeringConversations">
         <div className="sectionRow"><h2>Conversaciones</h2><button type="button" onClick={newConversation}>Nueva</button></div>
         <div className="conversationList">{conversations.map((item) => <button type="button" key={item.id} className={conversation?.id === item.id ? 'selected' : ''} onClick={() => openConversation(item.id)}><strong>{item.title || 'Nueva conversación'}</strong><small>{item.updatedAt ? new Date(item.updatedAt).toLocaleString('es-AR') : ''}</small></button>)}{!conversations.length && <p className="mutedText">Todavía no hay conversaciones.</p>}</div>
       </aside>
       <div className="card engineeringChat">
         <div className="sectionRow"><div><h2>{conversation?.title || 'Asistente de Ingeniería'}</h2><span className="mutedText">{conversation?.model || 'Modo local / modelo configurable'}</span></div>{conversation && <button type="button" onClick={saveCase}>Guardar como caso</button>}</div>
-        <div className="engineeringMessages">{messages.map((item: AnyRecord) => <article className={`engineeringMessage ${item.role}`} key={item.id}><span>{item.role === 'user' ? 'Vos' : 'Asistente'}</span><p>{item.content}</p>{item.structuredResultJson && <EngineeringResult result={item.structuredResultJson} />}</article>)}{loading && <article className="engineeringMessage assistant"><span>Asistente</span><p>Analizando antecedentes y cálculos...</p></article>}{!messages.length && <Empty title="Iniciá un caso" text="Podés comenzar con un silo, galpón, tolva, estructura o cualquier consulta técnica." />}</div>
+        <div className="engineeringMessages">{messages.map((item: AnyRecord) => <article className={`engineeringMessage ${item.role}`} key={item.id}><span>{item.role === 'user' ? 'Vos' : 'Asistente'}</span><p>{item.content}</p>{item.role === 'assistant' && item.structuredResultJson && <TechnicalDetails result={item.structuredResultJson} />}</article>)}{loading && <article className="engineeringMessage assistant"><span>Asistente</span><p>Analizando...</p></article>}{!messages.length && <Empty title="Iniciá un caso" text="Podés comenzar con un silo, galpón, tolva, estructura o cualquier consulta técnica." />}</div>
         <form className="engineeringComposer" onSubmit={ask}><textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ej.: Necesito comparar 4 contra 6 patas para un silo aéreo de 200 t." /><div><button disabled={loading || !message.trim()}>Enviar</button><button type="button" onClick={downloadDrawing} disabled={!conversation}>Esquema SVG</button></div></form>
       </div>
-    </section> : <EngineeringLibrary companyId={companyId} />}
+    </section> : library ? <EngineeringLibrary companyId={companyId} /> : <EngineeringDrawings companyId={companyId} />}
   </Page>;
 }
 
-function EngineeringResult({ result }: { result: AnyRecord | string }) {
+function engineeringLabelFor(value: string) {
+  const labels: Record<string, string> = { PRELIMINARY_DESIGN: 'Predimensionamiento preliminar', SUPPORTED_DETERMINISTIC: 'Cálculo realizado por el sistema', PRELIMINARY_ASSISTED: 'Análisis preliminar', CRITICAL: 'Necesario para continuar', IMPORTANT: 'Importante', OPTIONAL: 'Opcional', CURRENT: 'Versión comprobada', HISTORICAL: 'Precio histórico', NO_PRICE: 'Sin precio' };
+  return labels[value] || value;
+}
+
+function TechnicalDetails({ result }: { result: AnyRecord | string }) {
   const parsed = typeof result === 'string' ? (() => { try { return JSON.parse(result); } catch { return { answer: result }; } })() : result;
-  return <div className="engineeringResult"><div className="resultBadges"><Badge value={parsed.level || 'ORIENTACIÓN'} /><Badge value={parsed.capability || 'PRELIMINARY_ASSISTED'} /></div><h3>Respuesta</h3><p>{parsed.answer}</p>{parsed.missingData?.length > 0 && <><h3>Datos faltantes</h3><ul>{parsed.missingData.map((item: AnyRecord) => <li key={item.name}><strong>{item.name}:</strong> {item.reason}</li>)}</ul></>}{parsed.assumptions?.length > 0 && <><h3>Hipótesis</h3><ul>{parsed.assumptions.map((item: string) => <li key={item}>{item}</li>)}</ul></>}{parsed.calculations?.length > 0 && <><h3>Cálculos ejecutados</h3>{parsed.calculations.map((item: AnyRecord) => <div className="trace" key={item.title}><strong>{item.title}</strong><span>{item.formula}</span><b>{Number(item.result).toFixed(2)} {item.resultUnit}</b></div>)}</>}{parsed.sources?.length > 0 && <><h3>Antecedentes FMH</h3><ul>{parsed.sources.map((source: AnyRecord) => <li key={source.id}>{source.title}</li>)}</ul></>}{parsed.regulations?.length > 0 && <><h3>Reglamentos</h3><ul>{parsed.regulations.map((item: AnyRecord) => <li key={item.code}>{item.code} — {item.status}</li>)}</ul></>}</div>;
+  return <details className="technicalDetails"><summary>Ver análisis técnico</summary><div className="engineeringResult"><div className="resultBadges"><Badge value={labelFor(parsed.level || 'ORIENTATION')} /><Badge value={labelFor(parsed.capability || 'PRELIMINARY_ASSISTED')} /></div>{parsed.missingData?.length > 0 && <><h3>Datos que faltan</h3><ul>{parsed.missingData.map((item: AnyRecord) => <li key={item.name}><strong>{labelFor(item.name)}:</strong> {item.reason}</li>)}</ul></>}{parsed.assumptions?.length > 0 && <><h3>Hipótesis</h3><ul>{parsed.assumptions.map((item: string) => <li key={item}>{item}</li>)}</ul></>}{parsed.calculations?.length > 0 && <><h3>Cálculos realizados</h3>{parsed.calculations.map((item: AnyRecord) => <div className="trace" key={item.title}><strong>{item.title}</strong><span>{item.formula}</span><b>{Number(item.result).toFixed(2)} {item.resultUnit}</b></div>)}</>}{parsed.materials?.length > 0 && <><h3>Materiales preliminares</h3>{parsed.materials.map((item: AnyRecord) => <div className="trace" key={`${item.description}-${item.specification || ''}`}><strong>{item.description}</strong><span>{item.specification || 'Sección pendiente de confirmar'}</span><b>{item.totalLengthM ? `${Number(item.totalLengthM).toFixed(2)} m` : ''} {item.estimatedWeightKg ? `${Number(item.estimatedWeightKg).toFixed(1)} kg` : ''}</b></div>)}</>}{parsed.purchase?.length > 0 && <><h3>Resumen de compra</h3><ul>{parsed.purchase.map((item: AnyRecord) => <li key={item.description}>{item.description}: comprar {item.buyQuantity || 0} barras de {item.commercialLength || 12} m. {item.priceStatus === 'NO_PRICE' ? 'Precio pendiente.' : ''}</li>)}</ul></>}{parsed.sources?.length > 0 && <><h3>Antecedentes FMH</h3><ul>{parsed.sources.map((source: AnyRecord) => <li key={source.id}>{source.title}</li>)}</ul></>}{parsed.regulations?.length > 0 && <><h3>Normativa consultada</h3><ul>{parsed.regulations.map((item: AnyRecord) => <li key={item.code}>{item.code} — {labelFor(item.status)}</li>)}</ul></>}</div></details>;
 }
 
 function EngineeringLibrary({ companyId }: { companyId: string }) {
@@ -412,6 +429,20 @@ function EngineeringLibrary({ companyId }: { companyId: string }) {
   useEffect(() => { load().catch(() => undefined); }, [companyId]);
   async function ingest() { setBusy(true); try { await postJson('/api/engineering/ingestion/start', { companyId }); await load(); } finally { setBusy(false); } }
   return <section className="card engineeringLibrary"><div className="sectionRow"><div><h2>Biblioteca técnica FMH</h2><span className="mutedText">Antecedentes internos y documentos procesados.</span></div><button type="button" onClick={ingest} disabled={busy}>{busy ? 'Actualizando...' : 'Actualizar biblioteca'}</button></div><div className="metrics compact"><article><span>Archivos</span><strong>{status?.totalFiles || 0}</strong></article><article><span>Procesados</span><strong>{status?.counts?.EXTRACTED || 0}</strong></article><article><span>Visión/revisión</span><strong>{(status?.counts?.NEEDS_VISION || 0) + (status?.counts?.NEEDS_REVIEW || 0)}</strong></article><article><span>Fallidos</span><strong>{status?.counts?.FAILED || 0}</strong></article></div><Table headers={['Archivo', 'Tipo', 'Estado']} rows={(knowledge.documents || []).map((doc: AnyRecord) => <tr key={doc.id}><td><strong>{doc.title}</strong><small>{doc.sourcePath}</small></td><td>{doc.documentType || doc.projectType || 'OTHER'}</td><td><Badge value={doc.verified ? 'VERIFIED_INTERNAL' : doc.status || 'HISTORICAL_PROJECT'} /></td></tr>)} /></section>;
+}
+
+function EngineeringDrawings({ companyId }: { companyId: string }) {
+  const [items, setItems] = useState<AnyRecord[]>([]);
+  const [status, setStatus] = useState<AnyRecord | null>(null);
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function load() {
+    const [rows, current] = await Promise.all([api<AnyRecord[]>(`/api/engineering/drawings?companyId=${companyId}&q=${encodeURIComponent(query)}`), api<AnyRecord>(`/api/engineering/drawings/status?companyId=${companyId}`)]);
+    setItems(rows); setStatus(current);
+  }
+  useEffect(() => { load().catch(() => undefined); }, [companyId]);
+  async function ingest() { setBusy(true); try { await postJson('/api/engineering/drawings/ingestion/start', { companyId }); await load(); } finally { setBusy(false); } }
+  return <section className="card engineeringDrawings"><div className="sectionRow"><div><h2>Biblioteca de Planos FMH</h2><span className="mutedText">Planos históricos, miniaturas y formato documental detectado localmente.</span></div><button type="button" onClick={ingest} disabled={busy}>{busy ? 'Analizando...' : 'Importar/actualizar planos'}</button></div><div className="toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar silo, tolva, galpón o cliente..." /><button type="button" onClick={() => load()}>Buscar</button></div><div className="metrics compact"><article><span>Planos</span><strong>{status?.total || 0}</strong></article><article><span>Analizados localmente</span><strong>{status?.counts?.ANALYZED_LOCAL || 0}</strong></article><article><span>Pendientes</span><strong>{status?.counts?.NEEDS_REVIEW || 0}</strong></article><article><span>Fallidos</span><strong>{status?.counts?.FAILED || 0}</strong></article></div><div className="drawingCards">{items.map((item) => <article className="drawingCard" key={item.id}><img src={`/api/engineering/drawings/${item.id}/thumbnail?companyId=${companyId}`} alt={item.fileName} /><div><strong>{item.drawingTitle || item.fileName}</strong><span>{item.projectType || 'Tipo pendiente'} {item.customerName ? `· ${item.customerName}` : ''}</span><small>{item.template?.name || 'Plantilla FMH escaneada'}</small><a href={`/api/engineering/drawings/${item.id}/file?companyId=${companyId}`} target="_blank" rel="noreferrer">Abrir PDF</a></div></article>)}{!items.length && <Empty title="Todavía no hay planos importados" text="Configurá ENGINEERING_DRAWINGS_ROOT o ejecutá la importación desde la carpeta local." />}</div></section>;
 }
 
 function EngineeringView({ companyId }: { companyId: string }) {
@@ -458,7 +489,7 @@ function EngineeringView({ companyId }: { companyId: string }) {
 
 function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: string; notify: Function }) {
   const [limit, setLimit] = useState(120);
-  const [filters, setFilters] = useState({ q: '', kind: '', extractionStatus: '', customer: '', cuit: '', dateFrom: '', dateTo: '', hasText: '' });
+  const [filters, setFilters] = useState({ q: '' });
   const [documents, setDocuments] = useState<AnyRecord[]>(data.documents || []);
   const [tree, setTree] = useState<AnyRecord | null>(null);
   const [selectedPath, setSelectedPath] = useState<{ kind?: string; year?: string; month?: number }>({});
@@ -469,16 +500,14 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
     const qs = queryString({
       companyId,
       take: 500,
-      ...next,
-      kind: selectedPath.kind || next.kind,
+      q: next.q,
+      kind: selectedPath.kind,
       year: selectedPath.year,
-      month: selectedPath.month,
-      customer: next.customer,
-      hasText: next.hasText === '' ? undefined : next.hasText
+      month: selectedPath.month
     });
     const [rows, treeData] = await Promise.all([
       api<AnyRecord[]>(`/api/documents?${qs}`),
-      api<AnyRecord>(`/api/documents/tree?${queryString({ companyId, q: next.q, customer: next.customer, kind: next.kind, take: 1800 })}`)
+      api<AnyRecord>(`/api/documents/tree?${queryString({ companyId, q: next.q, take: 1800 })}`)
     ]);
     setDocuments(rows);
     setTree(treeData);
@@ -564,20 +593,11 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
   ));
 
   return (
-    <Page title="Documentos" text="Importá históricos, filtrá presupuestos/facturas/remitos y convertí adjuntos en borradores editables." action={<button onClick={() => notify('Importación histórica finalizada.', () => postJson('/api/documents/import-historical', { companyId, limit })).then(() => loadDocuments())}><Upload size={16} /> Importar</button>}>
+    <Page title="Documentos" text="Biblioteca por tipo, año y mes. Buscá por nombre y entrá a las carpetas para ver archivos." action={<button onClick={() => notify('Importación histórica finalizada.', () => postJson('/api/documents/import-historical', { companyId, limit })).then(() => loadDocuments())}><Upload size={16} /> Importar</button>}>
       <div className="toolbar wide"><Field label="Límite de importación" type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></div>
       <section className="card filters">
-        <Field label="Buscar" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} placeholder="Cliente, CUIT, archivo, material..." />
-        <SelectField label="Tipo" value={filters.kind} onChange={(e) => setFilters({ ...filters, kind: e.target.value })}>{documentKinds.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField>
-        <SelectField label="Extracción" value={filters.extractionStatus} onChange={(e) => setFilters({ ...filters, extractionStatus: e.target.value })}>
-          <option value="">Todas</option><option value="UPLOADED">Subido</option><option value="STRUCTURED">Estructurado</option><option value="NEEDS_REVIEW">Revisar</option><option value="FAILED">Fallido</option>
-        </SelectField>
-        <Field label="Cliente" value={filters.customer} onChange={(e) => setFilters({ ...filters, customer: e.target.value })} />
-        <Field label="CUIT" value={filters.cuit} onChange={(e) => setFilters({ ...filters, cuit: e.target.value })} />
-        <Field label="Desde" type="date" value={filters.dateFrom} onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })} />
-        <Field label="Hasta" type="date" value={filters.dateTo} onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })} />
-        <SelectField label="Texto" value={filters.hasText} onChange={(e) => setFilters({ ...filters, hasText: e.target.value })}><option value="">Todos</option><option value="true">Con texto</option><option value="false">Sin texto/OCR</option></SelectField>
-        <button onClick={() => { setSelectedPath({}); loadDocuments({ ...filters }); }}>Aplicar filtros</button>
+        <Field label="Buscar por nombre" value={filters.q} onChange={(e) => setFilters({ q: e.target.value })} placeholder="Nombre de archivo o cliente..." />
+        <button onClick={() => { setSelectedPath({}); loadDocuments({ ...filters }); }}>Buscar</button>
       </section>
       <section className="documentLayout">
         <div className="card fileTree">

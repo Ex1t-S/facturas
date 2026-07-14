@@ -24,6 +24,8 @@ services:
         value: gpt-5.4-mini
       - key: OPENAI_ENGINEERING_MODEL
         value: gpt-5.6-sol
+      - key: ENGINEERING_DRAWINGS_ROOT
+        sync: false
       - key: OPENAI_ENGINEERING_FAST_MODEL
         sync: false
       - key: OPENAI_ENGINEERING_REASONING_EFFORT

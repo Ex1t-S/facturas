@@ -1,4 +1,6 @@
 import { DocumentKind } from '../generated/postgres-client/index.js';
+import fs from 'node:fs/promises';
+import { nanoid } from 'nanoid';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { calculateQuoteTotals } from '../domain/money.js';
@@ -10,6 +12,7 @@ import {
   type KnowledgeSource
 } from './businessKnowledge.js';
 import { safeFileName, writeDocumentFile } from './documentStorage.js';
+import { convertDocxToPdf, writeFmhQuoteDocx } from './fmhQuoteDocument.js';
 import { renderDeliveryNotePdf, renderQuotePdf } from './pdf.js';
 
 export type AssistantMessage = {
@@ -30,7 +33,7 @@ export type AssistantResponse = {
   sources: KnowledgeSource[];
   suggestions: string[];
   action?: {
-    type: 'quote_draft_created' | 'delivery_note_created' | 'delivery_note_draft_pending' | 'invoice_unavailable';
+    type: 'quote_draft_created' | 'delivery_note_created' | 'document_draft_pending' | 'delivery_note_draft_pending' | 'invoice_unavailable';
     quoteId?: string;
     documentId?: string;
   };
@@ -57,9 +60,13 @@ type DraftPayload = {
 };
 
 export type PendingDeliveryDraft = {
-  type: 'delivery_note';
+  type: 'quote' | 'delivery_note';
   payload: DraftPayload;
   suggestedFileName: string;
+  token: string;
+  previewStoragePath: string;
+  previewFileName: string;
+  previewMimeType: string;
 };
 
 function wantsCreation(message: string) {
@@ -108,14 +115,17 @@ function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function suggestedDeliveryFileName(payload: DraftPayload) {
-  return safeFileName(`remito-${slugify(payload.customerName || 'cliente-pendiente')}-${todayIsoDate()}.pdf`);
+function suggestedDocumentFileName(type: PendingDeliveryDraft['type'], payload: DraftPayload, suffix?: string) {
+  const base = type === 'quote' ? 'presupuesto' : 'remito';
+  const customer = slugify(payload.customerName || 'cliente-pendiente');
+  const extra = suffix ? '-' + slugify(suffix) : '';
+  return safeFileName(base + '-' + customer + extra + '.pdf');
 }
 
 function ensurePdfFileName(value: string) {
   const cleaned = safeFileName(value.trim().replace(/^["']|["']$/g, ''));
   if (!cleaned) return '';
-  return cleaned.toLowerCase().endsWith('.pdf') ? cleaned : `${cleaned}.pdf`;
+  return cleaned.toLowerCase().endsWith('.pdf') ? cleaned : cleaned + '.pdf';
 }
 
 function extractRequestedFileName(message: string) {
@@ -125,21 +135,25 @@ function extractRequestedFileName(message: string) {
 
 function confirmsPendingDraft(message: string) {
   const normalized = normalizeText(message);
-  return /\b(guardar|guardalo|confirmar|confirmalo|crear|crealo|generar|generalo|dale|ok|listo)\b/.test(normalized);
+  return /\b(guardar|guardalo|confirmar|confirmalo|crear|crealo|generar|generalo|dale|ok|listo|confirmado)\b/.test(normalized);
 }
 
-function formatDeliveryDraft(pending: PendingDeliveryDraft) {
+function draftKindLabel(type: PendingDeliveryDraft['type']) {
+  return type === 'quote' ? 'presupuesto' : 'remito';
+}
+
+function formatDocumentDraft(pending: PendingDeliveryDraft) {
   const items = pending.payload.items.length
-    ? pending.payload.items.map((item, index) => `${index + 1}. ${item.quantity || 1} ${item.unit || 'unidad'} - ${item.description}`).join('\n')
+    ? pending.payload.items.map((item, index) => (index + 1) + '. ' + (item.quantity || 1) + ' ' + (item.unit || 'unidad') + ' - ' + item.description).join('\n')
     : 'Sin items cargados.';
   return [
-    'Borrador de remito:',
-    `Cliente: ${pending.payload.customerName || 'Cliente pendiente'}`,
+    'Borrador de ' + draftKindLabel(pending.type) + ':',
+    'Cliente: ' + (pending.payload.customerName || 'Cliente pendiente'),
     'Items:',
     items,
-    `Nombre sugerido: ${pending.suggestedFileName}`,
+    'Nombre sugerido: ' + pending.suggestedFileName,
     '',
-    'Si esta bien, escribi "guardalo". Si queres cambiar el nombre, escribi por ejemplo: "guardalo como remito-mario-alvarez-espira.pdf".'
+    'Si esta bien, escribi "guardalo". Si queres cambiar el nombre, escribi por ejemplo: "guardalo como remito-mario-alvarez.pdf".'
   ].join('\n');
 }
 
@@ -373,7 +387,115 @@ function normalizeDraftItems(payload: DraftPayload, defaultUnitPrice: number) {
   }));
 }
 
-async function createQuoteDraft(companyId: string, message: string, payload: DraftPayload): Promise<AssistantResponse['action'] & { answer: string; sources: KnowledgeSource[] }> {
+async function createQuotePreviewDraft(companyId: string, message: string, payload: DraftPayload, suggestedFileName?: string): Promise<AssistantResponse> {
+  const customer = await resolveCustomer({
+    companyId,
+    name: payload.customerName,
+    cuit: payload.customerCuit,
+    address: payload.customerAddress,
+    source: 'asistente IA'
+  });
+  if (!customer) throw new Error('El cliente no esta registrado. Confirmalo antes de guardar el presupuesto.');
+  const items = normalizeDraftItems(payload, 0);
+  const totals = calculateQuoteTotals(items);
+  const pdf = await renderQuotePdf({
+    number: 0,
+    customerName: customer.legalName,
+    issueDate: new Date(),
+    validUntil: undefined,
+    currency: payload.currency ?? 'ARS',
+    subtotal: totals.subtotal,
+    taxTotal: totals.taxTotal,
+    total: totals.total,
+    notes: payload.notes || 'Borrador para confirmacion.',
+    items: items.map((item) => ({
+      description: item.description,
+      quantity: item.quantity.toString(),
+      unit: item.unit,
+      unitPrice: item.unitPrice.toString(),
+      total: (item.quantity * item.unitPrice).toString()
+    }))
+  });
+  const previewFileName = ensurePdfFileName(suggestedFileName || suggestedDocumentFileName('quote', payload));
+  const stored = await writeDocumentFile({
+    buffer: pdf,
+    filename: previewFileName,
+    mimeType: 'application/pdf',
+    sourceType: 'ai_generated',
+    companyId
+  });
+  const pending: PendingDeliveryDraft = {
+    type: 'quote',
+    payload,
+    suggestedFileName: previewFileName,
+    token: nanoid(),
+    previewStoragePath: stored.storagePath,
+    previewFileName,
+    previewMimeType: 'application/pdf'
+  };
+  return {
+    mode: config.OPENAI_API_KEY ? 'openai' : 'local',
+    answer: [
+      'Te mande el PDF del presupuesto para ' + customer.legalName + '.',
+      'Si esta bien, respondeme "guardalo". Nombre sugerido: ' + previewFileName,
+      'Si queres cambiar el nombre, respondeme "guardalo como ...".'
+    ].join('\n'),
+    sources: [],
+    suggestions: [],
+    pendingDeliveryDraft: pending,
+    action: { type: 'document_draft_pending' }
+  };
+}
+
+async function createDeliveryNotePreviewDraft(companyId: string, message: string, payload: DraftPayload, suggestedFileName?: string): Promise<AssistantResponse> {
+  const customer = await resolveCustomer({
+    companyId,
+    name: payload.customerName,
+    cuit: payload.customerCuit,
+    address: payload.customerAddress,
+    source: 'remito generado por asistente IA'
+  });
+  if (!customer) throw new Error('El cliente no esta registrado. Confirmalo antes de guardar el remito.');
+  const items = payload.items.length ? payload.items : [{ description: message, quantity: 1, unit: 'trabajo' }];
+  const pdf = await renderDeliveryNotePdf({
+    number: 'borrador',
+    customerName: customer.legalName,
+    issueDate: new Date(),
+    notes: payload.notes || 'Remito para confirmacion.',
+    items: items.map((item) => ({ description: item.description, quantity: item.quantity || 1, unit: item.unit || 'unidad' }))
+  });
+  const previewFileName = ensurePdfFileName(suggestedFileName || suggestedDocumentFileName('delivery_note', payload));
+  const stored = await writeDocumentFile({
+    buffer: pdf,
+    filename: previewFileName,
+    mimeType: 'application/pdf',
+    sourceType: 'ai_generated',
+    companyId
+  });
+  const pending: PendingDeliveryDraft = {
+    type: 'delivery_note',
+    payload: { ...payload, items },
+    suggestedFileName: previewFileName,
+    token: nanoid(),
+    previewStoragePath: stored.storagePath,
+    previewFileName,
+    previewMimeType: 'application/pdf'
+  };
+  return {
+    mode: config.OPENAI_API_KEY ? 'openai' : 'local',
+    answer: [
+      'Te mande el PDF del remito para ' + customer.legalName + '.',
+      'Si esta bien, respondeme "guardalo". Nombre sugerido: ' + previewFileName,
+      'Si queres cambiar el nombre, respondeme "guardalo como ...".'
+    ].join('\n'),
+    sources: [],
+    suggestions: [],
+    pendingDeliveryDraft: pending,
+    action: { type: 'document_draft_pending' }
+  };
+}
+
+async function createQuoteDraft(companyId: string, message: string, payload: DraftPayload, fileName?: string): Promise<AssistantResponse['action'] & { answer: string; sources: KnowledgeSource[] }> {
   const customer = await resolveCustomer({
     companyId,
     name: payload.customerName,
@@ -405,7 +527,15 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
     include: { customer: true, items: true }
   });
 
-  const pdf = await renderQuotePdf({
+  let pdf: Buffer | null = null;
+  try {
+    const docxPath = await writeFmhQuoteDocx(quote);
+    const convertedPdfPath = await convertDocxToPdf(docxPath);
+    if (convertedPdfPath) pdf = await fs.readFile(convertedPdfPath);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+  }
+  pdf ??= await renderQuotePdf({
     number: quote.number,
     customerName: quote.customer.legalName,
     issueDate: quote.issueDate,
@@ -423,9 +553,10 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
       total: item.total.toString()
     }))
   });
+  const finalFileName = ensurePdfFileName(fileName || 'presupuesto-' + slugify(quote.customer.legalName) + '-' + String(quote.number).padStart(5, '0') + '.pdf') || 'presupuesto-' + slugify(quote.customer.legalName) + '-' + String(quote.number).padStart(5, '0') + '.pdf';
   const stored = await writeDocumentFile({
     buffer: pdf,
-    filename: `presupuesto-ia-${String(quote.number).padStart(5, '0')}.pdf`,
+    filename: finalFileName,
     mimeType: 'application/pdf',
     sourceType: 'ai_generated',
     companyId
@@ -435,7 +566,7 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
       companyId,
       kind: 'QUOTE',
       sourceType: 'ai_generated',
-      fileName: `presupuesto-ia-${String(quote.number).padStart(5, '0')}.pdf`,
+      fileName: finalFileName,
       mimeType: 'application/pdf',
       storagePath: stored.storagePath,
       sha256: stored.sha256,
@@ -465,11 +596,11 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
     answer: [
       `Listo. Cree el presupuesto borrador #${quote.number} para ${quote.customer.legalName}.`,
       `Total estimado: ${quote.currency} ${Number(quote.total).toLocaleString('es-AR')}.`,
-      'Quedo guardado como borrador editable y tambien como PDF en Documentos para revisar antes de enviar.'
+      'Quedo guardado como borrador editable y tambien como PDF para reenviar desde WhatsApp.'
     ].join('\n'),
     sources: [
       { type: 'quote', id: quote.id, title: `Presupuesto #${quote.number}`, subtitle: quote.customer.legalName },
-      { type: 'document', id: document.id, title: document.fileName, subtitle: 'Presupuesto / Estructurado', url: `/api/documents/${document.id}/content` }
+      { type: 'document', id: document.id, title: document.fileName, subtitle: 'Presupuesto PDF / Estructurado', url: `/api/documents/${document.id}/content` }
     ]
   };
 }
@@ -494,7 +625,7 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
     notes: payload.notes || 'Remito generado desde el asistente IA. Revisar antes de entregar.',
     items: items.map((item) => ({ description: item.description, quantity: item.quantity || 1, unit: item.unit || 'unidad' }))
   });
-  const filename = ensurePdfFileName(fileName || suggestedDeliveryFileName(payload)) || `remito-ia-${number}.pdf`;
+  const filename = ensurePdfFileName(fileName || suggestedDocumentFileName('delivery_note', payload, number)) || 'remito-' + slugify(customer.legalName) + '-' + number + '.pdf';
   const stored = await writeDocumentFile({
     buffer: pdf,
     filename,
@@ -535,7 +666,7 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
     answer: [
       `Listo. Guarde el remito borrador #${number} para ${customer.legalName}.`,
       `Archivo: ${filename}`,
-      'Quedo como PDF en Documentos, tipo Remito, para revisar antes de entregar o enviar.'
+      'Quedo como PDF para reenviar desde WhatsApp y tambien en Documentos, tipo Remito.'
     ].join('\n'),
     sources: [{ type: 'document', id: document.id, title: document.fileName, subtitle: 'Remito / Estructurado', url: `/api/documents/${document.id}/content` }]
   };
@@ -659,7 +790,10 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
   if (input.pendingDeliveryDraft) {
     const requestedFileName = extractRequestedFileName(input.message);
     if (confirmsPendingDraft(input.message) || requestedFileName) {
-      const created = await createDeliveryNote(companyId, input.message, input.pendingDeliveryDraft.payload, requestedFileName || input.pendingDeliveryDraft.suggestedFileName);
+      const nextFileName = requestedFileName || input.pendingDeliveryDraft.suggestedFileName;
+      const created = input.pendingDeliveryDraft.type === 'quote'
+        ? await createQuoteDraft(companyId, input.message, input.pendingDeliveryDraft.payload, nextFileName)
+        : await createDeliveryNote(companyId, input.message, input.pendingDeliveryDraft.payload, nextFileName);
       return {
         mode: config.OPENAI_API_KEY ? 'openai' : 'local',
         answer: created.answer,
@@ -677,13 +811,22 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
       const pending = { ...input.pendingDeliveryDraft, suggestedFileName: fileName };
       return {
         mode: config.OPENAI_API_KEY ? 'openai' : 'local',
-        answer: formatDeliveryDraft(pending),
+        answer: formatDocumentDraft(pending),
         sources: [],
         suggestions,
         pendingDeliveryDraft: pending,
-        action: { type: 'delivery_note_draft_pending' }
+        action: { type: 'document_draft_pending' }
       };
     }
+
+    return {
+      mode: config.OPENAI_API_KEY ? 'openai' : 'local',
+      answer: formatDocumentDraft(input.pendingDeliveryDraft),
+      sources: [],
+      suggestions,
+      pendingDeliveryDraft: input.pendingDeliveryDraft,
+      action: { type: 'document_draft_pending' }
+    };
   }
 
   if (wantsCustomerList(input.message)) {
@@ -739,8 +882,8 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     if (missing.length) {
       const answer =
         effectiveIntent === 'delivery_note' && payload.customerName && missing.length === 1 && missing[0] === 'items o descripcion'
-          ? `Perfecto, lo armamos para ${payload.customerName}. Decime que tenemos que agregar al remito: trabajos, materiales, cantidades o descripcion.`
-          : `Para crear el ${effectiveIntent === 'quote' ? 'presupuesto' : 'remito'} necesito estos datos: ${missing.join(', ')}. Pasamelos en un mensaje y lo guardo como borrador editable.`;
+          ? 'Perfecto, lo armamos para ' + payload.customerName + '. Decime que tenemos que agregar al remito: trabajos, materiales, cantidades o descripcion.'
+          : 'Para crear el ' + (effectiveIntent === 'quote' ? 'presupuesto' : 'remito') + ' necesito estos datos: ' + missing.join(', ') + '. Pasamelos en un mensaje y lo guardo como borrador editable.';
       return {
         mode: config.OPENAI_API_KEY ? 'openai' : 'local',
         answer,
@@ -750,33 +893,10 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     }
 
     if (effectiveIntent === 'delivery_note') {
-      const pending: PendingDeliveryDraft = {
-        type: 'delivery_note',
-        payload,
-        suggestedFileName: suggestedDeliveryFileName(payload)
-      };
-      return {
-        mode: config.OPENAI_API_KEY ? 'openai' : 'local',
-        answer: formatDeliveryDraft(pending),
-        sources: [],
-        suggestions,
-        pendingDeliveryDraft: pending,
-        action: { type: 'delivery_note_draft_pending' }
-      };
+      return await createDeliveryNotePreviewDraft(companyId, input.message, payload, suggestedDocumentFileName('delivery_note', payload));
     }
 
-    const created = await createQuoteDraft(companyId, input.message, payload);
-    return {
-      mode: config.OPENAI_API_KEY ? 'openai' : 'local',
-      answer: created.answer,
-      sources: created.sources,
-      suggestions,
-      action: {
-        type: created.type,
-        quoteId: created.quoteId,
-        documentId: created.documentId
-      }
-    };
+    return await createQuotePreviewDraft(companyId, input.message, payload, suggestedDocumentFileName('quote', payload));
   }
 
   const [context, knowledge, weakPoints] = await Promise.all([

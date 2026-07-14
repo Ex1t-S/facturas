@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { answerAssistant, type PendingDeliveryDraft } from '../services/assistant.js';
-import { writeDocumentFile } from '../services/documentStorage.js';
+import { readStoredDocumentFile, writeDocumentFile } from '../services/documentStorage.js';
 import {
   getWhatsAppMedia,
   sendWhatsAppDocument,
@@ -160,6 +160,23 @@ function parsePending(value: string | null | undefined): PendingDeliveryDraft | 
   }
 }
 
+function pendingDraftContentUrl(baseUrl: string, pending?: PendingDeliveryDraft) {
+  return pending?.token ? baseUrl + '/api/whatsapp/drafts/' + pending.token + '/content' : '';
+}
+
+async function findPendingDraftByToken(token: string) {
+  const conversations = await prisma.whatsAppConversation.findMany({
+    where: { pendingJson: { not: null } },
+    select: { pendingJson: true },
+    take: 200
+  });
+  for (const conversation of conversations) {
+    const pending = parsePending(conversation.pendingJson);
+    if (pending?.token === token) return pending;
+  }
+  return null;
+}
+
 export const whatsappRoutes: FastifyPluginAsync = async (app) => {
   app.get('/api/whatsapp/messages', async () => {
     return prisma.whatsAppMessage.findMany({
@@ -192,6 +209,17 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get('/api/whatsapp/config', async () => whatsappConfigStatus());
+
+  app.get('/api/whatsapp/drafts/:token/content', async (request, reply) => {
+    const params = z.object({ token: z.string() }).parse(request.params);
+    const pending = await findPendingDraftByToken(params.token);
+    if (!pending) return reply.code(404).send({ error: 'Draft not found' });
+    const buffer = await readStoredDocumentFile(pending.previewStoragePath);
+    return reply
+      .header('Content-Type', pending.previewMimeType || 'application/pdf')
+      .header('Content-Disposition', 'inline; filename="' + encodeURIComponent(pending.previewFileName || pending.suggestedFileName || 'borrador.pdf') + '"')
+      .send(buffer);
+  });
 
   app.get('/webhooks/whatsapp', async (request, reply) => {
     const query = z
@@ -251,16 +279,20 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
           });
 
           const publicBaseUrl = config.PUBLIC_BASE_URL.replace(/\/$/, '');
-          const documentUrl = assistantResponse.action?.documentId
+          const draftUrl = pendingDraftContentUrl(publicBaseUrl, assistantResponse.pendingDeliveryDraft);
+          const finalDocumentUrl = assistantResponse.action?.documentId
             ? publicBaseUrl + '/api/documents/' + assistantResponse.action.documentId + '/content'
             : '';
+          const documentUrl = draftUrl || finalDocumentUrl;
 
-          if (assistantResponse.action?.documentId && documentUrl) {
-            const storedDocument = await prisma.document.findUnique({ where: { id: assistantResponse.action.documentId } });
+          if (documentUrl) {
+            const storedDocument = assistantResponse.action?.documentId
+              ? await prisma.document.findUnique({ where: { id: assistantResponse.action.documentId } })
+              : null;
             const sent = await sendWhatsAppDocument({
               to: message.from,
               documentUrl,
-              filename: storedDocument?.fileName ?? 'documento.pdf',
+              filename: assistantResponse.pendingDeliveryDraft?.previewFileName || storedDocument?.fileName || 'documento.pdf',
               caption: assistantResponse.answer.slice(0, 900)
             });
             await prisma.whatsAppMessage.create({
@@ -271,7 +303,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
                 providerMessageId: sent.providerMessageId,
                 messageType: 'document',
                 body: assistantResponse.answer,
-                mediaDocumentId: assistantResponse.action.documentId,
+                mediaDocumentId: assistantResponse.action?.documentId,
                 conversationId: conversation.id
               }
             });
@@ -284,7 +316,8 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
                 toNumber: message.from,
                 providerMessageId: sent.providerMessageId,
                 messageType: 'text',
-                body: assistantResponse.answer
+                body: assistantResponse.answer,
+                conversationId: conversation.id
               }
             });
           }

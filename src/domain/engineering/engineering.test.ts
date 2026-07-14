@@ -7,6 +7,9 @@ import { calculateBomCost } from './costing.js';
 import { engineeringExtractionSchema } from '../../services/engineering/engineeringSchemas.js';
 import { calculateEulerBucklingReference, calculateNominalLoadPerSupport, calculateSimpleAxialStress, calculateSlendernessRatio, calculateVerticalLoad } from './structural.js';
 import { parseConversationState, updateConversationState, activeInputs } from '../../services/engineering/conversationState.js';
+import { buildSiloSupportTakeoff, aggregateTakeoff } from '../../services/engineering/takeoff.js';
+import { calculatePurchase } from '../../services/engineering/purchasing.js';
+import { renderPreliminaryEngineeringSvg } from '../../services/engineering/drawing.js';
 
 describe('engineering deterministic calculations', () => {
   it('converts compatible units and rejects incompatible ones', () => {
@@ -54,5 +57,25 @@ describe('engineering deterministic calculations', () => {
     expect(activeInputs(state).find((item) => item.key === 'location')?.value).toContain('Pergamino');
     expect(activeInputs(state).find((item) => item.key === 'freeHeight')?.value).toBe(4);
     expect(state.decisions).toHaveLength(1);
+    expect(state.missingData.some((item) => ['product', 'location', 'freeHeight'].includes(item.key))).toBe(false);
+    state = updateConversationState(state, 'El silo tiene 8 metros de diametro, 7 metros de cuerpo y un cono de 2 metros.');
+    expect(activeInputs(state).find((item) => item.key === 'diameter')?.value).toBe(8);
+    expect(activeInputs(state).find((item) => item.key === 'bodyHeight')?.value).toBe(7);
+    expect(activeInputs(state).find((item) => item.key === 'coneHeight')?.value).toBe(2);
+  });
+  it('creates a preliminary takeoff and commercial purchase quantities', () => {
+    const takeoff = buildSiloSupportTakeoff({ supportCount: 6, freeHeightM: 4, diameterM: 8, legCandidate: { id: 'a', designation: 'Tubo 100x100x4', kgPerM: 12, source: 'INVENTORY', sourceTitle: 'Inventario', verified: true } });
+    const grouped = aggregateTakeoff(takeoff.lines);
+    expect(grouped.find((line) => line.description === 'Patas de soporte')?.totalLengthM).toBe(24);
+    expect(grouped.find((line) => line.description === 'Patas de soporte')?.estimatedWeightKg).toBe(288);
+    expect(grouped.find((line) => line.description === 'Arriostramientos diagonales')?.totalLengthM).toBeGreaterThan(0);
+    expect(calculatePurchase({ description: 'Tubo', needM: 43, commercialLengthM: 12, stockM: 0, pricePerM: 100 }).buyQuantity).toBe(4);
+    expect(calculatePurchase({ description: 'Sin precio', needM: 10, commercialLengthM: 12 }).priceStatus).toBe('NO_PRICE');
+  });
+  it('generates a traceable FMH preliminary drawing without using image generation', () => {
+    const svg = renderPreliminaryEngineeringSvg({ drawingType: 'SILO', diameter: 8, bodyHeight: 7, coneHeight: 2, freeHeight: 4, supportCount: 6, capacityT: 200, customerName: 'Cliente de prueba' });
+    expect(svg).toContain('PLANO PRELIMINAR PARA PRESUPUESTO');
+    expect(svg).toContain('NO APTO PARA FABRICACION');
+    expect(svg).toContain('6 apoyos');
   });
 });

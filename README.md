@@ -198,6 +198,8 @@ Importante: hoy Prisma sigue con `SQLite`, así que antes de usar Neon hay que m
 
 Configurar `ENGINEERING_KNOWLEDGE_ROOT` o reutilizar `HISTORICAL_DOCUMENT_ROOT` y ejecutar:
 
+Para los planos históricos, configurar `ENGINEERING_DRAWINGS_ROOT` y ejecutar `npm run engineering:drawings -- "C:\ruta\de\planos"`. La importación es local, incremental y no envía los PDF a OpenAI.
+
 El Asistente de Ingenieria ahora mantiene conversaciones persistentes, memoria tecnica, predimensionamientos trazables, antecedentes FMH, reglamentos candidatos y casos guardados. Para probarlo, envia mensajes sucesivos sobre un silo de 200 toneladas, el producto y la comparacion entre 4 y 6 apoyos. Ver `docs/engineering-assistant.md`.
 
 ```powershell

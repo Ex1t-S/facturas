@@ -63,6 +63,18 @@ El ciclo de herramientas tiene límite configurable y registra cada llamada. Inc
 
 La pantalla Ingeniería funciona como workspace: conversaciones persistentes, chat multiturno, estado de análisis, guardado como caso y pestaña independiente para la biblioteca. El endpoint de esquema devuelve SVG paramétrico para silo, tolva, galpón o estructura soporte, rotulado como no apto para fabricación.
 
+## Biblioteca de Planos FMH
+
+Configurar `ENGINEERING_DRAWINGS_ROOT` con la carpeta local de PDFs o usar el fallback de `ENGINEERING_KNOWLEDGE_ROOT`. La ingesta local `npm run engineering:drawings -- "C:\\ruta\\de\\planos"` calcula SHA-256, evita duplicados, extrae texto disponible, genera una miniatura PNG con `pdf-parse`, guarda una extracción normalizada y registra la plantilla detectada. No realiza llamadas a OpenAI ni envía los PDF a la API.
+
+La interfaz agrega la pestaña `Planos FMH`, búsqueda, miniaturas, estado de análisis y apertura del PDF original cuando la carpeta está disponible en la misma instalación. La plantilla inicial detectada se guarda como `FMH_TEMPLATE_SCAN`; queda marcada como inferida localmente y requiere revisión humana antes de usarla como formato definitivo.
+
+Rutas nuevas: `GET /api/engineering/drawings`, `GET /api/engineering/drawings/status`, `GET /api/engineering/drawings/:id`, `GET /api/engineering/drawings/:id/thumbnail`, `GET /api/engineering/drawings/:id/file`, `POST /api/engineering/drawings/ingestion/start`, `POST /api/engineering/drawing` y `POST /api/engineering/drawing/pdf`.
+
+## Cómputo de materiales
+
+Cuando la conversación tiene altura libre y alternativas de apoyos, el asistente puede generar un despiece preliminar de patas, diagonales y vigas de vinculación, agrupar líneas, estimar metros lineales, calcular kg cuando existe `kgPerM`, convertir metros a barras comerciales de 12 m y mostrar materiales sin precio. Las secciones solo se consideran candidatas si provienen del inventario o antecedentes; no se inventan propiedades faltantes.
+
 ## Limitaciones actuales
 
 - La primera extracción estructurada es local y conservadora; imágenes y PDF escaneados quedan en `NEEDS_VISION`.

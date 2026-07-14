@@ -226,7 +226,7 @@ td strong, td small { display: block; }
 .trace { display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-top: 8px; background: var(--panel-2); }
 .trace span { color: var(--muted); font-size: 13px; }
 .trace b { font-size: 18px; }
-.engineeringTabs { display: flex; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.engineeringTabs { display: none; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
 .engineeringTabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); }
 .engineeringTabs button.active { color: var(--ink); border-bottom-color: var(--brand); }
 .engineeringWorkspace { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; min-height: 620px; }
@@ -244,6 +244,18 @@ td strong, td small { display: block; }
 .engineeringComposer { display: flex; gap: 10px; align-items: end; border-top: 1px solid var(--line); padding-top: 12px; }
 .engineeringComposer textarea { flex: 1; min-height: 72px; resize: vertical; }
 .resultBadges { display: flex; gap: 6px; margin-bottom: 10px; }
+.technicalDetails { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+.technicalDetails summary { cursor: pointer; color: var(--brand); font-weight: 700; font-size: 13px; }
+.technicalDetails .engineeringResult { margin-top: 10px; }
+.engineeringDrawingShortcut { display: flex; gap: 8px; margin: 0 0 14px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.engineeringDrawingShortcut button.active { border-color: var(--brand); color: var(--brand); }
+.drawingCards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-top: 16px; }
+.drawingCard { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--panel-2); }
+.drawingCard img { width: 100px; height: 140px; object-fit: cover; object-position: center; border: 1px solid var(--line); background: white; }
+.drawingCard div { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.drawingCard span, .drawingCard small { color: var(--muted); font-size: 12px; }
+.drawingCard strong { overflow-wrap: anywhere; }
+.drawingCard a { color: var(--brand); font-size: 13px; font-weight: 700; }
 .assistantHistory {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);

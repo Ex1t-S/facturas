@@ -14,6 +14,7 @@ const configSchema = z.object({
   WHATSAPP_WABA_ID: z.string().default(''),
   HISTORICAL_DOCUMENT_ROOT: z.string().default('C:\\Users\\German\\Documents\\Adalberto'),
   ENGINEERING_KNOWLEDGE_ROOT: z.string().default(''),
+  ENGINEERING_DRAWINGS_ROOT: z.string().default(''),
   OPENAI_API_KEY: z.string().default(''),
   OPENAI_MODEL: z.string().default('gpt-5.4-mini'),
   OPENAI_ENGINEERING_MODEL: z.string().default(''),
