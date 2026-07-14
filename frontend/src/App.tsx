@@ -412,9 +412,27 @@ function engineeringLabelFor(value: string) {
   return labels[value] || value;
 }
 
-function TechnicalDetails({ result }: { result: AnyRecord | string }) {
+function LegacyTechnicalDetails({ result }: { result: AnyRecord | string }) {
   const parsed = typeof result === 'string' ? (() => { try { return JSON.parse(result); } catch { return { answer: result }; } })() : result;
   return <details className="technicalDetails"><summary>Ver análisis técnico</summary><div className="engineeringResult"><div className="resultBadges"><Badge value={labelFor(parsed.level || 'ORIENTATION')} /><Badge value={labelFor(parsed.capability || 'PRELIMINARY_ASSISTED')} /></div>{parsed.missingData?.length > 0 && <><h3>Datos que faltan</h3><ul>{parsed.missingData.map((item: AnyRecord) => <li key={item.name}><strong>{labelFor(item.name)}:</strong> {item.reason}</li>)}</ul></>}{parsed.assumptions?.length > 0 && <><h3>Hipótesis</h3><ul>{parsed.assumptions.map((item: string) => <li key={item}>{item}</li>)}</ul></>}{parsed.calculations?.length > 0 && <><h3>Cálculos realizados</h3>{parsed.calculations.map((item: AnyRecord) => <div className="trace" key={item.title}><strong>{item.title}</strong><span>{item.formula}</span><b>{Number(item.result).toFixed(2)} {item.resultUnit}</b></div>)}</>}{parsed.materials?.length > 0 && <><h3>Materiales preliminares</h3>{parsed.materials.map((item: AnyRecord) => <div className="trace" key={`${item.description}-${item.specification || ''}`}><strong>{item.description}</strong><span>{item.specification || 'Sección pendiente de confirmar'}</span><b>{item.totalLengthM ? `${Number(item.totalLengthM).toFixed(2)} m` : ''} {item.estimatedWeightKg ? `${Number(item.estimatedWeightKg).toFixed(1)} kg` : ''}</b></div>)}</>}{parsed.purchase?.length > 0 && <><h3>Resumen de compra</h3><ul>{parsed.purchase.map((item: AnyRecord) => <li key={item.description}>{item.description}: comprar {item.buyQuantity || 0} barras de {item.commercialLength || 12} m. {item.priceStatus === 'NO_PRICE' ? 'Precio pendiente.' : ''}</li>)}</ul></>}{parsed.sources?.length > 0 && <><h3>Antecedentes FMH</h3><ul>{parsed.sources.map((source: AnyRecord) => <li key={source.id}>{source.title}</li>)}</ul></>}{parsed.regulations?.length > 0 && <><h3>Normativa consultada</h3><ul>{parsed.regulations.map((item: AnyRecord) => <li key={item.code}>{item.code} — {labelFor(item.status)}</li>)}</ul></>}</div></details>;
+}
+
+function TechnicalDetails({ result }: { result: AnyRecord | string }) {
+  const parsed = typeof result === 'string' ? (() => { try { return JSON.parse(result); } catch { return { answer: result }; } })() : result;
+  return <details className="technicalDetails">
+    <summary>Ver análisis técnico</summary>
+    <div className="engineeringResult">
+      <div className="resultBadges"><Badge value={labelFor(parsed.level || 'ORIENTATION')} /><Badge value={labelFor(parsed.capability || 'PRELIMINARY_ASSISTED')} /></div>
+      {parsed.missingData?.length > 0 && <><h3>Datos que faltan</h3><ul>{parsed.missingData.map((item: AnyRecord) => <li key={item.name}><strong>{labelFor(item.name)}:</strong> {item.reason}</li>)}</ul></>}
+      {parsed.assumptions?.length > 0 && <><h3>Hipótesis</h3><ul>{parsed.assumptions.map((item: string) => <li key={item}>{item}</li>)}</ul></>}
+      {parsed.calculations?.length > 0 && <><h3>Cálculos realizados</h3>{parsed.calculations.map((item: AnyRecord) => <div className="trace" key={item.title}><strong>{item.title}</strong><span>{item.formula}</span><b>{Number(item.result).toFixed(2)} {item.resultUnit}</b></div>)}</>}
+      {parsed.materials?.length > 0 && <><h3>Materiales preliminares</h3>{parsed.materials.map((item: AnyRecord) => <div className="trace" key={`${item.description}-${item.specification || ''}`}><strong>{item.description}</strong><span>{item.specification || 'Sección pendiente de confirmar'}</span><span>{item.sourceTitle ? `Origen: ${item.sourceTitle}` : 'Origen pendiente de verificar'}</span><b>{item.totalLengthM ? `${Number(item.totalLengthM).toFixed(2)} m` : ''} {item.estimatedWeightKg ? `${Number(item.estimatedWeightKg).toFixed(1)} kg` : 'Peso pendiente de kg/m'}</b></div>)}</>}
+      {parsed.purchase?.length > 0 && <><h3>Resumen de compra</h3><ul>{parsed.purchase.map((item: AnyRecord) => <li key={item.description}>{item.description}: comprar {item.buyQuantity || 0} barras de {item.commercialLength || 12} m; stock disponible {Number(item.stockAvailable || 0).toFixed(2)} m. {item.priceStatus === 'NO_PRICE' ? 'Precio pendiente.' : `Subtotal: ${Number(item.subtotal || 0).toFixed(2)}`}</li>)}</ul></>}
+      {parsed.estimatedCost?.total !== undefined && <><h3>Costo preliminar conocido</h3><p>{Number(parsed.estimatedCost.total).toFixed(2)} {parsed.estimatedCost.currency}.</p></>}
+      {parsed.sources?.length > 0 && <><h3>Antecedentes FMH</h3><ul>{parsed.sources.map((source: AnyRecord) => <li key={source.id}>{source.title}</li>)}</ul></>}
+      {parsed.regulations?.length > 0 && <><h3>Normativa consultada</h3><ul>{parsed.regulations.map((item: AnyRecord) => <li key={item.code}>{item.code} — {labelFor(item.status)}</li>)}</ul></>}
+    </div>
+  </details>;
 }
 
 function EngineeringLibrary({ companyId }: { companyId: string }) {

@@ -75,6 +75,8 @@ Rutas nuevas: `GET /api/engineering/drawings`, `GET /api/engineering/drawings/st
 
 Cuando la conversación tiene altura libre y alternativas de apoyos, el asistente puede generar un despiece preliminar de patas, diagonales y vigas de vinculación, agrupar líneas, estimar metros lineales, calcular kg cuando existe `kgPerM`, convertir metros a barras comerciales de 12 m y mostrar materiales sin precio. Las secciones solo se consideran candidatas si provienen del inventario o antecedentes; no se inventan propiedades faltantes.
 
+La compra usa las longitudes individuales para optimizar cortes simples, calcula barras completas y valora la cantidad efectivamente comprada. Si falta `kgPerM`, stock lineal o precio verificable, el resultado permanece pendiente en lugar de asumir cero.
+
 ## Limitaciones actuales
 
 - La primera extracción estructurada es local y conservadora; imágenes y PDF escaneados quedan en `NEEDS_VISION`.

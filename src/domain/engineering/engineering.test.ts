@@ -9,6 +9,8 @@ import { calculateEulerBucklingReference, calculateNominalLoadPerSupport, calcul
 import { parseConversationState, updateConversationState, activeInputs } from '../../services/engineering/conversationState.js';
 import { buildSiloSupportTakeoff, aggregateTakeoff } from '../../services/engineering/takeoff.js';
 import { calculatePurchase } from '../../services/engineering/purchasing.js';
+import { optimizeLinearCuts } from '../../services/engineering/cuttingOptimization.js';
+import { buildSiloMaterialEstimate } from '../../services/engineering/engineeringEstimate.js';
 import { renderPreliminaryEngineeringSvg } from '../../services/engineering/drawing.js';
 
 describe('engineering deterministic calculations', () => {
@@ -71,6 +73,23 @@ describe('engineering deterministic calculations', () => {
     expect(grouped.find((line) => line.description === 'Arriostramientos diagonales')?.totalLengthM).toBeGreaterThan(0);
     expect(calculatePurchase({ description: 'Tubo', needM: 43, commercialLengthM: 12, stockM: 0, pricePerM: 100 }).buyQuantity).toBe(4);
     expect(calculatePurchase({ description: 'Sin precio', needM: 10, commercialLengthM: 12 }).priceStatus).toBe('NO_PRICE');
+  });
+  it('builds a complete synthetic silo BOM, weight, cutting plan and known material cost', () => {
+    const candidates = [
+      { id: 'legs', designation: 'Tubo estructural de prueba A', kgPerM: 12, source: 'INVENTORY' as const, sourceTitle: 'Inventario sintético', verified: true, stockQuantity: 0, stockUnit: 'm', currentPrice: 100 },
+      { id: 'braces', designation: 'Tubo estructural de prueba B', kgPerM: 7, source: 'INVENTORY' as const, sourceTitle: 'Inventario sintético', verified: true, stockQuantity: 0, stockUnit: 'm', currentPrice: 80 },
+      { id: 'beams', designation: 'Perfil estructural de prueba C', kgPerM: 15, source: 'INVENTORY' as const, sourceTitle: 'Inventario sintético', verified: true, stockQuantity: 0, stockUnit: 'm', currentPrice: 120 }
+    ];
+    const result = buildSiloMaterialEstimate({ supportCount: 6, freeHeightM: 4, diameterM: 8, candidates });
+    expect(result.materials).toHaveLength(3);
+    expect(result.materials.reduce((sum, line) => sum + Number(line.totalLengthM || 0), 0)).toBeGreaterThan(70);
+    expect(result.totalWeightKg).toBeGreaterThan(900);
+    expect(result.purchase.every((line) => Number(line.buyQuantity) > 0)).toBe(true);
+    expect(result.purchase.every((line) => line.priceStatus === 'CURRENT')).toBe(true);
+    expect(result.costKnown).toBeGreaterThan(0);
+    expect(result.missingPrices).toEqual([]);
+    expect(optimizeLinearCuts([{ lengthM: 7, quantity: 3 }], 12)).toHaveLength(3);
+    expect(calculatePurchase({ description: 'Tubo', needM: 21, commercialLengthM: 12, pricePerM: 10, pieces: [{ lengthM: 7, quantity: 3 }] }).subtotal).toBe(360);
   });
   it('generates a traceable FMH preliminary drawing without using image generation', () => {
     const svg = renderPreliminaryEngineeringSvg({ drawingType: 'SILO', diameter: 8, bodyHeight: 7, coneHeight: 2, freeHeight: 4, supportCount: 6, capacityT: 200, customerName: 'Cliente de prueba' });
