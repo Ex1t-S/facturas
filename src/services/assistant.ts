@@ -877,7 +877,10 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     return { mode: 'local', answer: 'No hay empresa activa cargada para consultar o guardar datos.', sources: [], suggestions };
   }
 
-  if (input.pendingDeliveryDraft) {
+  // Un pedido explicito de un documento nuevo reemplaza cualquier borrador
+  // pendiente anterior. Las confirmaciones y ajustes sin una nueva intencion
+  // siguen operando sobre el borrador pendiente.
+  if (input.pendingDeliveryDraft && intent === 'none') {
     const requestedFileName = extractRequestedFileName(input.message);
     if (confirmsPendingDraft(input.message) || requestedFileName) {
       const nextFileName = requestedFileName || input.pendingDeliveryDraft.suggestedFileName;
@@ -896,27 +899,16 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
       };
     }
 
-    if (normalizeText(input.message).includes('nombre')) {
-      const fileName = requestedFileName || input.pendingDeliveryDraft.suggestedFileName;
-      const pending = { ...input.pendingDeliveryDraft, suggestedFileName: fileName };
-      return {
-        mode: config.OPENAI_API_KEY ? 'openai' : 'local',
-        answer: formatDocumentDraft(pending),
-        sources: [],
-        suggestions,
-        pendingDeliveryDraft: pending,
-        action: { type: 'document_draft_pending' }
-      };
-    }
-
-    return {
-      mode: config.OPENAI_API_KEY ? 'openai' : 'local',
-      answer: formatDocumentDraft(input.pendingDeliveryDraft),
-      sources: [],
-      suggestions,
-      pendingDeliveryDraft: input.pendingDeliveryDraft,
-      action: { type: 'document_draft_pending' }
-    };
+    const fileName = requestedFileName || input.pendingDeliveryDraft.suggestedFileName;
+    return input.pendingDeliveryDraft.type === 'quote'
+      ? await createQuotePreviewDraft(
+          companyId,
+          input.message,
+          input.pendingDeliveryDraft.payload,
+          fileName,
+          input.pendingDeliveryDraft.sourceDeliveryNoteIds
+        )
+      : await createDeliveryNotePreviewDraft(companyId, input.message, input.pendingDeliveryDraft.payload, fileName);
   }
 
   if (asksPendingDeliveryNotes(input.message)) {

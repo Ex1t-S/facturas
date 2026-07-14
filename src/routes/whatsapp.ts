@@ -288,22 +288,37 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       : null;
     let documentSendFailed = false;
 
+    async function storedBuffer(storagePath: string) {
+      try {
+        return await readStoredDocumentFile(storagePath);
+      } catch (error) {
+        app.log.warn({ error: errorText(error), storagePath }, 'whatsapp document unavailable in local storage');
+        return null;
+      }
+    }
+
     const pendingDraft = assistantResponse.pendingDeliveryDraft;
+    const pendingBuffer = !assistantResponse.previewDocument && pendingDraft
+      ? await storedBuffer(pendingDraft.previewStoragePath)
+      : null;
+    const finalBuffer = !assistantResponse.previewDocument && !pendingDraft && storedDocument
+      ? await storedBuffer(storedDocument.storagePath)
+      : null;
     const outboundDocument = assistantResponse.previewDocument
       ? {
           ...assistantResponse.previewDocument,
           documentId: undefined as string | undefined
         }
-      : pendingDraft
+      : pendingDraft && pendingBuffer
       ? {
-          buffer: await readStoredDocumentFile(pendingDraft.previewStoragePath),
+          buffer: pendingBuffer,
           mimeType: pendingDraft.previewMimeType || 'application/pdf',
           filename: pendingDraft.previewFileName || pendingDraft.suggestedFileName || 'borrador.pdf',
           documentId: undefined as string | undefined
         }
-      : storedDocument
+      : storedDocument && finalBuffer
         ? {
-            buffer: await readStoredDocumentFile(storedDocument.storagePath),
+            buffer: finalBuffer,
             mimeType: storedDocument.mimeType,
             filename: storedDocument.fileName,
             documentId: storedDocument.id
@@ -420,19 +435,6 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       return { ok: true };
     } catch (error) {
       app.log.error(error);
-      const body = 'Recibi el mensaje, pero no pude generar la respuesta automatica. Revisame configuracion de audio/PDF y volve a enviar el pedido.';
-      const sent = await sendWhatsAppText({ to: outboundWhatsAppNumber(inbound.fromNumber), body });
-      await prisma.whatsAppMessage.create({
-        data: {
-          direction: 'OUTBOUND',
-          fromNumber: inbound.toNumber,
-          toNumber: outboundWhatsAppNumber(inbound.fromNumber),
-          providerMessageId: sent.providerMessageId,
-          messageType: 'text',
-          body,
-          conversationId: conversation.id
-        }
-      });
       return reply.code(500).send({ error: error instanceof Error ? error.message : 'Reprocess failed' });
     }
   });
