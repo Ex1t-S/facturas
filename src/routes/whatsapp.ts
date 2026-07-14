@@ -165,6 +165,11 @@ function errorText(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function outboundWhatsAppNumber(value: string) {
+  const digits = value.replace(/\D/g, '');
+  return digits.startsWith('549') ? '54' + digits.slice(3) : digits;
+}
+
 function pendingDraftContentUrl(baseUrl: string, pending?: PendingDeliveryDraft) {
   return pending?.token ? baseUrl + '/api/whatsapp/drafts/' + pending.token + '/content' : '';
 }
@@ -242,12 +247,13 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     phoneNumber: string;
     conversation: { id: string; pendingJson: string | null };
   }) {
+    const outboundTo = outboundWhatsAppNumber(input.fromNumber);
     async function recordOutboundFailure(messageType: string, body: string, error: unknown) {
       await prisma.whatsAppMessage.create({
         data: {
           direction: 'OUTBOUND',
           fromNumber: input.phoneNumber,
-          toNumber: input.fromNumber,
+          toNumber: outboundTo,
           messageType,
           body: body + '\n\n[Error de envio WhatsApp: ' + errorText(error).slice(0, 900) + ']',
           status: 'failed',
@@ -308,7 +314,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
           filename: outboundDocument.filename
         });
         const sent = await sendWhatsAppDocument({
-          to: input.fromNumber,
+          to: outboundTo,
           mediaId: media.mediaId,
           filename: outboundDocument.filename,
           caption: assistantResponse.answer.slice(0, 900)
@@ -317,7 +323,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
           data: {
             direction: 'OUTBOUND',
             fromNumber: input.phoneNumber,
-            toNumber: input.fromNumber,
+            toNumber: outboundTo,
             providerMessageId: sent.providerMessageId,
             messageType: 'document',
             body: assistantResponse.answer,
@@ -337,7 +343,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     if (documentUrl && isPublicDocumentUrl(documentUrl)) {
       try {
         const sent = await sendWhatsAppDocument({
-          to: input.fromNumber,
+          to: outboundTo,
           documentUrl,
           filename: assistantResponse.pendingDeliveryDraft?.previewFileName || storedDocument?.fileName || 'documento.pdf',
           caption: assistantResponse.answer.slice(0, 900)
@@ -346,7 +352,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
           data: {
             direction: 'OUTBOUND',
             fromNumber: input.phoneNumber,
-            toNumber: input.fromNumber,
+            toNumber: outboundTo,
             providerMessageId: sent.providerMessageId,
             messageType: 'document',
             body: assistantResponse.answer,
@@ -369,12 +375,12 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
         ? assistantResponse.answer + '\n\nNo pude adjuntar el PDF porque PUBLIC_BASE_URL no es una URL publica accesible por WhatsApp. Configurala con la URL de Render/produccion y reintenta.'
         : assistantResponse.answer;
     try {
-      const sent = await sendWhatsAppText({ to: input.fromNumber, body: fallbackAnswer });
+      const sent = await sendWhatsAppText({ to: outboundTo, body: fallbackAnswer });
       await prisma.whatsAppMessage.create({
         data: {
           direction: 'OUTBOUND',
           fromNumber: input.phoneNumber,
-          toNumber: input.fromNumber,
+          toNumber: outboundTo,
           providerMessageId: sent.providerMessageId,
           messageType: 'text',
           body: fallbackAnswer,
@@ -410,12 +416,12 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     } catch (error) {
       app.log.error(error);
       const body = 'Recibi el mensaje, pero no pude generar la respuesta automatica. Revisame configuracion de audio/PDF y volve a enviar el pedido.';
-      const sent = await sendWhatsAppText({ to: inbound.fromNumber, body });
+      const sent = await sendWhatsAppText({ to: outboundWhatsAppNumber(inbound.fromNumber), body });
       await prisma.whatsAppMessage.create({
         data: {
           direction: 'OUTBOUND',
           fromNumber: inbound.toNumber,
-          toNumber: inbound.fromNumber,
+          toNumber: outboundWhatsAppNumber(inbound.fromNumber),
           providerMessageId: sent.providerMessageId,
           messageType: 'text',
           body,
@@ -461,9 +467,9 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
           if (config.WHATSAPP_ALLOWED_FROM && message.from !== config.WHATSAPP_ALLOWED_FROM) continue;
           const duplicate = await prisma.whatsAppMessage.findUnique({ where: { providerMessageId: message.id }, select: { id: true } });
           if (duplicate) continue;
-          if (message.audio && !config.WHATSAPP_TEST_MODE) {
+          if (message.audio) {
             try {
-              await sendWhatsAppText({ to: message.from, body: 'Recibí el audio. Lo estoy transcribiendo y preparando el PDF para que lo revises.' });
+              await sendWhatsAppText({ to: outboundWhatsAppNumber(message.from), body: 'Recibí el audio. Lo estoy transcribiendo y preparando el PDF para que lo revises.' });
             } catch (error) {
               app.log.warn({ error: errorText(error), to: message.from }, 'whatsapp progress message failed');
             }
@@ -478,19 +484,17 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
           });
           await prisma.whatsAppMessage.update({ where: { id: inbound.id }, data: { conversationId: conversation.id } });
 
-          if (config.WHATSAPP_TEST_MODE) continue;
-
           try {
             await sendAssistantReply({ company, inbound, fromNumber: message.from, phoneNumber, conversation });
           } catch (error) {
             app.log.error(error);
             const body = 'Recibi el mensaje, pero no pude generar la respuesta automatica. Revisame configuracion de audio/PDF y volve a enviar el pedido.';
-            const sent = await sendWhatsAppText({ to: message.from, body });
+            const sent = await sendWhatsAppText({ to: outboundWhatsAppNumber(message.from), body });
             await prisma.whatsAppMessage.create({
               data: {
                 direction: 'OUTBOUND',
                 fromNumber: phoneNumber,
-                toNumber: message.from,
+                toNumber: outboundWhatsAppNumber(message.from),
                 providerMessageId: sent.providerMessageId,
                 messageType: 'text',
                 body,
