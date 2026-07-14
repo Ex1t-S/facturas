@@ -22,6 +22,7 @@ import { searchRoutes } from './routes/search.js';
 import { supplierRoutes } from './routes/suppliers.js';
 import { whatsappRoutes } from './routes/whatsapp.js';
 import { engineeringRoutes } from './routes/engineering.js';
+import { deliveryNoteRoutes } from './routes/deliveryNotes.js';
 import { webRoutes } from './routes/web.js';
 import { syncPublicSupplierPrices } from './services/supplierPublicSync.js';
 
@@ -66,6 +67,7 @@ export async function buildServer() {
   await app.register(searchRoutes, { prefix: '/api' });
   await app.register(documentRoutes, { prefix: '/api' });
   await app.register(invoiceRoutes, { prefix: '/api' });
+  await app.register(deliveryNoteRoutes, { prefix: '/api' });
   await app.register(inventoryRoutes, { prefix: '/api' });
   await app.register(supplierRoutes, { prefix: '/api' });
   await app.register(whatsappRoutes);

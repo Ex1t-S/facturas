@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     buildCommand: apt-get update && apt-get install -y --no-install-recommends libreoffice-writer && npm install && npx prisma generate && npm run build
-    startCommand: npm start
+    startCommand: npx prisma migrate deploy && npm start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:

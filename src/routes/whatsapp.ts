@@ -459,6 +459,15 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
         const phoneNumber = change.value.metadata?.display_phone_number ?? change.value.metadata?.phone_number_id ?? '';
         for (const message of change.value.messages ?? []) {
           if (config.WHATSAPP_ALLOWED_FROM && message.from !== config.WHATSAPP_ALLOWED_FROM) continue;
+          const duplicate = await prisma.whatsAppMessage.findUnique({ where: { providerMessageId: message.id }, select: { id: true } });
+          if (duplicate) continue;
+          if (message.audio && !config.WHATSAPP_TEST_MODE) {
+            try {
+              await sendWhatsAppText({ to: message.from, body: 'Recibí el audio. Lo estoy transcribiendo y preparando el PDF para que lo revises.' });
+            } catch (error) {
+              app.log.warn({ error: errorText(error), to: message.from }, 'whatsapp progress message failed');
+            }
+          }
           const inbound = await processIncomingMessage({ message, phoneNumber });
           if (!company || !inbound.body?.trim()) continue;
 

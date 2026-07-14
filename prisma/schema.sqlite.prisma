@@ -105,6 +105,7 @@ model Company {
   email        String?
   createdAt    DateTime   @default(now())
   customers    Customer[]
+  deliveryNotes DeliveryNote[]
   products     Product[]
   suppliers    Supplier[]
   supplierPriceLists SupplierPriceList[]
@@ -175,6 +176,7 @@ model Customer {
   company      Company           @relation(fields: [companyId], references: [id])
   quotes       Quote[]
   invoices     Invoice[]
+  deliveryNotes DeliveryNote[]
   whatsapp     WhatsAppMessage[]
   candidates   CustomerCandidate[]
 
@@ -202,6 +204,7 @@ model Product {
   createdAt   DateTime    @default(now())
   company     Company     @relation(fields: [companyId], references: [id])
   quoteItems  QuoteItem[]
+  deliveryNoteItems DeliveryNoteItem[]
   invoiceItems InvoiceItem[]
   itemCandidates DocumentItemCandidate[]
   stocks      InventoryStock[]
@@ -256,6 +259,7 @@ model Quote {
   createdBy   User?       @relation(fields: [createdById], references: [id])
   items       QuoteItem[]
   invoices    Invoice[]
+  deliveryNoteLinks DeliveryNoteQuote[]
 
   @@unique([companyId, number, version])
   @@index([customerId])
@@ -296,6 +300,7 @@ model Document {
   uploadedBy  String?
   createdAt   DateTime              @default(now())
   extraction  DocumentExtraction?
+  deliveryNote DeliveryNote?
   messages    WhatsAppMessage[]
   itemCandidates DocumentItemCandidate[]
   customerCandidates CustomerCandidate[]
@@ -488,6 +493,66 @@ model AssistantMessage {
   @@index([chatId, createdAt])
   @@index([quoteId])
   @@index([documentId])
+}
+
+model DeliveryNote {
+  id          String             @id @default(cuid())
+  companyId   String
+  customerId  String
+  documentId  String?            @unique
+  number      Int
+  status      DeliveryNoteStatus @default(PENDING)
+  issueDate   DateTime           @default(now())
+  projectName String?
+  currency    String             @default("ARS")
+  total       Decimal?
+  notes       String?
+  company     Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer    Customer           @relation(fields: [customerId], references: [id])
+  document    Document?          @relation(fields: [documentId], references: [id])
+  items       DeliveryNoteItem[]
+  quoteLinks  DeliveryNoteQuote[]
+
+  @@unique([companyId, number])
+  @@index([companyId, customerId, status])
+  @@index([companyId, issueDate])
+}
+
+model DeliveryNoteItem {
+  id                String       @id @default(cuid())
+  deliveryNoteId    String
+  productId         String?
+  description       String
+  quantity          Decimal
+  convertedQuantity  Decimal      @default(0)
+  unit              String        @default("unidad")
+  unitPrice         Decimal?
+  priceOrigin       String?
+  taxRate           Decimal       @default(21)
+  deliveryNote      DeliveryNote  @relation(fields: [deliveryNoteId], references: [id], onDelete: Cascade)
+  product           Product?      @relation(fields: [productId], references: [id])
+
+  @@index([deliveryNoteId])
+}
+
+model DeliveryNoteQuote {
+  id              String       @id @default(cuid())
+  deliveryNoteId  String
+  quoteId         String
+  createdAt       DateTime     @default(now())
+  deliveryNote    DeliveryNote @relation(fields: [deliveryNoteId], references: [id], onDelete: Cascade)
+  quote           Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryNoteId, quoteId])
+  @@index([quoteId])
+}
+
+enum DeliveryNoteStatus {
+  DRAFT
+  PENDING
+  QUOTED
+  INVOICED
+  CANCELLED
 }
 
 model EngineeringKnowledgeDocument {

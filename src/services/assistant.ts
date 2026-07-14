@@ -14,6 +14,7 @@ import {
 import { safeFileName, writeDocumentFile } from './documentStorage.js';
 import { convertDocxToPdf, renderFmhQuotePdf, writeFmhQuoteDocx, type QuoteWithDetails } from './fmhQuoteDocument.js';
 import { renderDeliveryNotePdf, renderQuotePdf } from './pdf.js';
+import { createDeliveryNoteRecord, listPendingDeliveryNotes, linkDeliveryNotesToQuote } from './deliveryNotes/deliveryNoteService.js';
 
 const OPENAI_TIMEOUT_MS = 35_000;
 
@@ -73,6 +74,7 @@ export type PendingDeliveryDraft = {
   previewStoragePath: string;
   previewFileName: string;
   previewMimeType: string;
+  sourceDeliveryNoteIds?: string[];
 };
 
 function wantsCreation(message: string) {
@@ -403,7 +405,7 @@ function normalizeDraftItems(payload: DraftPayload, defaultUnitPrice: number) {
   }));
 }
 
-async function createQuotePreviewDraft(companyId: string, message: string, payload: DraftPayload, suggestedFileName?: string): Promise<AssistantResponse> {
+async function createQuotePreviewDraft(companyId: string, message: string, payload: DraftPayload, suggestedFileName?: string, sourceDeliveryNoteIds?: string[]): Promise<AssistantResponse> {
   const customer = await resolveCustomer({
     companyId,
     name: payload.customerName,
@@ -447,7 +449,8 @@ async function createQuotePreviewDraft(companyId: string, message: string, paylo
     token: nanoid(),
     previewStoragePath: stored.storagePath,
     previewFileName,
-    previewMimeType: 'application/pdf'
+    previewMimeType: 'application/pdf',
+    sourceDeliveryNoteIds
   };
   return {
     mode: config.OPENAI_API_KEY ? 'openai' : 'local',
@@ -511,7 +514,7 @@ async function createDeliveryNotePreviewDraft(companyId: string, message: string
   };
 }
 
-async function createQuoteDraft(companyId: string, message: string, payload: DraftPayload, fileName?: string): Promise<AssistantResponse['action'] & { answer: string; sources: KnowledgeSource[] }> {
+async function createQuoteDraft(companyId: string, message: string, payload: DraftPayload, fileName?: string, sourceDeliveryNoteIds?: string[]): Promise<AssistantResponse['action'] & { answer: string; sources: KnowledgeSource[] }> {
   const customer = await resolveCustomer({
     companyId,
     name: payload.customerName,
@@ -604,7 +607,7 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
       }
     }
   });
-
+  if (sourceDeliveryNoteIds?.length) await linkDeliveryNotesToQuote(companyId, quote.id, sourceDeliveryNoteIds);
   return {
     type: 'quote_draft_created',
     quoteId: quote.id,
@@ -675,14 +678,21 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
       }
     }
   });
+  const deliveryNote = await createDeliveryNoteRecord({
+    companyId,
+    customerId: customer.id,
+    documentId: document.id,
+    items: items.map((item) => ({ description: item.description, quantity: Number(item.quantity || 1), unit: item.unit || 'unidad', unitPrice: item.unitPrice, taxRate: item.taxRate })),
+    notes: payload.notes,
+    currency: payload.currency ?? 'ARS'
+  });
 
   return {
     type: 'delivery_note_created',
     documentId: document.id,
     answer: [
-      `Listo. Guarde el remito borrador #${number} para ${customer.legalName}.`,
-      `Archivo: ${filename}`,
-      'Quedo como PDF para reenviar desde WhatsApp y tambien en Documentos, tipo Remito.'
+      `Listo. Guardé el remito #${String(deliveryNote.number).padStart(5, '0')} para ${customer.legalName}.`,
+      'Estado: pendiente de presupuestar o facturar.'
     ].join('\n'),
     sources: [{ type: 'document', id: document.id, title: document.fileName, subtitle: 'Remito / Estructurado', url: `/api/documents/${document.id}/content` }]
   };
@@ -710,6 +720,50 @@ async function buildBusinessContext(companyId?: string) {
     `Presupuestos recientes: ${quotes.map((quote) => `#${quote.number} ${quote.customer.legalName} total ${quote.currency} ${quote.total}`).join('; ') || 'sin presupuestos'}.`,
     `Presupuestos/remitos recientes en documentos: ${recentDocuments.map((document) => `${document.fileName} (${document.kind}/${document.extractionStatus})`).join('; ') || 'sin documentos recientes'}.`
   ].join('\n');
+}
+
+function pendingCustomerGuess(message: string) {
+  const match = message.match(/remitos?\s+(?:pendientes?\s+)?(?:de|del|para)\s+([^?.,;\n]+)/i) || message.match(/pendientes?\s+(?:de|del|para)\s+([^?.,;\n]+)/i);
+  return match?.[1]?.trim().replace(/^cliente\s+/i, '');
+}
+
+function asksPendingDeliveryNotes(message: string) {
+  const normalized = normalizeText(message);
+  return normalized.includes('remito') && (normalized.includes('pendiente') || normalized.includes('pendientes')) && !/(junt|agrup|presupuesto|factur)/i.test(normalized);
+}
+
+function asksQuoteFromPendingDeliveryNotes(message: string) {
+  const normalized = normalizeText(message);
+  return normalized.includes('remito') && /(junt|agrup|consolid|presupuesto|factur)/i.test(normalized);
+}
+
+async function resolveCustomerForPending(companyId: string, message: string) {
+  const name = pendingCustomerGuess(message) || firstCustomerGuess(message);
+  if (!name) return { name: undefined, matches: [] as Array<{ id: string; legalName: string; tradeName: string | null }> };
+  const matches = await prisma.customer.findMany({ where: { companyId, OR: [{ legalName: { contains: name } }, { tradeName: { contains: name } }] }, select: { id: true, legalName: true, tradeName: true }, take: 10 });
+  return { name, matches };
+}
+
+async function answerPendingDeliveryNotes(companyId: string, message: string) {
+  const resolved = await resolveCustomerForPending(companyId, message);
+  if (!resolved.matches.length) return 'No encontré un cliente registrado con ese nombre.';
+  if (resolved.matches.length > 1) return ['Encontré varios clientes:', ...resolved.matches.map((customer, index) => `${index + 1}. ${customer.legalName}${customer.tradeName ? ` (${customer.tradeName})` : ''}`), 'Decime cuál querés usar.'].join('\n');
+  const notes = await listPendingDeliveryNotes(companyId, resolved.matches[0].id);
+  if (!notes.length) return `No hay remitos pendientes de ${resolved.matches[0].legalName}.`;
+  return [`Tenés ${notes.length} remito${notes.length === 1 ? '' : 's'} pendiente${notes.length === 1 ? '' : 's'} de ${resolved.matches[0].legalName}:`, ...notes.map((note) => `${note.number}. ${new Date(note.issueDate).toLocaleDateString('es-AR')} - ${note.items.map((item) => item.description).join('; ')}`), 'Si querés, puedo armar un presupuesto con ellos.'].join('\n');
+}
+
+async function prepareQuoteFromPendingDeliveryNotes(companyId: string, message: string) {
+  const resolved = await resolveCustomerForPending(companyId, message);
+  if (!resolved.matches.length) return { answer: 'No encontré un cliente registrado con ese nombre.' };
+  if (resolved.matches.length > 1) return { answer: ['Encontré varios clientes:', ...resolved.matches.map((customer, index) => `${index + 1}. ${customer.legalName}`), 'Decime cuál querés usar.'].join('\n') };
+  const notes = await listPendingDeliveryNotes(companyId, resolved.matches[0].id);
+  if (!notes.length) return { answer: `No hay remitos pendientes de ${resolved.matches[0].legalName}.` };
+  const items = notes.flatMap((note) => note.items.map((item) => ({ description: item.description, quantity: Number(item.quantity), unit: item.unit, unitPrice: item.unitPrice == null ? undefined : Number(item.unitPrice), taxRate: Number(item.taxRate) })));
+  const missing = items.filter((item) => item.unitPrice == null);
+  if (missing.length) return { answer: [`Encontré ${notes.length} remito${notes.length === 1 ? '' : 's'} pendientes de ${resolved.matches[0].legalName}.`, `Faltan precios para: ${missing.map((item) => item.description).join('; ')}.`, 'Indicame esos precios y preparo el PDF.'].join('\n') };
+  const payload: DraftPayload = { customerName: resolved.matches[0].legalName, currency: 'ARS', items, notes: `Presupuesto consolidado desde remitos: ${notes.map((note) => note.number).join(', ')}.` };
+  return createQuotePreviewDraft(companyId, message, payload, suggestedDocumentFileName('quote', payload, notes.map((note) => note.number).join('-')), notes.map((note) => note.id));
 }
 
 function localAssistant(input: AssistantInput, knowledge: string, weakPoints: string) {
@@ -758,6 +812,10 @@ async function answerWithOpenAi(input: AssistantInput, context: string, knowledg
     'Usa la informacion interna para responder, pero no pegues bloques crudos de contexto ni nombres de campos tecnicos.',
     'No muestres secciones de fuentes.',
     'Si faltan datos para crear un borrador, pedilos de forma concreta.',
+    'Los remitos confirmados representan trabajo registrado pendiente de cobro y deben quedar pendientes hasta asociarse a un presupuesto o borrador de factura.',
+    'Para consultar remitos pendientes usa únicamente los datos reales que entregue el sistema; no inventes números, fechas, clientes ni importes.',
+    'Si el usuario dice guardalo, confirmado, ok o una variante equivalente, confirma el documento pendiente. La confirmación puede llegar escrita o transcripta desde un audio.',
+    'Durante la preparación usa respuestas breves y claras: recibí el audio, estoy transcribiendo, estoy preparando el PDF, te lo envío para revisar.',
     'Responde en espanol argentino, claro y breve.'
   ].join('\n');
 
@@ -809,7 +867,7 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     if (confirmsPendingDraft(input.message) || requestedFileName) {
       const nextFileName = requestedFileName || input.pendingDeliveryDraft.suggestedFileName;
       const created = input.pendingDeliveryDraft.type === 'quote'
-        ? await createQuoteDraft(companyId, input.message, input.pendingDeliveryDraft.payload, nextFileName)
+        ? await createQuoteDraft(companyId, input.message, input.pendingDeliveryDraft.payload, nextFileName, input.pendingDeliveryDraft.sourceDeliveryNoteIds)
         : await createDeliveryNote(companyId, input.message, input.pendingDeliveryDraft.payload, nextFileName);
       return {
         mode: config.OPENAI_API_KEY ? 'openai' : 'local',
@@ -844,6 +902,16 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
       pendingDeliveryDraft: input.pendingDeliveryDraft,
       action: { type: 'document_draft_pending' }
     };
+  }
+
+  if (asksPendingDeliveryNotes(input.message)) {
+    return { mode: config.OPENAI_API_KEY ? 'openai' : 'local', answer: await answerPendingDeliveryNotes(companyId, input.message), sources: [], suggestions };
+  }
+
+  if (asksQuoteFromPendingDeliveryNotes(input.message)) {
+    const prepared = await prepareQuoteFromPendingDeliveryNotes(companyId, input.message);
+    if ('pendingDeliveryDraft' in prepared) return prepared;
+    return { mode: config.OPENAI_API_KEY ? 'openai' : 'local', answer: prepared.answer, sources: [], suggestions };
   }
 
   if (wantsCustomerList(input.message)) {

@@ -3,7 +3,7 @@ import { Archive, ArrowRight, Bot, CheckCircle2, ChevronDown, ChevronRight, Cloc
 import { api, dateFmt, money, postJson } from './api';
 import { EngineeringPage } from './features/engineering/EngineeringPage';
 
-type View = 'dashboard' | 'assistant' | 'engineering' | 'documents' | 'quotes' | 'invoices' | 'inventory' | 'customers' | 'whatsapp' | 'settings';
+type View = 'dashboard' | 'assistant' | 'engineering' | 'documents' | 'delivery-notes' | 'quotes' | 'invoices' | 'inventory' | 'customers' | 'whatsapp' | 'settings';
 type AnyRecord = Record<string, any>;
 
 const nav: Array<{ id: View; label: string; icon: typeof Home }> = [
@@ -11,6 +11,7 @@ const nav: Array<{ id: View; label: string; icon: typeof Home }> = [
   { id: 'assistant', label: 'Asistente', icon: Bot },
   { id: 'engineering', label: 'Ingeniería FMH', icon: Wrench },
   { id: 'documents', label: 'Documentos', icon: Archive },
+  { id: 'delivery-notes', label: 'Remitos', icon: FileCheck2 },
   { id: 'quotes', label: 'Presupuestos', icon: ReceiptText },
   { id: 'invoices', label: 'Facturas', icon: ReceiptText },
   { id: 'inventory', label: 'Inventario', icon: PackageSearch },
@@ -177,11 +178,12 @@ export function App() {
     setCompanyId(activeCompanyId);
     if (!activeCompanyId) { setData((current) => ({ ...current, dashboard })); return; }
     const next: AnyRecord = { dashboard };
-    if (view === 'quotes' || view === 'customers') next.customers = await api<AnyRecord[]>(`/api/customers?companyId=${activeCompanyId}`);
+    if (view === 'quotes' || view === 'customers' || view === 'delivery-notes') next.customers = await api<AnyRecord[]>(`/api/customers?companyId=${activeCompanyId}`);
     if (view === 'quotes' || view === 'inventory') next.products = await api<AnyRecord[]>(`/api/products?companyId=${activeCompanyId}&take=300`);
     if (view === 'quotes' || view === 'invoices') next.quotes = await api<AnyRecord[]>(`/api/quotes?companyId=${activeCompanyId}`);
     if (view === 'invoices') next.invoices = await api<AnyRecord[]>(`/api/invoices?companyId=${activeCompanyId}`);
     if (view === 'documents') next.documents = await api<AnyRecord[]>(`/api/documents?companyId=${activeCompanyId}&take=300`);
+    if (view === 'delivery-notes') next.deliveryNotes = await api<AnyRecord[]>(`/api/delivery-notes?companyId=${activeCompanyId}`);
     if (view === 'inventory') next.inventory = await api<AnyRecord>(`/api/inventory?companyId=${activeCompanyId}`);
     if (view === 'inventory') next.suppliers = await api<AnyRecord[]>(`/api/suppliers?companyId=${activeCompanyId}`);
     if (view === 'whatsapp') next.whatsapp = await api<AnyRecord[]>('/api/whatsapp/messages');
@@ -194,6 +196,7 @@ export function App() {
 
   const content = useMemo(() => {
     if (view === 'documents') return <Documents data={data} companyId={companyId} notify={notify} />;
+    if (view === 'delivery-notes') return <DeliveryNotes data={data} companyId={companyId} notify={notify} />;
     if (view === 'assistant') return <AssistantView companyId={companyId} />;
     if (view === 'engineering') return <EngineeringPage companyId={companyId} />;
     if (view === 'quotes') return <Quotes data={data} companyId={companyId} notify={notify} />;
@@ -704,6 +707,32 @@ type QuoteDraftLine = {
   unitPrice: number;
   taxRate: number;
 };
+
+function DeliveryNotes({ data, companyId, notify }: { data: AnyRecord; companyId: string; notify: Function }) {
+  const notes = (data.deliveryNotes || []) as AnyRecord[];
+  const [selected, setSelected] = useState<string[]>([]);
+  const [preview, setPreview] = useState<AnyRecord | null>(null);
+  const selectedNotes = notes.filter((note) => selected.includes(note.id));
+  const customerId = selectedNotes[0]?.customerId;
+  const sameCustomer = selectedNotes.every((note) => note.customerId === customerId);
+  async function prepareQuote() {
+    if (!customerId || !sameCustomer) return;
+    const result = await postJson<AnyRecord>('/api/delivery-notes/convert-to-quote/preview', { companyId, customerId, deliveryNoteIds: selected });
+    setPreview(result);
+  }
+  async function saveQuote() {
+    if (!preview || !customerId) return;
+    await notify('Presupuesto creado desde remitos.', () => postJson('/api/delivery-notes/convert-to-quote', { companyId, customerId, deliveryNoteIds: selected }));
+    setSelected([]);
+    setPreview(null);
+  }
+  return <Page title="Remitos" text="Trabajo registrado pendiente de presupuestar o facturar.">
+    <div className="card"><div className="sectionHead"><div><h2>Remitos</h2><p className="muted">Seleccioná remitos pendientes del mismo cliente para preparar un presupuesto consolidado.</p></div><button className="primaryButton" disabled={!selected.length || !sameCustomer} onClick={prepareQuote}>Crear presupuesto</button></div>
+      <Table headers={['', 'Número', 'Cliente', 'Fecha', 'Descripción', 'Estado', 'PDF']} rows={notes.map((note) => <tr key={note.id}><td><input type="checkbox" checked={selected.includes(note.id)} disabled={note.status !== 'PENDING' || (selected.length > 0 && note.customerId !== customerId)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, note.id] : current.filter((id) => id !== note.id))} /></td><td>#{String(note.number).padStart(5, '0')}</td><td>{note.customer?.legalName}</td><td>{dateFmt.format(new Date(note.issueDate))}</td><td>{note.items?.map((item: AnyRecord) => item.description).join('; ')}</td><td><Badge value={note.status} /></td><td>{note.documentId && <a href={`/api/documents/${note.documentId}/content`} target="_blank">Ver PDF</a>}</td></tr>)} />
+    </div>
+    {preview && <div className="card"><div className="sectionHead"><div><h2>Revisión del presupuesto</h2><p className="muted">Incluye {preview.deliveryNotes?.length || selected.length} remito(s). Los remitos siguen pendientes hasta confirmar.</p></div><button className="primaryButton" onClick={saveQuote}>Guardar presupuesto</button></div><p><strong>Cliente:</strong> {preview.customer?.legalName}</p><Table headers={['Origen', 'Descripción', 'Cantidad', 'Precio']} rows={(preview.lines || []).map((line: AnyRecord) => <tr key={line.itemId}><td>#{String(line.deliveryNoteNumber).padStart(5, '0')}</td><td>{line.description}</td><td>{line.quantity} {line.unit}</td><td>{line.unitPrice == null ? 'Sin precio' : money.format(line.unitPrice)}</td></tr>)} /></div>}
+  </Page>;
+}
 
 function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: string; notify: Function }) {
   const customers = data.customers || [];
