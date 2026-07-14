@@ -60,6 +60,15 @@ function extractFunctionCalls(response: OpenAIResponse) {
   });
 }
 
+export function extractEngineeringResponseText(response: OpenAIResponse) {
+  if (response.output_text?.trim()) return response.output_text.trim();
+  return (response.output || []).flatMap((item) => {
+    const direct = typeof item.text === 'string' ? [item.text] : [];
+    const content = Array.isArray(item.content) ? item.content as Array<Record<string, unknown>> : [];
+    return [...direct, ...content.flatMap((part) => typeof part.text === 'string' ? [part.text] : [])];
+  }).map((text) => text.trim()).filter(Boolean).join('\n\n') || undefined;
+}
+
 export async function runEngineeringOpenAI(input: {
   systemPrompt: string;
   stateText: string;
@@ -139,7 +148,7 @@ export async function runEngineeringOpenAI(input: {
     if (consecutiveFailures >= 3) break;
   }
 
-  const outputText = response?.output_text?.trim() || undefined;
+  const outputText = response ? extractEngineeringResponseText(response) : undefined;
   if (!outputText) {
     return { success: false, requestedModel: modelConfig.requestedModel, actualModel: response?.model, provider: 'openai', latencyMs: Date.now() - startedAt, responseId: response?.id, usage: usageOf(response?.usage), toolCalls, error: { type: 'empty_response', code: 'EMPTY_OUTPUT', message: 'OpenAI no devolvió texto utilizable.' } };
   }

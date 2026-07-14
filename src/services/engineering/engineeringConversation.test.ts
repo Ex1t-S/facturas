@@ -5,6 +5,7 @@ import { parseConversationState, updateConversationState } from './conversationS
 import { runEngineeringOrchestrator } from './engineeringConversation.js';
 import { parseOptionalBoolean } from './queryParsing.js';
 import { engineeringToolDefinitions } from './engineeringTools.js';
+import { extractEngineeringResponseText } from './engineeringRuntime.js';
 
 describe('engineering conversational flow', () => {
   it('normalizes common mojibake without losing accents', () => {
@@ -72,5 +73,9 @@ describe('engineering conversational flow', () => {
   it('exposes OpenAI-compatible tool schemas when parameters are optional', () => {
     expect(engineeringToolDefinitions.length).toBeGreaterThan(10);
     expect(engineeringToolDefinitions.every((tool) => tool.strict === false)).toBe(true);
+  });
+
+  it('extracts text from the raw Responses API output shape', () => {
+    expect(extractEngineeringResponseText({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'OK FMH' }] }] })).toBe('OK FMH');
   });
 });
