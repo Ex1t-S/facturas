@@ -4,11 +4,33 @@ import { normalizeName } from '../normalize.js';
 
 export type EngineeringSearchInput = { companyId: string; q: string; projectType?: string; material?: string; verified?: boolean; dateFrom?: string; dateTo?: string; take?: number };
 
-function scoreDocument(doc: { fileName: string; projectName: string | null; customerName: string | null; rawText: string | null; structuredJson: string | null; projectType: string }, tokens: string[], verified: boolean) {
+const documentTypePriority: Record<string, number> = {
+  TECHNICAL_DRAWING: 5,
+  TECHNICAL_CALCULATION: 4.5,
+  REGULATION: 4,
+  CATALOG: 3,
+  MATERIAL: 2.5,
+  QUOTE: 1.5,
+  DELIVERY_NOTE: 0,
+  INVOICE: -1,
+  PAYMENT: -1.5,
+  ADMINISTRATIVE: -2,
+  OTHER: 0
+};
+
+function trustLevel(doc: { verified: boolean; status: string; documentType: string }) {
+  if (doc.verified && ['TECHNICAL_DRAWING', 'TECHNICAL_CALCULATION', 'REGULATION'].includes(doc.documentType)) return 'VERIFIED_TECHNICAL';
+  if (doc.verified) return 'REVIEWED';
+  if (['INVOICE', 'PAYMENT', 'ADMINISTRATIVE', 'DELIVERY_NOTE'].includes(doc.documentType)) return 'IRRELEVANT_FOR_ENGINEERING';
+  if (doc.status === 'EXTRACTED') return 'HISTORICAL';
+  return 'UNVERIFIED';
+}
+
+function scoreDocument(doc: { fileName: string; projectName: string | null; customerName: string | null; rawText: string | null; structuredJson: string | null; projectType: string; documentType: string }, tokens: string[], verified: boolean) {
   const text = normalizeName(normalizeEngineeringText([doc.fileName, doc.projectName || '', doc.customerName || '', doc.rawText || '', doc.structuredJson || '', doc.projectType].join(' ')));
   const hits = tokens.filter((token) => text.includes(normalizeName(token))).length;
   const exactTitle = tokens.filter((token) => normalizeName(doc.fileName).includes(normalizeName(token))).length;
-  return hits + exactTitle * 0.8 + (verified ? 2 : 0);
+  return hits + exactTitle * 0.8 + (verified ? 2 : 0) + (documentTypePriority[doc.documentType] || 0);
 }
 
 function textFilters(tokens: string[]) {
@@ -34,10 +56,10 @@ export async function searchEngineeringKnowledge(input: EngineeringSearchInput) 
   if (input.q.trim()) productWhere.OR = tokens.flatMap((term) => ['name', 'normalizedName', 'category', 'description'].map((field) => ({ [field]: { contains: field === 'normalizedName' ? normalizeName(term) : term } })));
   const products = input.q.trim() ? await prisma.product.findMany({ where: productWhere, include: { supplierPrices: { include: { supplier: true }, orderBy: { observedAt: 'desc' }, take: 3 } }, take: input.take ?? 8 }) : [];
   return {
-    documents: ranked.map(({ doc }) => ({ id: doc.id, title: doc.projectName || doc.fileName, type: doc.projectType, documentType: doc.documentType, status: doc.status, verified: doc.verified, confidence: Number(doc.confidence), date: doc.documentDate, projectName: doc.projectName, customerName: doc.customerName, excerpt: (doc.rawText || doc.structuredJson || '').slice(0, 900), sourcePath: doc.relativePath || doc.fileName })),
+    documents: ranked.map(({ doc }) => ({ id: doc.id, title: doc.projectName || doc.fileName, type: doc.projectType, documentType: doc.documentType, status: doc.status, trustLevel: trustLevel(doc), verified: doc.verified, confidence: Number(doc.confidence), date: doc.documentDate, projectName: doc.projectName, customerName: doc.customerName, excerpt: (doc.rawText || doc.structuredJson || '').slice(0, 900), sourcePath: doc.relativePath || doc.fileName })),
     projects: projects.map((project) => ({ id: project.id, title: project.name, type: project.projectType, verified: project.verified, description: project.description, technical: project.technicalJson })),
     products: products.map((product) => ({ id: product.id, title: product.name, category: product.category, price: Number(product.price), prices: product.supplierPrices.map((price) => ({ supplier: price.supplier.name, value: Number(price.price), currency: price.currency, observedAt: price.observedAt })) })),
-    sources: ranked.map(({ doc, score }) => ({ id: doc.id, title: doc.projectName || doc.fileName, type: doc.verified ? 'VERIFIED_INTERNAL' : 'HISTORICAL_PROJECT', relevance: Math.max(Number(doc.confidence), Math.min(0.99, score / Math.max(tokens.length * 2, 1))), excerpt: (doc.rawText || doc.structuredJson || '').slice(0, 900) }))
+    sources: ranked.map(({ doc, score }) => ({ id: doc.id, title: doc.projectName || doc.fileName, type: trustLevel(doc), relevance: Math.max(Number(doc.confidence), Math.min(0.99, score / Math.max(tokens.length * 2, 1))), excerpt: (doc.rawText || doc.structuredJson || '').slice(0, 900) }))
   };
 }
 
