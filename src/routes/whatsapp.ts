@@ -209,13 +209,14 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/webhooks/whatsapp', async (request, reply) => {
-    const rawBody = Buffer.isBuffer(request.body) ? request.body : Buffer.from(JSON.stringify(request.body ?? {}));
+    const parsedBody = request.body as Record<string, unknown> & { __rawBody?: Buffer };
+    const rawBody = parsedBody?.__rawBody ?? Buffer.from(JSON.stringify(request.body ?? {}));
     const signature = request.headers['x-hub-signature-256'];
     if (config.WHATSAPP_APP_SECRET !== 'change-me' && !verifyMetaSignature(rawBody, Array.isArray(signature) ? signature[0] : signature)) {
       return reply.code(401).send({ error: 'Invalid signature' });
     }
 
-    const payload = metaWebhookSchema.parse(typeof request.body === 'string' ? JSON.parse(request.body) : request.body);
+    const payload = metaWebhookSchema.parse(request.body);
     const company = await prisma.company.findFirst();
     const stored: string[] = [];
 

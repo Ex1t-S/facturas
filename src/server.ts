@@ -33,6 +33,15 @@ export async function buildServer() {
   await fs.mkdir(frontendAssetsRoot, { recursive: true });
 
   const app = Fastify({ logger: true });
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (_request, body, done) => {
+    try {
+      const parsed = JSON.parse(body.toString('utf8')) as Record<string, unknown>;
+      Object.defineProperty(parsed, '__rawBody', { value: body, enumerable: false });
+      done(null, parsed);
+    } catch (error) {
+      done(error as Error, undefined);
+    }
+  });
   await app.register(helmet);
   await app.register(cors, { origin: true });
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024 } });
