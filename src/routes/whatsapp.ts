@@ -169,6 +169,28 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     });
   });
 
+  app.get('/api/whatsapp/conversations', async (request) => {
+    const query = z.object({ companyId: z.string().optional() }).parse(request.query);
+    const company = query.companyId ?? (await prisma.company.findFirst())?.id;
+    if (!company) return [];
+    return prisma.whatsAppConversation.findMany({
+      where: { companyId: company },
+      include: { messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
+      orderBy: { lastMessageAt: 'desc' },
+      take: 100
+    });
+  });
+
+  app.get('/api/whatsapp/conversations/:id/messages', async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const conversation = await prisma.whatsAppConversation.findUnique({
+      where: { id: params.id },
+      include: { messages: { include: { mediaDocument: true }, orderBy: { createdAt: 'asc' } } }
+    });
+    if (!conversation) return reply.code(404).send({ error: 'Conversation not found' });
+    return conversation;
+  });
+
   app.get('/api/whatsapp/config', async () => whatsappConfigStatus());
 
   app.get('/webhooks/whatsapp', async (request, reply) => {
@@ -206,13 +228,15 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
           stored.push(inbound.id);
           if (!company || !inbound.body?.trim()) continue;
 
-          if (config.WHATSAPP_TEST_MODE) continue;
-
           const conversation = await prisma.whatsAppConversation.upsert({
             where: { companyId_fromNumber: { companyId: company.id, fromNumber: message.from } },
-            update: {},
-            create: { companyId: company.id, fromNumber: message.from }
+            update: { toNumber: phoneNumber, messageCount: { increment: 1 }, lastMessageAt: new Date() },
+            create: { companyId: company.id, fromNumber: message.from, toNumber: phoneNumber, messageCount: 1, lastMessageAt: new Date() }
           });
+          await prisma.whatsAppMessage.update({ where: { id: inbound.id }, data: { conversationId: conversation.id } });
+
+          if (config.WHATSAPP_TEST_MODE) continue;
+
           const history = await resolveInboundHistory(message.from);
           const assistantResponse = await answerAssistant({
             companyId: company.id,
@@ -246,7 +270,8 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
                 providerMessageId: sent.providerMessageId,
                 messageType: 'document',
                 body: assistantResponse.answer,
-                mediaDocumentId: assistantResponse.action.documentId
+                mediaDocumentId: assistantResponse.action.documentId,
+                conversationId: conversation.id
               }
             });
           } else {

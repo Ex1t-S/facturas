@@ -433,11 +433,15 @@ model WhatsAppMessage {
   messageType        String
   body               String?
   mediaDocumentId    String?
+  conversationId     String?
   providerMessageId  String?          @unique
   status             String           @default("received")
   createdAt          DateTime         @default(now())
   customer           Customer?        @relation(fields: [customerId], references: [id])
   mediaDocument      Document?        @relation(fields: [mediaDocumentId], references: [id])
+  conversation       WhatsAppConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
 }
 
 model WhatsAppConversation {
@@ -445,9 +449,14 @@ model WhatsAppConversation {
   companyId   String
   fromNumber  String
   pendingJson String?
+  toNumber String?
+  displayName String?
+  messageCount Int @default(0)
+  lastMessageAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())
   company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  messages    WhatsAppMessage[]
 
   @@unique([companyId, fromNumber])
   @@index([companyId, updatedAt])
