@@ -401,12 +401,12 @@ async function createQuotePreviewDraft(companyId: string, message: string, paylo
     address: payload.customerAddress,
     source: 'asistente IA'
   });
-  if (!customer) throw new Error('El cliente no esta registrado. Confirmalo antes de guardar el presupuesto.');
+  const customerName = customer?.legalName || payload.customerName || 'Cliente pendiente';
   const items = normalizeDraftItems(payload, 0);
   const totals = calculateQuoteTotals(items);
   const pdf = await renderQuotePdf({
     number: 0,
-    customerName: customer.legalName,
+    customerName,
     issueDate: new Date(),
     validUntil: undefined,
     currency: payload.currency ?? 'ARS',
@@ -442,7 +442,7 @@ async function createQuotePreviewDraft(companyId: string, message: string, paylo
   return {
     mode: config.OPENAI_API_KEY ? 'openai' : 'local',
     answer: [
-      'Te mande el PDF del presupuesto para ' + customer.legalName + '.',
+      'Te mande el PDF del presupuesto para ' + customerName + '.',
       'Si esta bien, respondeme "guardalo". Nombre sugerido: ' + previewFileName,
       'Si queres cambiar el nombre, respondeme "guardalo como ...".'
     ].join('\n'),
@@ -461,11 +461,11 @@ async function createDeliveryNotePreviewDraft(companyId: string, message: string
     address: payload.customerAddress,
     source: 'remito generado por asistente IA'
   });
-  if (!customer) throw new Error('El cliente no esta registrado. Confirmalo antes de guardar el remito.');
+  const customerName = customer?.legalName || payload.customerName || 'Cliente pendiente';
   const items = payload.items.length ? payload.items : [{ description: message, quantity: 1, unit: 'trabajo' }];
   const pdf = await renderDeliveryNotePdf({
     number: 'borrador',
-    customerName: customer.legalName,
+    customerName,
     issueDate: new Date(),
     notes: payload.notes || 'Remito para confirmacion.',
     items: items.map((item) => ({ description: item.description, quantity: item.quantity || 1, unit: item.unit || 'unidad' }))
@@ -490,7 +490,7 @@ async function createDeliveryNotePreviewDraft(companyId: string, message: string
   return {
     mode: config.OPENAI_API_KEY ? 'openai' : 'local',
     answer: [
-      'Te mande el PDF del remito para ' + customer.legalName + '.',
+      'Te mande el PDF del remito para ' + customerName + '.',
       'Si esta bien, respondeme "guardalo". Nombre sugerido: ' + previewFileName,
       'Si queres cambiar el nombre, respondeme "guardalo como ...".'
     ].join('\n'),
@@ -884,7 +884,6 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
       : null;
     const missing: string[] = [];
     if (!payload.customerName && !payload.customerCuit) missing.push('cliente y CUIT');
-    else if (!matchedCustomer) missing.push('CUIT de un cliente registrado');
     if (payload.items.length === 0) missing.push('items o descripcion');
     if (missing.length) {
       const answer =
