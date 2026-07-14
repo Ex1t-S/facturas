@@ -39,6 +39,11 @@ export type AssistantResponse = {
   answer: string;
   sources: KnowledgeSource[];
   suggestions: string[];
+  previewDocument?: {
+    buffer: Buffer;
+    mimeType: string;
+    filename: string;
+  };
   action?: {
     type: 'quote_draft_created' | 'delivery_note_created' | 'document_draft_pending' | 'delivery_note_draft_pending' | 'invoice_unavailable';
     quoteId?: string;
@@ -461,6 +466,11 @@ async function createQuotePreviewDraft(companyId: string, message: string, paylo
     ].join('\n'),
     sources: [],
     suggestions: [],
+    previewDocument: {
+      buffer: pdf,
+      mimeType: 'application/pdf',
+      filename: previewFileName
+    },
     pendingDeliveryDraft: pending,
     action: { type: 'document_draft_pending' }
   };
@@ -509,6 +519,11 @@ async function createDeliveryNotePreviewDraft(companyId: string, message: string
     ].join('\n'),
     sources: [],
     suggestions: [],
+    previewDocument: {
+      buffer: pdf,
+      mimeType: 'application/pdf',
+      filename: previewFileName
+    },
     pendingDeliveryDraft: pending,
     action: { type: 'document_draft_pending' }
   };

@@ -289,7 +289,12 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     let documentSendFailed = false;
 
     const pendingDraft = assistantResponse.pendingDeliveryDraft;
-    const outboundDocument = pendingDraft
+    const outboundDocument = assistantResponse.previewDocument
+      ? {
+          ...assistantResponse.previewDocument,
+          documentId: undefined as string | undefined
+        }
+      : pendingDraft
       ? {
           buffer: await readStoredDocumentFile(pendingDraft.previewStoragePath),
           mimeType: pendingDraft.previewMimeType || 'application/pdf',
