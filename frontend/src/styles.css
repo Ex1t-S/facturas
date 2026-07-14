@@ -226,6 +226,24 @@ td strong, td small { display: block; }
 .trace { display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-top: 8px; background: var(--panel-2); }
 .trace span { color: var(--muted); font-size: 13px; }
 .trace b { font-size: 18px; }
+.engineeringTabs { display: flex; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.engineeringTabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); }
+.engineeringTabs button.active { color: var(--ink); border-bottom-color: var(--brand); }
+.engineeringWorkspace { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; min-height: 620px; }
+.engineeringConversations { min-width: 0; }
+.conversationList { display: grid; gap: 6px; margin-top: 12px; }
+.conversationList button { display: grid; gap: 4px; text-align: left; border: 1px solid var(--line); background: var(--panel-2); }
+.conversationList button.selected { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, var(--panel)); }
+.conversationList small { color: var(--muted); }
+.engineeringChat { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 620px; }
+.engineeringMessages { overflow: auto; display: grid; align-content: start; gap: 12px; padding: 14px 2px; }
+.engineeringMessage { max-width: 88%; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--panel-2); }
+.engineeringMessage.user { justify-self: end; background: color-mix(in srgb, var(--brand) 12%, var(--panel)); }
+.engineeringMessage > span { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+.engineeringMessage p { margin: 0; white-space: pre-wrap; line-height: 1.5; }
+.engineeringComposer { display: flex; gap: 10px; align-items: end; border-top: 1px solid var(--line); padding-top: 12px; }
+.engineeringComposer textarea { flex: 1; min-height: 72px; resize: vertical; }
+.resultBadges { display: flex; gap: 6px; margin-bottom: 10px; }
 .assistantHistory {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);

@@ -7,11 +7,17 @@ import { answerEngineering } from '../services/engineering/engineeringAssistant.
 import { getEngineeringDocument, searchEngineeringKnowledge } from '../services/engineering/engineeringKnowledge.js';
 import { ingestEngineeringKnowledge } from '../services/engineering/engineeringIngestion.js';
 import { projectTypes } from '../services/engineering/engineeringSchemas.js';
+import { answerEngineeringConversation, createEngineeringConversation, getEngineeringConversation, listEngineeringConversations, saveEngineeringCase } from '../services/engineering/engineeringConversation.js';
+import { searchOfficialEngineeringRegulations } from '../services/engineering/regulations.js';
+import { renderPreliminaryEngineeringSvg, type EngineeringDrawingSpec } from '../services/engineering/drawing.js';
 
 const companyQuery = z.object({ companyId: z.string().min(1) });
 const chatSchema = z.object({ companyId: z.string().min(1), message: z.string().trim().min(1).max(6000) });
 const startSchema = z.object({ companyId: z.string().min(1), rootPath: z.string().trim().min(1).optional() });
 const reviewSchema = z.object({ status: z.enum(['VERIFIED', 'CORRECTED', 'REJECTED', 'OBSOLETE']), correctedJson: z.string().optional(), note: z.string().max(2000).optional(), reviewerName: z.string().max(120).optional() });
+const conversationCreateSchema = z.object({ companyId: z.string().min(1), title: z.string().trim().max(120).optional() });
+const conversationMessageSchema = z.object({ companyId: z.string().min(1), message: z.string().trim().min(1).max(12000) });
+const drawingSchema = z.object({ drawingType: z.enum(['SILO', 'HOPPER', 'WAREHOUSE', 'SUPPORT_STRUCTURE']), width: z.number().positive().optional(), length: z.number().positive().optional(), diameter: z.number().positive().optional(), height: z.number().positive().optional(), freeHeight: z.number().positive().optional(), lowerOpening: z.number().positive().optional(), roofSlope: z.number().positive().optional(), notes: z.array(z.string().max(300)).max(20).optional() });
 
 function allowedRoot(rootPath: string) {
   const configured = [config.ENGINEERING_KNOWLEDGE_ROOT, config.HISTORICAL_DOCUMENT_ROOT].filter(Boolean).map((root) => path.resolve(root));
@@ -22,6 +28,36 @@ function allowedRoot(rootPath: string) {
 
 export const engineeringRoutes: FastifyPluginAsync = async (app) => {
   app.post('/engineering/chat', async (request) => answerEngineering(chatSchema.parse(request.body)));
+
+  app.get('/engineering/conversations', async (request) => listEngineeringConversations(companyQuery.parse(request.query).companyId));
+  app.post('/engineering/conversations', async (request, reply) => { const body = conversationCreateSchema.parse(request.body); return reply.code(201).send(await createEngineeringConversation(body.companyId, body.title)); });
+  app.get('/engineering/conversations/:id', async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const conversation = await getEngineeringConversation(params.id, companyQuery.parse(request.query).companyId);
+    if (!conversation) return reply.code(404).send({ error: 'Conversación no encontrada' });
+    return conversation;
+  });
+  app.post('/engineering/conversations/:id/messages', async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const body = conversationMessageSchema.parse(request.body);
+    return answerEngineeringConversation(params.id, body.companyId, body.message);
+  });
+  app.patch('/engineering/conversations/:id', async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const body = z.object({ companyId: z.string(), title: z.string().trim().min(1).max(120).optional(), archived: z.boolean().optional() }).parse(request.body);
+    const updated = await prisma.engineeringConversation.updateMany({ where: { id: params.id, companyId: body.companyId }, data: { title: body.title, archivedAt: body.archived ? new Date() : body.archived === false ? null : undefined, status: body.archived ? 'ARCHIVED' : 'OPEN' } });
+    return { updated: updated.count === 1 };
+  });
+  app.post('/engineering/conversations/:id/save-case', async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const body = z.object({ companyId: z.string(), name: z.string().trim().max(160).optional() }).parse(request.body);
+    return saveEngineeringCase(params.id, body.companyId, body.name);
+  });
+  app.get('/engineering/regulations', async (request) => {
+    const query = z.object({ companyId: z.string(), q: z.string().default('') }).parse(request.query);
+    return searchOfficialEngineeringRegulations(query.companyId, query.q);
+  });
+  app.post('/engineering/drawing', async (request) => { const spec = drawingSchema.parse(request.body) as EngineeringDrawingSpec; return { spec, svg: renderPreliminaryEngineeringSvg(spec) }; });
 
   app.get('/engineering/knowledge', async (request) => {
     const query = z.object({ ...companyQuery.shape, q: z.string().default(''), projectType: z.enum(projectTypes).optional(), material: z.string().optional(), verified: z.coerce.boolean().optional(), dateFrom: z.string().optional(), dateTo: z.string().optional(), take: z.coerce.number().int().min(1).max(100).default(30) }).parse(request.query);
@@ -47,7 +83,7 @@ export const engineeringRoutes: FastifyPluginAsync = async (app) => {
       prisma.engineeringIngestionRun.findFirst({ where: { companyId: query.companyId }, orderBy: { startedAt: 'desc' } }),
       prisma.engineeringKnowledgeDocument.groupBy({ by: ['status'], where: { OR: [{ companyId: query.companyId }, { companyId: null }] }, _count: { _all: true } })
     ]);
-    return { latest, counts: Object.fromEntries(counts.map((row) => [row.status, row._count._all])) };
+    return { latest, totalFiles: counts.reduce((total, row) => total + row._count._all, 0), counts: Object.fromEntries(counts.map((row) => [row.status, row._count._all])) };
   });
 
   app.post('/engineering/ingestion/start', async (request, reply) => {

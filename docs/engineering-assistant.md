@@ -35,6 +35,34 @@ Las conversiones, volúmenes, superficies, masa de chapa, masa lineal y seccione
 
 Las respuestas distinguen antecedentes históricos, datos faltantes, hipótesis, cálculos y advertencias. Una respuesta no constituye aprobación de fabricación ni reemplaza la revisión profesional.
 
+## Fase 2: conversaciones y predimensionamiento
+
+La API agrega conversaciones persistentes en `EngineeringConversation` y mensajes en `EngineeringMessage`. La memoria técnica se guarda como JSON estructurado: entradas confirmadas, hipótesis, faltantes, decisiones, cálculos y referencias. El historial local es la fuente de verdad; `previous_response_id` se usa únicamente como continuidad opcional de Responses API.
+
+Variables nuevas:
+
+```text
+OPENAI_ENGINEERING_MODEL=gpt-5.6-sol
+OPENAI_ENGINEERING_FAST_MODEL=
+OPENAI_ENGINEERING_REASONING_EFFORT=high
+OPENAI_ENGINEERING_WEB_SEARCH_ENABLED=false
+MAX_ENGINEERING_TOOL_ROUNDS=8
+```
+
+Rutas principales:
+
+- `GET/POST /api/engineering/conversations`
+- `GET /api/engineering/conversations/:id?companyId=...`
+- `POST /api/engineering/conversations/:id/messages`
+- `PATCH /api/engineering/conversations/:id`
+- `POST /api/engineering/conversations/:id/save-case`
+- `GET /api/engineering/regulations?companyId=...&q=...`
+- `POST /api/engineering/drawing`
+
+El ciclo de herramientas tiene límite configurable y registra cada llamada. Incluye búsqueda FMH, candidatos normativos, carga vertical, carga por apoyo, tensión axial, esbeltez y pandeo de Euler de referencia. Estas funciones son de predimensionamiento y no reemplazan combinaciones de acciones, estabilidad global, uniones, anclajes, fundaciones ni verificación normativa completa.
+
+La pantalla Ingeniería funciona como workspace: conversaciones persistentes, chat multiturno, estado de análisis, guardado como caso y pestaña independiente para la biblioteca. El endpoint de esquema devuelve SVG paramétrico para silo, tolva, galpón o estructura soporte, rotulado como no apto para fabricación.
+
 ## Limitaciones actuales
 
 - La primera extracción estructurada es local y conservadora; imágenes y PDF escaneados quedan en `NEEDS_VISION`.

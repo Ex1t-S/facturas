@@ -114,6 +114,9 @@ model Company {
   engineeringProjects EngineeringProject[]
   engineeringCalculations EngineeringCalculation[]
   engineeringIngestionRuns EngineeringIngestionRun[]
+  engineeringConversations EngineeringConversation[]
+  engineeringCases EngineeringCase[]
+  engineeringRegulations EngineeringRegulation[]
 }
 
 model Supplier {
@@ -533,6 +536,7 @@ model EngineeringProject {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   documents EngineeringProjectDocument[]
   reviews EngineeringReview[]
+  conversations EngineeringConversation[]
   @@index([companyId, projectType])
   @@index([companyId, status])
 }
@@ -609,6 +613,107 @@ model EngineeringVectorIndex {
   knowledge EngineeringKnowledgeDocument @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
   @@unique([knowledgeId, vectorStoreId])
   @@index([vectorStoreId, status])
+}
+
+model EngineeringConversation {
+  id String @id @default(cuid())
+  companyId String
+  userId String?
+  title String @default("Nuevo caso de Ingeniería")
+  status String @default("OPEN")
+  projectId String?
+  stateJson String @default("{}")
+  summaryJson String @default("{}")
+  previousResponseId String?
+  model String?
+  archivedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project EngineeringProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  messages EngineeringMessage[]
+  engineeringCase EngineeringCase?
+  toolCalls EngineeringToolCall[]
+  @@index([companyId, updatedAt])
+  @@index([companyId, status])
+}
+
+model EngineeringMessage {
+  id String @id @default(cuid())
+  conversationId String
+  role String
+  content String
+  model String?
+  responseId String?
+  tokenUsageJson String?
+  estimatedCost Decimal?
+  structuredResultJson String?
+  createdAt DateTime @default(now())
+  conversation EngineeringConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  @@index([conversationId, createdAt])
+}
+
+model EngineeringToolCall {
+  id String @id @default(cuid())
+  conversationId String
+  messageId String?
+  name String
+  argumentsJson String
+  resultJson String?
+  status String @default("COMPLETED")
+  durationMs Int?
+  createdAt DateTime @default(now())
+  conversation EngineeringConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  @@index([conversationId, createdAt])
+}
+
+model EngineeringCase {
+  id String @id @default(cuid())
+  companyId String
+  conversationId String @unique
+  name String
+  projectType String @default("OTHER")
+  customerName String?
+  location String?
+  status String @default("DRAFT")
+  dataJson String @default("{}")
+  assumptionsJson String @default("[]")
+  calculationsJson String @default("[]")
+  sourcesJson String @default("[]")
+  regulationsJson String @default("[]")
+  bomJson String @default("[]")
+  costsJson String @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation EngineeringConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  @@index([companyId, status])
+  @@index([companyId, projectType])
+}
+
+model EngineeringRegulation {
+  id String @id @default(cuid())
+  companyId String?
+  code String
+  title String
+  jurisdiction String @default("AR")
+  revision String?
+  publicationDate DateTime?
+  effectiveDate DateTime?
+  status String @default("UNKNOWN")
+  sourceUrl String?
+  sourceDomain String?
+  localDocumentId String?
+  contentHash String?
+  retrievedAt DateTime?
+  verifiedAt DateTime?
+  verifiedBy String?
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  @@unique([companyId, code, revision])
+  @@index([companyId, status])
 }
 
 model AssistantChat {

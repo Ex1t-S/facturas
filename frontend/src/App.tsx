@@ -173,7 +173,7 @@ export function App() {
   const content = useMemo(() => {
     if (view === 'documents') return <Documents data={data} companyId={companyId} notify={notify} />;
     if (view === 'assistant') return <AssistantView companyId={companyId} />;
-    if (view === 'engineering') return <EngineeringView companyId={companyId} />;
+    if (view === 'engineering') return <EngineeringWorkspaceView companyId={companyId} />;
     if (view === 'quotes') return <Quotes data={data} companyId={companyId} notify={notify} />;
     if (view === 'invoices') return <Invoices data={data} companyId={companyId} notify={notify} />;
     if (view === 'inventory') return <Inventory data={data} companyId={companyId} notify={notify} />;
@@ -325,33 +325,125 @@ function AssistantView({ companyId }: { companyId: string }) {
   );
 }
 
-function EngineeringView({ companyId }: { companyId: string }) {
+function EngineeringWorkspaceView({ companyId }: { companyId: string }) {
   const [message, setMessage] = useState('');
-  const [result, setResult] = useState<AnyRecord | null>(null);
-  const [knowledge, setKnowledge] = useState<AnyRecord>({ documents: [] });
-  const [status, setStatus] = useState<AnyRecord | null>(null);
+  const [conversations, setConversations] = useState<AnyRecord[]>([]);
+  const [conversation, setConversation] = useState<AnyRecord | null>(null);
+  const [library, setLibrary] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  async function loadLibrary() {
+  async function loadConversations() {
     if (!companyId) return;
-    const [library, ingestion] = await Promise.all([
-      api<AnyRecord>(`/api/engineering/knowledge?companyId=${companyId}&q=&take=30`),
-      api<AnyRecord>(`/api/engineering/ingestion/status?companyId=${companyId}`)
-    ]);
-    setKnowledge(library); setStatus(ingestion);
+    setConversations(await api<AnyRecord[]>(`/api/engineering/conversations?companyId=${companyId}`));
   }
-  useEffect(() => { loadLibrary().catch(() => undefined); }, [companyId]);
+  useEffect(() => { loadConversations().catch(() => undefined); }, [companyId]);
+  async function newConversation() {
+    const created = await postJson<AnyRecord>('/api/engineering/conversations', { companyId });
+    setConversations((current) => [created, ...current]);
+    setConversation({ ...created, messages: [] });
+  }
+  async function openConversation(id: string) {
+    const loaded = await api<AnyRecord>(`/api/engineering/conversations/${id}?companyId=${companyId}`);
+    let state = {};
+    try { state = loaded.stateJson ? JSON.parse(loaded.stateJson) : {}; } catch { state = {}; }
+    setConversation({ ...loaded, state });
+  }
+  async function ask(event: React.FormEvent) {
+    event.preventDefault();
+    if (!message.trim() || !companyId) return;
+    const active = conversation || (await postJson<AnyRecord>('/api/engineering/conversations', { companyId }));
+    if (!conversation) {
+      setConversation({ ...active, messages: [] });
+      setConversations((current) => [active, ...current]);
+    }
+    setLoading(true);
+    try {
+      const response = await postJson<AnyRecord>(`/api/engineering/conversations/${active.id}/messages`, { companyId, message });
+      setConversation((current) => current ? { ...current, messages: [...(current.messages || []), response.userMessage, response.assistantMessage], state: response.state } : current);
+      setMessage('');
+      await loadConversations();
+    } finally {
+      setLoading(false);
+    }
+  }
+  async function saveCase() {
+    if (conversation) await postJson(`/api/engineering/conversations/${conversation.id}/save-case`, { companyId });
+  }
+  async function downloadDrawing() {
+    const state = conversation?.state || {};
+    const inputs = state.knownInputs || [];
+    const value = (key: string) => inputs.find((item: AnyRecord) => item.key === key && item.status !== 'SUPERSEDED')?.value;
+    const type = state.projectType === 'HOPPER' ? 'HOPPER' : state.projectType === 'WAREHOUSE' ? 'WAREHOUSE' : 'SILO';
+    const response = await postJson<AnyRecord>('/api/engineering/drawing', { drawingType: type, diameter: Number(value('diameter')) || undefined, width: Number(value('width')) || undefined, length: Number(value('length')) || undefined, height: Number(value('height')) || undefined, freeHeight: Number(value('freeHeight')) || undefined, notes: ['Generado desde el caso conversacional FMH'] });
+    const url = URL.createObjectURL(new Blob([response.svg], { type: 'image/svg+xml' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'esquema-preliminar-fmh.svg'; link.click(); URL.revokeObjectURL(url);
+  }
+  const messages = conversation?.messages || [];
+  return <Page title="Ingeniería FMH" text="Asistente técnico conversacional con memoria, cálculos y antecedentes trazables.">
+    <div className="engineeringTabs"><button className={!library ? 'active' : ''} onClick={() => setLibrary(false)}>Asistente</button><button className={library ? 'active' : ''} onClick={() => setLibrary(true)}>Biblioteca FMH</button></div>
+    {!library ? <section className="engineeringWorkspace">
+      <aside className="card engineeringConversations">
+        <div className="sectionRow"><h2>Conversaciones</h2><button type="button" onClick={newConversation}>Nueva</button></div>
+        <div className="conversationList">{conversations.map((item) => <button type="button" key={item.id} className={conversation?.id === item.id ? 'selected' : ''} onClick={() => openConversation(item.id)}><strong>{item.title || 'Nueva conversación'}</strong><small>{item.updatedAt ? new Date(item.updatedAt).toLocaleString('es-AR') : ''}</small></button>)}{!conversations.length && <p className="mutedText">Todavía no hay conversaciones.</p>}</div>
+      </aside>
+      <div className="card engineeringChat">
+        <div className="sectionRow"><div><h2>{conversation?.title || 'Asistente de Ingeniería'}</h2><span className="mutedText">{conversation?.model || 'Modo local / modelo configurable'}</span></div>{conversation && <button type="button" onClick={saveCase}>Guardar como caso</button>}</div>
+        <div className="engineeringMessages">{messages.map((item: AnyRecord) => <article className={`engineeringMessage ${item.role}`} key={item.id}><span>{item.role === 'user' ? 'Vos' : 'Asistente'}</span><p>{item.content}</p>{item.structuredResultJson && <EngineeringResult result={item.structuredResultJson} />}</article>)}{loading && <article className="engineeringMessage assistant"><span>Asistente</span><p>Analizando antecedentes y cálculos...</p></article>}{!messages.length && <Empty title="Iniciá un caso" text="Podés comenzar con un silo, galpón, tolva, estructura o cualquier consulta técnica." />}</div>
+        <form className="engineeringComposer" onSubmit={ask}><textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ej.: Necesito comparar 4 contra 6 patas para un silo aéreo de 200 t." /><div><button disabled={loading || !message.trim()}>Enviar</button><button type="button" onClick={downloadDrawing} disabled={!conversation}>Esquema SVG</button></div></form>
+      </div>
+    </section> : <EngineeringLibrary companyId={companyId} />}
+  </Page>;
+}
+
+function EngineeringResult({ result }: { result: AnyRecord | string }) {
+  const parsed = typeof result === 'string' ? (() => { try { return JSON.parse(result); } catch { return { answer: result }; } })() : result;
+  return <div className="engineeringResult"><div className="resultBadges"><Badge value={parsed.level || 'ORIENTACIÓN'} /><Badge value={parsed.capability || 'PRELIMINARY_ASSISTED'} /></div><h3>Respuesta</h3><p>{parsed.answer}</p>{parsed.missingData?.length > 0 && <><h3>Datos faltantes</h3><ul>{parsed.missingData.map((item: AnyRecord) => <li key={item.name}><strong>{item.name}:</strong> {item.reason}</li>)}</ul></>}{parsed.assumptions?.length > 0 && <><h3>Hipótesis</h3><ul>{parsed.assumptions.map((item: string) => <li key={item}>{item}</li>)}</ul></>}{parsed.calculations?.length > 0 && <><h3>Cálculos ejecutados</h3>{parsed.calculations.map((item: AnyRecord) => <div className="trace" key={item.title}><strong>{item.title}</strong><span>{item.formula}</span><b>{Number(item.result).toFixed(2)} {item.resultUnit}</b></div>)}</>}{parsed.sources?.length > 0 && <><h3>Antecedentes FMH</h3><ul>{parsed.sources.map((source: AnyRecord) => <li key={source.id}>{source.title}</li>)}</ul></>}{parsed.regulations?.length > 0 && <><h3>Reglamentos</h3><ul>{parsed.regulations.map((item: AnyRecord) => <li key={item.code}>{item.code} — {item.status}</li>)}</ul></>}</div>;
+}
+
+function EngineeringLibrary({ companyId }: { companyId: string }) {
+  const [knowledge, setKnowledge] = useState<AnyRecord>({ documents: [] });
+  const [status, setStatus] = useState<AnyRecord | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function load() {
+    const [rows, current] = await Promise.all([api<AnyRecord>(`/api/engineering/knowledge?companyId=${companyId}&take=50`), api<AnyRecord>(`/api/engineering/ingestion/status?companyId=${companyId}`)]);
+    setKnowledge(rows);
+    setStatus(current);
+  }
+  useEffect(() => { load().catch(() => undefined); }, [companyId]);
+  async function ingest() { setBusy(true); try { await postJson('/api/engineering/ingestion/start', { companyId }); await load(); } finally { setBusy(false); } }
+  return <section className="card engineeringLibrary"><div className="sectionRow"><div><h2>Biblioteca técnica FMH</h2><span className="mutedText">Antecedentes internos y documentos procesados.</span></div><button type="button" onClick={ingest} disabled={busy}>{busy ? 'Actualizando...' : 'Actualizar biblioteca'}</button></div><div className="metrics compact"><article><span>Archivos</span><strong>{status?.totalFiles || 0}</strong></article><article><span>Procesados</span><strong>{status?.counts?.EXTRACTED || 0}</strong></article><article><span>Visión/revisión</span><strong>{(status?.counts?.NEEDS_VISION || 0) + (status?.counts?.NEEDS_REVIEW || 0)}</strong></article><article><span>Fallidos</span><strong>{status?.counts?.FAILED || 0}</strong></article></div><Table headers={['Archivo', 'Tipo', 'Estado']} rows={(knowledge.documents || []).map((doc: AnyRecord) => <tr key={doc.id}><td><strong>{doc.title}</strong><small>{doc.sourcePath}</small></td><td>{doc.documentType || doc.projectType || 'OTHER'}</td><td><Badge value={doc.verified ? 'VERIFIED_INTERNAL' : doc.status || 'HISTORICAL_PROJECT'} /></td></tr>)} /></section>;
+}
+
+function EngineeringView({ companyId }: { companyId: string }) {
+  const result: AnyRecord | null = null;
+  const knowledge: AnyRecord = { documents: [] };
+  const status: AnyRecord | null = null;
+  const totalFiles = 0;
+  const startIngestion = async () => undefined;
+  const [message, setMessage] = useState('');
+  const [conversations, setConversations] = useState<AnyRecord[]>([]);
+  const [conversation, setConversation] = useState<AnyRecord | null>(null);
+  const [library, setLibrary] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  async function loadConversations() {
+    if (!companyId) return;
+    setConversations(await api<AnyRecord[]>(`/api/engineering/conversations?companyId=${companyId}`));
+  }
+  useEffect(() => { loadConversations().catch(() => undefined); }, [companyId]);
+  async function newConversation() {
+    const created = await postJson<AnyRecord>('/api/engineering/conversations', { companyId });
+    setConversations((current) => [created, ...current]); setConversation({ ...created, messages: [] });
+  }
+  async function openConversation(id: string) { setConversation(await api<AnyRecord>(`/api/engineering/conversations/${id}?companyId=${companyId}`)); }
   async function ask(event: React.FormEvent) {
     event.preventDefault(); if (!message.trim() || !companyId) return;
+    const active = conversation || (await postJson<AnyRecord>('/api/engineering/conversations', { companyId }));
+    if (!conversation) { setConversation({ ...active, messages: [] }); setConversations((current) => [active, ...current]); }
     setLoading(true);
-    try { setResult(await postJson<AnyRecord>('/api/engineering/chat', { companyId, message })); } finally { setLoading(false); }
+    try { const response = await postJson<AnyRecord>(`/api/engineering/conversations/${active.id}/messages`, { companyId, message }); setConversation((current) => current ? { ...current, messages: [...(current.messages || []), response.userMessage, response.assistantMessage], state: response.state } : current); setMessage(''); await loadConversations(); } finally { setLoading(false); }
   }
-  async function startIngestion() {
-    if (!companyId) return;
-    await postJson('/api/engineering/ingestion/start', { companyId });
-    setTimeout(() => loadLibrary().catch(() => undefined), 800);
-  }
-  const totalFiles = Object.values(status?.counts || {}).reduce((sum: number, value: any) => sum + Number(value), 0);
+  async function saveCase() { if (conversation) await postJson(`/api/engineering/conversations/${conversation.id}/save-case`, { companyId }); }
   return <Page title="Ingeniería FMH" text="Biblioteca técnica, cálculos preliminares y antecedentes trazables.">
     <section className="engineeringGrid">
       <div className="card engineeringChat">

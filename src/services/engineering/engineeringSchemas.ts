@@ -28,7 +28,12 @@ export const engineeringAssistantResultSchema = z.object({
   calculations: z.array(z.object({ title: z.string(), formula: z.string().optional(), inputs: z.array(z.object({ name: z.string(), value: z.number(), unit: z.string() })).default([]), result: z.number(), resultUnit: z.string(), explanation: z.string().optional() })).default([]),
   materials: z.array(z.object({ description: z.string(), quantity: z.number().optional(), unit: z.string().optional(), estimatedWeightKg: z.number().optional() })).default([]),
   estimatedCost: z.object({ currency: z.string(), materials: z.number().optional(), labor: z.number().optional(), other: z.number().optional(), total: z.number().optional() }).optional(),
-  sources: z.array(z.object({ id: z.string(), title: z.string(), type: z.string(), relevance: z.number() })).default([]), warnings: z.array(z.string()).default([]), confidence: z.number().min(0).max(1).default(0), reviewRequired: z.boolean().default(true)
+  sources: z.array(z.object({ id: z.string(), title: z.string(), type: z.string(), relevance: z.number(), url: z.string().url().optional(), excerpt: z.string().optional() })).default([]),
+  regulations: z.array(z.object({ code: z.string(), title: z.string(), status: z.string(), sourceUrl: z.string().url().optional(), sourceType: z.enum(['OFFICIAL', 'LOCAL_VERIFIED', 'INTERNAL', 'SECONDARY']).default('INTERNAL') })).default([]),
+  toolCalls: z.array(z.object({ name: z.string(), status: z.string(), summary: z.string().optional() })).default([]),
+  warnings: z.array(z.string()).default([]), confidence: z.number().min(0).max(1).default(0), reviewRequired: z.boolean().default(true),
+  level: z.enum(['ORIENTATION', 'ESTIMATION', 'PRELIMINARY_DESIGN', 'VERIFIED_CALCULATION']).default('ORIENTATION'),
+  model: z.string().optional(), capability: z.enum(['SUPPORTED_DETERMINISTIC', 'PRELIMINARY_ASSISTED', 'NOT_IMPLEMENTED']).default('PRELIMINARY_ASSISTED')
 });
 
 export type EngineeringExtraction = z.infer<typeof engineeringExtractionSchema>;

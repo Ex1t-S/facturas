@@ -23,7 +23,15 @@ services:
       - key: OPENAI_MODEL
         value: gpt-5.4-mini
       - key: OPENAI_ENGINEERING_MODEL
+        value: gpt-5.6-sol
+      - key: OPENAI_ENGINEERING_FAST_MODEL
         sync: false
+      - key: OPENAI_ENGINEERING_REASONING_EFFORT
+        value: high
+      - key: OPENAI_ENGINEERING_WEB_SEARCH_ENABLED
+        value: "false"
+      - key: MAX_ENGINEERING_TOOL_ROUNDS
+        value: "8"
       - key: OPENAI_TRANSCRIBE_MODEL
         value: gpt-4o-mini-transcribe
       - key: OPENAI_VECTOR_STORE_ID
