@@ -6,7 +6,7 @@ import { searchEngineeringKnowledge } from './engineeringKnowledge.js';
 import { searchEngineeringSectionCandidates } from './sectionCandidates.js';
 import { listEngineeringDrawings } from './drawingLibrary.js';
 
-export const engineeringToolDefinitions = [
+const engineeringToolDefinitionsBase = [
   { type: 'function', name: 'search_relevant_fmh_precedents', description: 'Busca antecedentes técnicos internos FMH y devuelve fuentes trazables. Usar sólo cuando aporten valor a la pregunta.', parameters: { type: 'object', properties: { query: { type: 'string' }, projectType: { type: 'string' } }, required: ['query'], additionalProperties: false }, strict: true },
   { type: 'function', name: 'search_official_engineering_regulations', description: 'Busca candidatos de reglamentos argentinos y fuentes oficiales registradas.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false }, strict: true },
   { type: 'function', name: 'search_relevant_fmh_drawings', description: 'Busca planos FMH relacionados con una consulta.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false }, strict: true },
@@ -22,6 +22,12 @@ export const engineeringToolDefinitions = [
   { type: 'function', name: 'build_preliminary_takeoff', description: 'Prepara un cómputo geométrico preliminar de patas, diagonales y vinculación de un silo.', parameters: { type: 'object', properties: { supportCount: { type: 'integer' }, freeHeightM: { type: 'number' }, diameterM: { type: 'number' } }, required: ['supportCount', 'freeHeightM'], additionalProperties: false }, strict: true },
   { type: 'function', name: 'calculate_purchase_plan', description: 'Calcula barras comerciales, sobrante y costo conocido a partir de metros y piezas.', parameters: { type: 'object', properties: { description: { type: 'string' }, needM: { type: 'number' }, commercialLengthM: { type: 'number' }, pricePerM: { type: 'number' } }, required: ['description', 'needM', 'commercialLengthM'], additionalProperties: false }, strict: true }
 ];
+
+// Los esquemas incluyen argumentos opcionales. Responses API exige que, con
+// strict=true, todas las propiedades sean obligatorias (o nullable). Mantener
+// strict=false permite omitir esos argumentos y cada ejecutor valida los datos
+// que realmente necesita antes de calcular.
+export const engineeringToolDefinitions = engineeringToolDefinitionsBase.map((tool) => ({ ...tool, strict: false }));
 
 function compareSections(forceKN: number, lengthMm: number, candidates: Array<{ designation: string; areaMm2: number; ixMm4: number; iyMm4: number; kgPerM?: number }>) {
   return candidates.map((candidate) => {

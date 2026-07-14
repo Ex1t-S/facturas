@@ -4,6 +4,7 @@ import { classifyEngineeringIntent, extractEngineeringFacts, normalizeEngineerin
 import { parseConversationState, updateConversationState } from './conversationState.js';
 import { runEngineeringOrchestrator } from './engineeringConversation.js';
 import { parseOptionalBoolean } from './queryParsing.js';
+import { engineeringToolDefinitions } from './engineeringTools.js';
 
 describe('engineering conversational flow', () => {
   it('normalizes common mojibake without losing accents', () => {
@@ -66,5 +67,10 @@ describe('engineering conversational flow', () => {
     expect(parseOptionalBoolean(true)).toBe(true);
     expect(parseOptionalBoolean(false)).toBe(false);
     expect(parseOptionalBoolean(undefined)).toBeUndefined();
+  });
+
+  it('exposes OpenAI-compatible tool schemas when parameters are optional', () => {
+    expect(engineeringToolDefinitions.length).toBeGreaterThan(10);
+    expect(engineeringToolDefinitions.every((tool) => tool.strict === false)).toBe(true);
   });
 });
