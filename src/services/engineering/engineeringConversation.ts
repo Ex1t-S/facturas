@@ -24,6 +24,14 @@ function shouldSearch(state: EngineeringConversationState) {
   return ['KNOWLEDGE_SEARCH', 'DRAWING_SEARCH', 'DRAWING_REVIEW', 'SECTION_SELECTION', 'PRELIMINARY_DESIGN', 'SECTION_COMPARISON'].includes(state.currentIntent || '');
 }
 
+export function requiredToolForEngineeringIntent(intent?: string) {
+  if (intent === 'LOAD_PER_SUPPORT') return 'calculate_load_per_support';
+  if (intent === 'SUPPORT_COMPARISON') return 'compare_support_alternatives';
+  if (intent === 'SECTION_COMPARISON') return 'get_section_properties';
+  if (intent === 'PURCHASE_PLAN') return 'calculate_purchase_plan';
+  return undefined;
+}
+
 async function loadContext(companyId: string, state: EngineeringConversationState, message: string) {
   if (!shouldSearch(state)) return { sources: [], regulations: [] };
   const query = [message, state.subject, state.projectType, ...activeInputs(state).map((item) => `${item.key} ${item.value}`)].filter(Boolean).join(' ');
@@ -53,6 +61,7 @@ export async function runEngineeringOrchestrator(input: { companyId: string; mes
     history: input.history || [],
     message: input.message,
     tools: [...engineeringToolDefinitions, ...(modelConfig.webSearchEnabled ? [{ type: 'web_search' }] : [])],
+    requiredToolName: state.missingData.length ? undefined : requiredToolForEngineeringIntent(state.currentIntent),
     executeTool: (name, args) => executeEngineeringTool(name, args, input.companyId)
   });
   const fallbackUsed = !execution.success;

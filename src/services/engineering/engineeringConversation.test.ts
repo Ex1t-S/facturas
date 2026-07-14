@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDeterministicEngineeringResult } from './engineeringDeterministic.js';
 import { classifyEngineeringIntent, extractEngineeringFacts, normalizeEngineeringText } from './engineeringIntelligence.js';
 import { parseConversationState, updateConversationState } from './conversationState.js';
-import { runEngineeringOrchestrator } from './engineeringConversation.js';
+import { requiredToolForEngineeringIntent, runEngineeringOrchestrator } from './engineeringConversation.js';
 import { parseOptionalBoolean } from './queryParsing.js';
 import { engineeringToolDefinitions } from './engineeringTools.js';
 import { engineeringHistoryItem, extractEngineeringResponseText } from './engineeringRuntime.js';
@@ -86,5 +86,9 @@ describe('engineering conversational flow', () => {
 
   it('keeps a pending load-per-support intent when the user supplies the requested values', () => {
     expect(classifyEngineeringIntent('Tengo 200 toneladas y 20 patas.', { currentIntent: 'LOAD_PER_SUPPORT' }).intent).toBe('LOAD_PER_SUPPORT');
+  });
+
+  it('requires the deterministic support-load tool for a complete support calculation', () => {
+    expect(requiredToolForEngineeringIntent('LOAD_PER_SUPPORT')).toBe('calculate_load_per_support');
   });
 });

@@ -79,6 +79,7 @@ export async function runEngineeringOpenAI(input: {
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   message: string;
   tools: any[];
+  requiredToolName?: string;
   executeTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
 }) : Promise<EngineeringModelExecution> {
   const startedAt = Date.now();
@@ -108,7 +109,7 @@ export async function runEngineeringOpenAI(input: {
       max_output_tokens: modelConfig.maxOutputTokens,
       store: false
     };
-    if (response?.id) body.previous_response_id = response.id;
+    if (round === 0 && input.requiredToolName) body.tool_choice = { type: 'function', name: input.requiredToolName };
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 45_000);
     let raw: Response;
@@ -126,7 +127,7 @@ export async function runEngineeringOpenAI(input: {
     response = await raw.json() as OpenAIResponse;
     const calls = extractFunctionCalls(response);
     if (!calls.length) break;
-    inputItems = [];
+    inputItems = [...(response.output || [])];
     for (const call of calls) {
       const signature = `${call.name}:${JSON.stringify(call.arguments)}`;
       if (seenToolCalls.has(signature)) {
