@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Archive, Bot, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Home, PackageSearch, ReceiptText, Send, Settings, Upload, Users, Wrench } from 'lucide-react';
 import { api, dateFmt, money, postJson } from './api';
+import { EngineeringPage } from './features/engineering/EngineeringPage';
 
 type View = 'dashboard' | 'assistant' | 'engineering' | 'documents' | 'quotes' | 'invoices' | 'inventory' | 'customers' | 'whatsapp' | 'settings';
 type AnyRecord = Record<string, any>;
@@ -183,7 +184,7 @@ export function App() {
   const content = useMemo(() => {
     if (view === 'documents') return <Documents data={data} companyId={companyId} notify={notify} />;
     if (view === 'assistant') return <AssistantView companyId={companyId} />;
-    if (view === 'engineering') return <EngineeringWorkspaceView companyId={companyId} />;
+    if (view === 'engineering') return <EngineeringPage companyId={companyId} />;
     if (view === 'quotes') return <Quotes data={data} companyId={companyId} notify={notify} />;
     if (view === 'invoices') return <Invoices data={data} companyId={companyId} notify={notify} />;
     if (view === 'inventory') return <Inventory data={data} companyId={companyId} notify={notify} />;
@@ -279,7 +280,7 @@ function AssistantView({ companyId }: { companyId: string }) {
     setText('');
     setLoading(true);
     try {
-      const response = await postJson<{ assistantMessage: AnyRecord; userMessage: AnyRecord }>(`/api/assistant/chats/${chatId}/messages`, {
+      const response = await postJson<{ assistantMessage: { role: 'assistant'; content: string; id?: string }; userMessage: { role: 'user'; content: string; id?: string } }>(`/api/assistant/chats/${chatId}/messages`, {
         message
       });
       setMessages((current) => {
@@ -464,9 +465,9 @@ function EngineeringDrawings({ companyId }: { companyId: string }) {
 }
 
 function EngineeringView({ companyId }: { companyId: string }) {
-  const result: AnyRecord | null = null;
+  const result: AnyRecord = {};
   const knowledge: AnyRecord = { documents: [] };
-  const status: AnyRecord | null = null;
+  const status: AnyRecord = {};
   const totalFiles = 0;
   const startIngestion = async () => undefined;
   const [message, setMessage] = useState('');
