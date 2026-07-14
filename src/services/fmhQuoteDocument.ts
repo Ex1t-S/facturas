@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import AdmZip from 'adm-zip';
 import type { Quote, QuoteItem, Customer } from '../generated/postgres-client/index.js';
@@ -8,7 +9,7 @@ import { config } from '../config.js';
 
 const execFileAsync = promisify(execFile);
 
-type QuoteWithDetails = Quote & {
+export type QuoteWithDetails = Quote & {
   customer: Customer;
   items: QuoteItem[];
 };
@@ -185,4 +186,14 @@ export async function convertDocxToPdf(docxPath: string) {
   } catch {
     return null;
   }
+}
+
+export async function renderFmhQuotePdf(quote: QuoteWithDetails) {
+  const dir = path.resolve(config.UPLOAD_DIR, 'generated', 'quote-previews');
+  await fs.mkdir(dir, { recursive: true });
+  const docxPath = path.join(dir, `preview-${crypto.randomUUID()}.docx`);
+  await fs.writeFile(docxPath, await renderFmhQuoteDocx(quote));
+  const pdfPath = await convertDocxToPdf(docxPath);
+  if (!pdfPath) return null;
+  return fs.readFile(pdfPath);
 }

@@ -12,7 +12,7 @@ import {
   type KnowledgeSource
 } from './businessKnowledge.js';
 import { safeFileName, writeDocumentFile } from './documentStorage.js';
-import { convertDocxToPdf, writeFmhQuoteDocx } from './fmhQuoteDocument.js';
+import { convertDocxToPdf, renderFmhQuotePdf, writeFmhQuoteDocx, type QuoteWithDetails } from './fmhQuoteDocument.js';
 import { renderDeliveryNotePdf, renderQuotePdf } from './pdf.js';
 
 const OPENAI_TIMEOUT_MS = 35_000;
@@ -96,9 +96,19 @@ function parseNumber(value?: unknown) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function explicitPrice(message: string) {
+  const match = message.match(/(?:costo|precio|importe|valor)\s*[,=:]?\s*(?:de\s*)?(?:\$\s*)?([\d.,]+)/i);
+  return match ? parseNumber(match[1]) : undefined;
+}
+
+function quoteWorkDescription(message: string) {
+  const match = message.match(/presupuesto\s+para\s+(?:cliente\s+)?[^,.;]+[,;]\s*(.*?)(?:\.\s*(?:costo|precio|importe|valor)\b|\s*,\s*(?:costo|precio|importe|valor)\b)/i);
+  return match?.[1]?.trim();
+}
+
 function firstCustomerGuess(message: string) {
   const match = message.match(/\b(?:para|cliente)\s+([^,.;\n]+?)(?:\s+con\b|\s+por\b|\s+de\b|,|\.|;|$)/i);
-  return match?.[1]?.trim();
+  return match?.[1]?.trim().replace(/^cliente\s+/i, '').trim();
 }
 
 function normalizeText(value: string) {
@@ -402,26 +412,26 @@ async function createQuotePreviewDraft(companyId: string, message: string, paylo
     source: 'asistente IA'
   });
   const customerName = customer?.legalName || payload.customerName || 'Cliente pendiente';
-  const items = normalizeDraftItems(payload, 0);
-  const totals = calculateQuoteTotals(items);
-  const pdf = await renderQuotePdf({
-    number: 0,
-    customerName,
-    issueDate: new Date(),
-    validUntil: undefined,
-    currency: payload.currency ?? 'ARS',
-    subtotal: totals.subtotal,
-    taxTotal: totals.taxTotal,
-    total: totals.total,
-    notes: payload.notes || 'Borrador para confirmacion.',
-    items: items.map((item) => ({
-      description: item.description,
-      quantity: item.quantity.toString(),
-      unit: item.unit,
-      unitPrice: item.unitPrice.toString(),
-      total: (item.quantity * item.unitPrice).toString()
+  const price = explicitPrice(message);
+  const description = quoteWorkDescription(message);
+  const items = normalizeDraftItems({
+    ...payload,
+    items: payload.items.map((item) => ({
+      ...item,
+      description: description && (item.description.toLowerCase().includes('presupuesto') || item.description.toLowerCase().includes('costo')) ? description : item.description,
+      unitPrice: item.unitPrice == null || Number(item.unitPrice) === 0 ? price : item.unitPrice
     }))
-  });
+  }, 0);
+  const totals = calculateQuoteTotals(items);
+  const previewQuote = {
+    id: 'preview', companyId, customerId: customer?.id || 'preview', number: 0, version: 1, status: 'DRAFT',
+    issueDate: new Date(), validUntil: null, currency: payload.currency ?? 'ARS',
+    subtotal: totals.subtotal, taxTotal: totals.taxTotal, total: totals.total, notes: payload.notes || 'Borrador para confirmacion.', createdById: null,
+    customer: customer || { id: 'preview', companyId, legalName: customerName, tradeName: null, cuit: null, taxCondition: null, address: null, contactName: null, phone: null, email: null, paymentTerms: null, notes: null, createdAt: new Date() },
+    items: items.map((item) => ({ id: 'preview', quoteId: 'preview', productId: null, description: item.description, quantity: item.quantity, unit: item.unit, unitPrice: item.unitPrice, discount: 0, taxRate: item.taxRate, total: item.quantity * item.unitPrice }))
+  } as unknown as QuoteWithDetails;
+  let pdf: Buffer | null = await renderFmhQuotePdf(previewQuote);
+  pdf ??= await renderQuotePdf({ number: 0, customerName, issueDate: new Date(), validUntil: undefined, currency: payload.currency ?? 'ARS', subtotal: totals.subtotal, taxTotal: totals.taxTotal, total: totals.total, notes: payload.notes || 'Borrador para confirmacion.', items: items.map((item) => ({ description: item.description, quantity: item.quantity.toString(), unit: item.unit, unitPrice: item.unitPrice.toString(), total: (item.quantity * item.unitPrice).toString() })) });
   const previewFileName = ensurePdfFileName(suggestedFileName || suggestedDocumentFileName('quote', payload));
   const stored = await writeDocumentFile({
     buffer: pdf,
