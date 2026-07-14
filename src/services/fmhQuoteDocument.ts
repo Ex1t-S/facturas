@@ -28,14 +28,14 @@ function stripXml(value: string) {
   return value.replace(/<[^>]+>/g, '');
 }
 
-function paragraph(text: string, options: { bold?: boolean; size?: number; align?: 'center' | 'right'; style?: string } = {}) {
+function paragraph(text: string, options: { bold?: boolean; size?: number; align?: 'center' | 'right'; style?: string; before?: number } = {}) {
   const bold = options.bold ? '<w:b/>' : '';
   const align = options.align ? `<w:jc w:val="${options.align}"/>` : '';
   const style = options.style ? `<w:pStyle w:val="${options.style}"/>` : '';
   const size = options.size ?? 28;
   return [
     '<w:p>',
-    `<w:pPr>${style}${align}<w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>`,
+    `<w:pPr>${style}${align}<w:spacing w:before="${options.before ?? 0}" w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>`,
     '<w:r>',
     `<w:rPr>${bold}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr>`,
     `<w:t xml:space="preserve">${escapeXml(text)}</w:t>`,
@@ -94,7 +94,8 @@ function buildQuoteParagraphs(quote: QuoteWithDetails) {
     blocks.push(paragraph(costLeader(quote.currency, lineNet(item), Number(item.taxRate)), { style: 'Prrafodelista', size: 28 }));
   });
   if (quote.notes) blocks.push(paragraph(quote.notes, { style: 'Prrafodelista', size: 24 }));
-  blocks.push(paragraph('hacemos propicia la oportunidad para saludar muy atentamente. -', { style: 'Prrafodelista', size: 28 }));
+  const closingSpacing = Math.max(0, 5200 - blocks.length * 360);
+  blocks.push(paragraph('hacemos propicia la oportunidad para saludar muy atentamente. -', { style: 'Prrafodelista', size: 28, before: closingSpacing }));
   return blocks.join('');
 }
 
