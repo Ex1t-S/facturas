@@ -212,13 +212,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
                 OR: [
                   { fileName: { contains: query.q } },
                   { issuerName: { contains: query.q } },
-                  { issuerCuit: { contains: query.q } },
-                  { externalNumber: { contains: query.q } },
-                  { extraction: { is: { rawText: { contains: query.q } } } },
-                  { extraction: { is: { extractedJson: { contains: query.q } } } },
-                  { customerCandidates: { some: { legalName: { contains: query.q } } } },
-                  { customerCandidates: { some: { cuit: { contains: query.q } } } },
-                  { itemCandidates: { some: { rawDescription: { contains: query.q } } } }
+                  { customerCandidates: { some: { legalName: { contains: query.q } } } }
                 ]
               }
             : {},
@@ -266,11 +260,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
                 OR: [
                   { fileName: { contains: query.q } },
                   { issuerName: { contains: query.q } },
-                  { issuerCuit: { contains: query.q } },
-                  { externalNumber: { contains: query.q } },
-                  { extraction: { is: { rawText: { contains: query.q } } } },
-                  { customerCandidates: { some: { legalName: { contains: query.q } } } },
-                  { itemCandidates: { some: { rawDescription: { contains: query.q } } } }
+                  { customerCandidates: { some: { legalName: { contains: query.q } } } }
                 ]
               }
             : {},

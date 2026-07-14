@@ -17,14 +17,15 @@ export type WhatsAppSendTextInput = {
 
 export type WhatsAppSendDocumentInput = {
   to: string;
-  documentUrl: string;
+  documentUrl?: string;
+  mediaId?: string;
   filename: string;
   caption?: string;
 };
 
 async function sendWhatsAppMessage(body: Record<string, unknown>): Promise<{ providerMessageId?: string }> {
   if (!config.WHATSAPP_ACCESS_TOKEN || !config.WHATSAPP_PHONE_NUMBER_ID) {
-    return {};
+    throw new Error('WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID are required to send WhatsApp messages');
   }
 
   const response = await fetch(`https://graph.facebook.com/v20.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
@@ -53,15 +54,44 @@ export async function sendWhatsAppText(input: WhatsAppSendTextInput): Promise<{ 
 }
 
 export async function sendWhatsAppDocument(input: WhatsAppSendDocumentInput): Promise<{ providerMessageId?: string }> {
+  if (!input.mediaId && !input.documentUrl) {
+    throw new Error('WhatsApp document requires mediaId or documentUrl');
+  }
+
+  const document =
+    input.mediaId
+      ? { id: input.mediaId, filename: input.filename, caption: input.caption }
+      : { link: input.documentUrl, filename: input.filename, caption: input.caption };
+
   return sendWhatsAppMessage({
     to: input.to,
     type: 'document',
-    document: {
-      link: input.documentUrl,
-      filename: input.filename,
-      caption: input.caption
-    }
+    document
   });
+}
+
+export async function uploadWhatsAppMedia(input: { buffer: Buffer; mimeType: string; filename: string }): Promise<{ mediaId: string }> {
+  if (!config.WHATSAPP_ACCESS_TOKEN || !config.WHATSAPP_PHONE_NUMBER_ID) {
+    throw new Error('WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID are required to upload WhatsApp media');
+  }
+
+  const form = new FormData();
+  form.append('messaging_product', 'whatsapp');
+  form.append('file', new Blob([new Uint8Array(input.buffer)], { type: input.mimeType }), input.filename);
+
+  const response = await fetch(`https://graph.facebook.com/v20.0/${config.WHATSAPP_PHONE_NUMBER_ID}/media`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${config.WHATSAPP_ACCESS_TOKEN}` },
+    body: form
+  });
+
+  if (!response.ok) {
+    throw new Error(`WhatsApp media upload failed: ${response.status} ${await response.text()}`);
+  }
+
+  const data = (await response.json()) as { id?: string };
+  if (!data.id) throw new Error('WhatsApp media upload returned no media id');
+  return { mediaId: data.id };
 }
 
 export async function getWhatsAppMedia(mediaId: string): Promise<{ buffer: Buffer; mimeType: string; filename: string }> {
