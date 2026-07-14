@@ -7,7 +7,7 @@ La sección `Ingeniería FMH` agrega una biblioteca técnica incremental, búsqu
 ```text
 ENGINEERING_KNOWLEDGE_ROOT=C:\\ruta\\a\\la\\biblioteca
 HISTORICAL_DOCUMENT_ROOT=C:\\ruta\\de\\respaldo
-OPENAI_ENGINEERING_MODEL=
+OPENAI_ENGINEERING_MODEL=gpt-5.6-sol
 OPENAI_API_KEY=
 ```
 
