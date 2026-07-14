@@ -28,13 +28,14 @@ function resolveMissing(state: EngineeringConversationState, key: string) {
 }
 
 function captureDimensions(state: EngineeringConversationState, message: string) {
+  const normalized = message.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const patterns: Array<[string, RegExp]> = [
-    ['diameter', /(?:diametro|di[aá]metro|Ø)\s*(?:de|=|:)?\s*(\d+(?:[,.]\d+)?)\s*m/i],
+    ['diameter', /(?:diametro|Ø)\s*(?:de|=|:)?\s*(\d+(?:[,.]\d+)?)\s*m/i],
     ['bodyHeight', /(?:cuerpo|alto del cuerpo)\s*(?:de|=|:)?\s*(\d+(?:[,.]\d+)?)\s*m/i],
     ['coneHeight', /(?:cono|alto del cono)\s*(?:de|=|:)?\s*(\d+(?:[,.]\d+)?)\s*m/i]
   ];
-  for (const [key, pattern] of patterns) { const match = message.match(pattern); if (match) put(state, key, Number(match[1].replace(',', '.')), 'm'); }
-  const reversed = [...message.matchAll(/(\d+(?:[,.]\d+)?)\s*m(?:etros?)?\s*(?:de\s*)?(di[aá]metro|cuerpo|cono|altura)/gi)];
+  for (const [key, pattern] of patterns) { const match = normalized.match(pattern); if (match) put(state, key, Number(match[1].replace(',', '.')), 'm'); }
+  const reversed = [...normalized.matchAll(/(\d+(?:[,.]\d+)?)\s*m(?:etros?)?\s*(?:de\s*)?(diametro|cuerpo|cono|altura)/gi)];
   for (const match of reversed) {
     const label = match[2].toLowerCase();
     const key = label.includes('di') ? 'diameter' : label.includes('cuerpo') ? 'bodyHeight' : label.includes('cono') ? 'coneHeight' : 'height';

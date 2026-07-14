@@ -64,6 +64,8 @@ describe('engineering deterministic calculations', () => {
     expect(activeInputs(state).find((item) => item.key === 'diameter')?.value).toBe(8);
     expect(activeInputs(state).find((item) => item.key === 'bodyHeight')?.value).toBe(7);
     expect(activeInputs(state).find((item) => item.key === 'coneHeight')?.value).toBe(2);
+    state = updateConversationState(state, 'Corregir a 9 metros de di\u00e1metro.');
+    expect(activeInputs(state).find((item) => item.key === 'diameter')?.value).toBe(9);
   });
   it('creates a preliminary takeoff and commercial purchase quantities', () => {
     const takeoff = buildSiloSupportTakeoff({ supportCount: 6, freeHeightM: 4, diameterM: 8, legCandidate: { id: 'a', designation: 'Tubo 100x100x4', kgPerM: 12, source: 'INVENTORY', sourceTitle: 'Inventario', verified: true } });
