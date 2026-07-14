@@ -5,7 +5,7 @@ import { parseConversationState, updateConversationState } from './conversationS
 import { runEngineeringOrchestrator } from './engineeringConversation.js';
 import { parseOptionalBoolean } from './queryParsing.js';
 import { engineeringToolDefinitions } from './engineeringTools.js';
-import { extractEngineeringResponseText } from './engineeringRuntime.js';
+import { engineeringHistoryItem, extractEngineeringResponseText } from './engineeringRuntime.js';
 
 describe('engineering conversational flow', () => {
   it('normalizes common mojibake without losing accents', () => {
@@ -77,5 +77,14 @@ describe('engineering conversational flow', () => {
 
   it('extracts text from the raw Responses API output shape', () => {
     expect(extractEngineeringResponseText({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'OK FMH' }] }] })).toBe('OK FMH');
+  });
+
+  it('uses the Responses API content type required for assistant history', () => {
+    expect(engineeringHistoryItem({ role: 'assistant', content: 'Respuesta anterior' }).content[0].type).toBe('output_text');
+    expect(engineeringHistoryItem({ role: 'user', content: 'Consulta nueva' }).content[0].type).toBe('input_text');
+  });
+
+  it('keeps a pending load-per-support intent when the user supplies the requested values', () => {
+    expect(classifyEngineeringIntent('Tengo 200 toneladas y 20 patas.', { currentIntent: 'LOAD_PER_SUPPORT' }).intent).toBe('LOAD_PER_SUPPORT');
   });
 });

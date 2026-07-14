@@ -69,6 +69,10 @@ export function extractEngineeringResponseText(response: OpenAIResponse) {
   }).map((text) => text.trim()).filter(Boolean).join('\n\n') || undefined;
 }
 
+export function engineeringHistoryItem(item: { role: 'user' | 'assistant'; content: string }) {
+  return { role: item.role, content: [{ type: item.role === 'assistant' ? 'output_text' : 'input_text', text: item.content }] };
+}
+
 export async function runEngineeringOpenAI(input: {
   systemPrompt: string;
   stateText: string;
@@ -88,7 +92,7 @@ export async function runEngineeringOpenAI(input: {
   let inputItems: any[] = [
     { role: 'system', content: [{ type: 'input_text', text: input.systemPrompt }] },
     { role: 'system', content: [{ type: 'input_text', text: input.stateText }] },
-    ...input.history.slice(-14).map((item) => ({ role: item.role, content: [{ type: 'input_text', text: item.content }] })),
+    ...input.history.slice(-14).map(engineeringHistoryItem),
     { role: 'user', content: [{ type: 'input_text', text: input.message }] }
   ];
   const seenToolCalls = new Set<string>();

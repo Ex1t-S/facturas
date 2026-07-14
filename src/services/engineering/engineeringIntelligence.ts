@@ -177,6 +177,7 @@ export function classifyEngineeringIntent(rawMessage: string, context?: { projec
   else if (/\b(compar|contra|versus|vs)\b/.test(lower) && /patas?|apoyos?|soportes?/.test(lower)) intent = 'SUPPORT_COMPARISON';
   else if (/\b(compar|contra|versus|vs)\b/.test(lower) && /ca[nñ]o|tubo|perfil|seccion|sección/.test(lower)) intent = 'SECTION_COMPARISON';
   else if (/\b(carga|peso)\b/.test(lower) && /patas?|apoyos?|soportes?|por cada/.test(lower)) intent = 'LOAD_PER_SUPPORT';
+  else if (context?.currentIntent === 'LOAD_PER_SUPPORT' && /patas?|apoyos?|soportes?/.test(lower) && /\d/.test(lower)) intent = 'LOAD_PER_SUPPORT';
   else if (/\b(que patas|qué patas|seleccion|selección|elegir|perfil|tubo|ca[nñ]o)\b/.test(lower) && /usar|utilizar|sirve|recom|analizar|conviene|necesito/.test(lower)) intent = 'SECTION_SELECTION';
   else if (/\b(predimension|dise[nñ]ar|estructura soporte|estructura elevada|base de silo)\b/.test(lower)) intent = 'PRELIMINARY_DESIGN';
   else if (/\b(calcul|cuanto|cuánto|cu[aá]ntas?|resultado|peso|masa)\b/.test(lower) || /\d/.test(lower) && context?.projectType === 'SILO') intent = 'QUICK_CALCULATION';
