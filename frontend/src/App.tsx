@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, Bot, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Home, PackageSearch, ReceiptText, Send, Settings, Upload, Users, Wrench } from 'lucide-react';
+import { Archive, ArrowRight, Bot, CheckCircle2, ChevronDown, ChevronRight, Clock3, FileCheck2, FileText, Folder, FolderOpen, Home, Menu, PackageSearch, Plus, ReceiptText, Search, Send, Settings, Upload, Users, Wrench, X } from 'lucide-react';
 import { api, dateFmt, money, postJson } from './api';
 import { EngineeringPage } from './features/engineering/EngineeringPage';
 
@@ -74,6 +74,17 @@ const labels: Record<string, string> = {
   CURRENT: 'Versión comprobada',
   HISTORICAL: 'Precio histórico',
   NO_PRICE: 'Sin precio',
+  OK: 'Verificado',
+  'Falta config': 'Pendiente de configuración',
+  'Falta token': 'Pendiente de configuración',
+  COMPLETO: 'Completo',
+  PENDING_CONFIRMATION: 'Pendiente de confirmación',
+  AUTHORIZED: 'Autorizada',
+  CANCELLED: 'Cancelada',
+  DRAWING: 'Plano',
+  EXTRACTED: 'Procesado',
+  INDEXED: 'Indexado',
+  UNSUPPORTED: 'No compatible',
   ORIENTATION: 'Orientación'
 };
 
@@ -138,8 +149,10 @@ export function App() {
   const [data, setData] = useState<AnyRecord>({});
   const [toast, setToast] = useState('');
   const [busy, setBusy] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const companyName = data.dashboard?.company?.tradeName || data.dashboard?.company?.legalName || 'Sin empresa';
+  const goTo = (next: View) => { setView(next); setSidebarOpen(false); };
 
   async function notify<T>(message: string, work: () => Promise<T>) {
     setBusy(true);
@@ -150,7 +163,7 @@ export function App() {
       await load();
       return result;
     } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Error inesperado');
+      setToast('No pudimos completar la acción. Revisá los datos e intentá nuevamente.');
       throw error;
     } finally {
       setBusy(false);
@@ -162,24 +175,22 @@ export function App() {
     const activeCompanyId = dashboard.company?.id || companyId;
     if (activeCompanyId) localStorage.setItem('companyId', activeCompanyId);
     setCompanyId(activeCompanyId);
-  const [customers, products, quotes, invoices, documents, inventory, suppliers, whatsapp] = activeCompanyId
-      ? await Promise.all([
-          api<AnyRecord[]>(`/api/customers?companyId=${activeCompanyId}`),
-          api<AnyRecord[]>(`/api/products?companyId=${activeCompanyId}&take=300`),
-          api<AnyRecord[]>(`/api/quotes?companyId=${activeCompanyId}`),
-          api<AnyRecord[]>(`/api/invoices?companyId=${activeCompanyId}`),
-          api<AnyRecord[]>(`/api/documents?companyId=${activeCompanyId}&take=300`),
-          api<AnyRecord>(`/api/inventory?companyId=${activeCompanyId}`),
-          api<AnyRecord[]>(`/api/suppliers?companyId=${activeCompanyId}`),
-          api<AnyRecord[]>('/api/whatsapp/messages')
-        ])
-      : [[], [], [], [], await api<AnyRecord[]>('/api/documents?take=300'), {}, [], await api<AnyRecord[]>('/api/whatsapp/messages')];
-    setData({ dashboard, customers, products, quotes, invoices, documents, inventory, suppliers, whatsapp });
+    if (!activeCompanyId) { setData((current) => ({ ...current, dashboard })); return; }
+    const next: AnyRecord = { dashboard };
+    if (view === 'quotes' || view === 'customers') next.customers = await api<AnyRecord[]>(`/api/customers?companyId=${activeCompanyId}`);
+    if (view === 'quotes' || view === 'inventory') next.products = await api<AnyRecord[]>(`/api/products?companyId=${activeCompanyId}&take=300`);
+    if (view === 'quotes' || view === 'invoices') next.quotes = await api<AnyRecord[]>(`/api/quotes?companyId=${activeCompanyId}`);
+    if (view === 'invoices') next.invoices = await api<AnyRecord[]>(`/api/invoices?companyId=${activeCompanyId}`);
+    if (view === 'documents') next.documents = await api<AnyRecord[]>(`/api/documents?companyId=${activeCompanyId}&take=300`);
+    if (view === 'inventory') next.inventory = await api<AnyRecord>(`/api/inventory?companyId=${activeCompanyId}`);
+    if (view === 'inventory') next.suppliers = await api<AnyRecord[]>(`/api/suppliers?companyId=${activeCompanyId}`);
+    if (view === 'whatsapp') next.whatsapp = await api<AnyRecord[]>('/api/whatsapp/messages');
+    setData((current) => ({ ...current, ...next }));
   }
 
   useEffect(() => {
-    load().catch((error) => setToast(error.message));
-  }, [companyId]);
+    load().catch(() => setToast('No pudimos cargar la información. Intentá recargar la pantalla.'));
+  }, [companyId, view]);
 
   const content = useMemo(() => {
     if (view === 'documents') return <Documents data={data} companyId={companyId} notify={notify} />;
@@ -188,23 +199,28 @@ export function App() {
     if (view === 'quotes') return <Quotes data={data} companyId={companyId} notify={notify} />;
     if (view === 'invoices') return <Invoices data={data} companyId={companyId} notify={notify} />;
     if (view === 'inventory') return <Inventory data={data} companyId={companyId} notify={notify} />;
-    if (view === 'customers') return <Customers data={data} companyId={companyId} notify={notify} />;
-    if (view === 'whatsapp') return <WhatsApp data={data} />;
-    if (view === 'settings') return <SettingsView notify={notify} />;
-    return <Dashboard data={data} setView={setView} />;
+    if (view === 'customers') return <CustomersDirectory data={data} companyId={companyId} notify={notify} />;
+    if (view === 'whatsapp') return <WhatsAppInbox data={data} />;
+    if (view === 'settings') return <SettingsCenter notify={notify} />;
+    return <DashboardOverview data={data} setView={setView} />;
   }, [view, data, companyId]);
 
   return (
     <div className="shell">
-      <aside>
+      <button className="mobileSidebarBackdrop" aria-label="Cerrar navegación" onClick={() => setSidebarOpen(false)} />
+      <aside className={sidebarOpen ? 'open' : ''}>
+        <button className="iconButton sidebarClose" onClick={() => setSidebarOpen(false)} aria-label="Cerrar navegación"><X size={17} /></button>
         <div className="brand"><strong>FMH Gestión</strong><span>Presupuestos, remitos, inventario y ARCA</span></div>
-        <nav>{nav.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}><Icon size={18} />{label}</button>)}</nav>
+        <nav aria-label="Navegación principal">{nav.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'active' : ''} onClick={() => goTo(id)}><Icon size={17} />{label}</button>)}</nav>
+        <div className="sidebarBottom"><span className="sidebarStatus"><span /> Sistema operativo</span><button onClick={() => goTo('settings')}><Settings size={15} /> Ajustes</button></div>
       </aside>
       <main>
         <header className="topbar">
-          <div className="company"><span>Empresa activa</span><strong>{companyName}</strong></div>
+          <button className="mobileSidebarToggle" onClick={() => setSidebarOpen(true)} aria-label="Abrir navegación"><Menu size={18} /></button>
+          <div className="topbarContext"><span className="topbarSection">{nav.find((item) => item.id === view)?.label || 'Panel'}</span><div className="company"><span>Empresa activa</span><strong>{companyName}</strong></div></div>
+          <div className="topbarActions"><span className="topbarDate">{new Intl.DateTimeFormat('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date())}</span><button className="userMenu" onClick={() => goTo('settings')} aria-label="Abrir ajustes"><span>FM</span></button></div>
         </header>
-        {busy && <div className="loading">Procesando...</div>}
+        {busy && <div className="globalProgress"><span />Procesando tu solicitud…</div>}
         {content}
       </main>
       {toast && <div className="toast">{toast}</div>}
@@ -212,8 +228,8 @@ export function App() {
   );
 }
 
-function Page({ title, text, action, children }: { title: string; text: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return <><div className="pageHead"><div><h1>{title}</h1><p>{text}</p></div>{action}</div>{children}</>;
+function Page({ title, text, action, eyebrow, children }: { title: string; text: string; eyebrow?: string; action?: React.ReactNode; children: React.ReactNode }) {
+  return <><div className="pageHead"><div className="pageTitleBlock">{eyebrow && <span className="pageEyebrow">{eyebrow}</span>}<h1>{title}</h1><p>{text}</p></div>{action && <div className="pageActions">{action}</div>}</div>{children}</>;
 }
 
 function Dashboard({ data, setView }: { data: AnyRecord; setView: (view: View) => void }) {
@@ -312,7 +328,8 @@ function AssistantView({ companyId }: { companyId: string }) {
           </div>
         </aside>
         <div className="assistantChatPanel">
-          <div className="chat">
+           <div className="chat">
+             {!messages.length && !loading && <div className="assistantWelcome"><span className="assistantWelcomeIcon"><Bot size={22} /></span><strong>¿En qué te ayudo hoy?</strong><p>Consultá documentos, creá borradores o pedime que encuentre información dentro de tu operación.</p><div className="assistantSuggestions"><button type="button" onClick={() => setText('¿Qué documentos tengo pendientes de revisar?')}>Ver pendientes</button><button type="button" onClick={() => setText('Prepará un presupuesto para un cliente')}>Crear presupuesto</button><button type="button" onClick={() => setText('Buscá un documento por cliente')}>Buscar documento</button></div></div>}
             {messages.map((message, index) => (
               <div className={`bubble ${message.role}`} key={message.id || index}>
                 <span>{message.role === 'assistant' ? 'Asistente' : 'Vos'}</span>
@@ -324,7 +341,7 @@ function AssistantView({ companyId }: { companyId: string }) {
                 )}
               </div>
             ))}
-            {loading && <div className="bubble assistant"><span>Asistente</span><p>Procesando...</p></div>}
+             {loading && <div className="processingMessage"><span className="assistantAvatar"><Bot size={14} /></span><div><strong>Analizando tu solicitud</strong><span className="processingDots"><i /><i /><i /></span></div></div>}
           </div>
           <form className="chatComposer" onSubmit={(event) => { event.preventDefault(); ask(text); }}>
             <textarea value={text} onChange={(event) => setText(event.target.value)} rows={3} placeholder="Escribi la consulta o pedido..." />
@@ -405,6 +422,24 @@ function EngineeringWorkspaceView({ companyId }: { companyId: string }) {
         <form className="engineeringComposer" onSubmit={ask}><textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ej.: Necesito comparar 4 contra 6 patas para un silo aéreo de 200 t." /><div><button disabled={loading || !message.trim()}>Enviar</button><button type="button" onClick={downloadDrawing} disabled={!conversation}>Esquema SVG</button></div></form>
       </div>
     </section> : library ? <EngineeringLibrary companyId={companyId} /> : <EngineeringDrawings companyId={companyId} />}
+  </Page>;
+}
+
+function DashboardOverview({ data, setView }: { data: AnyRecord; setView: (view: View) => void }) {
+  const stats = data.dashboard?.stats || {};
+  const recentDocuments = data.dashboard?.recentDocuments || [];
+  return <Page eyebrow="Resumen" title="Panel operativo" text="Una vista rápida de lo que necesita atención hoy." action={<button onClick={() => setView('documents')}><Upload size={16} /> Importar documentos</button>}>
+    <section className="dashboardMetrics">
+      <article><span className="metricLabel">Clientes</span><strong>{stats.customers || 0}</strong><small>registrados</small><Users size={18} /></article>
+      <article><span className="metricLabel">Productos</span><strong>{stats.products || 0}</strong><small>en catálogo</small><PackageSearch size={18} /></article>
+      <article><span className="metricLabel">Presupuestos</span><strong>{stats.quotes || 0}</strong><small>históricos y activos</small><ReceiptText size={18} /></article>
+      <article className={stats.documentsPending ? 'attention' : ''}><span className="metricLabel">Por revisar</span><strong>{stats.documentsPending || 0}</strong><small>documentos pendientes</small><FileCheck2 size={18} /></article>
+    </section>
+    <section className="quickActions"><div><span className="pageEyebrow">Accesos rápidos</span><h2>¿Qué querés hacer?</h2></div><div className="quickActionGrid"><button onClick={() => setView('quotes')}><Plus size={17} /><span><strong>Nuevo presupuesto</strong><small>Crear una propuesta comercial</small></span><ArrowRight size={15} /></button><button onClick={() => setView('assistant')}><Bot size={17} /><span><strong>Consultar asistente</strong><small>Resolver una tarea con IA</small></span><ArrowRight size={15} /></button><button onClick={() => setView('customers')}><Users size={17} /><span><strong>Agregar cliente</strong><small>Guardar datos fiscales</small></span><ArrowRight size={15} /></button></div></section>
+    <section className="dashboardGrid">
+      <div className="card dashboardPanel"><div className="sectionRow"><div><span className="pageEyebrow">Actividad comercial</span><h2>Presupuestos recientes</h2></div><button className="textButton" onClick={() => setView('quotes')}>Ver todos <ArrowRight size={14} /></button></div><Table headers={['N°', 'Cliente', 'Estado', 'Total']} rows={(data.dashboard?.recentQuotes || []).map((q: AnyRecord) => <tr key={q.id}><td>#{q.number}</td><td><strong>{q.customer?.legalName || 'Cliente sin nombre'}</strong></td><td><Badge value={q.status} /></td><td>{money.format(Number(q.total || 0))}</td></tr>)} /></div>
+      <div className="card dashboardPanel"><div className="sectionRow"><div><span className="pageEyebrow">Centro de revisión</span><h2>Documentos recientes</h2></div><button className="textButton" onClick={() => setView('documents')}>Abrir documentos <ArrowRight size={14} /></button></div><div className="activityList">{recentDocuments.slice(0, 5).map((d: AnyRecord) => <div className="activityItem" key={d.id}><span className="activityIcon"><FileText size={15} /></span><div><strong>{d.fileName || 'Documento sin nombre'}</strong><small>{labelFor(d.kind)} · <Badge value={d.extractionStatus} /></small></div><Clock3 size={14} /></div>)}{!recentDocuments.length && <Empty title="Todavía no hay documentos" text="Importá un documento para verlo en este espacio." />}</div></div>
+    </section>
   </Page>;
 }
 
@@ -918,6 +953,41 @@ function Inventory({ data, companyId, notify }: { data: AnyRecord; companyId: st
       <section className="card"><h2>Materiales</h2><Table headers={['Nombre', 'Categoría', 'Tipo', 'Venta', 'Estado', 'Mejores precios']} rows={products.map((p: AnyRecord) => <tr key={p.id}><td><strong>{p.name}</strong><small>{p.normalizedName || p.unit}</small></td><td>{p.category || '-'}</td><td>{labelFor(p.type)}</td><td>{money.format(Number(p.price || 0))}</td><td>{Number(p.price || 0) === 0 ? <Badge value="Sin precio" /> : <Badge value="Completo" />}</td><td>{(p.supplierPrices || []).slice(0, 3).map((sp: AnyRecord) => `${sp.supplier.name}: ${money.format(Number(sp.price))}`).join(' | ') || 'Sin proveedor'}</td></tr>)} /></section>
     </Page>
   );
+}
+
+function CustomersDirectory({ data, companyId, notify }: { data: AnyRecord; companyId: string; notify: Function }) {
+  const [query, setQuery] = useState('');
+  const customers = (data.customers || []).filter((customer: AnyRecord) => !query.trim() || `${customer.legalName} ${customer.cuit || ''} ${customer.address || ''}`.toLowerCase().includes(query.toLowerCase()));
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    await notify('Cliente guardado.', () => postJson('/api/customers', { companyId, legalName: form.get('legalName'), cuit: form.get('cuit'), address: form.get('address'), taxCondition: form.get('taxCondition') }));
+    event.currentTarget.reset();
+  }
+  return <Page eyebrow="Relaciones" title="Clientes" text="Datos fiscales y contactos para presupuestar y facturar." action={<span className="pageCount">{customers.length} clientes</span>}>
+    <section className="directoryLayout"><form className="card form directoryForm" onSubmit={submit}><div><span className="pageEyebrow">Alta rápida</span><h2>Nuevo cliente</h2><p className="mutedText">Guardá los datos que vas a reutilizar en presupuestos y facturas.</p></div><Field label="Razón social" name="legalName" required /><Field label="CUIT" name="cuit" placeholder="20-12345678-9" /><Field label="Domicilio" name="address" /><Field label="Condición fiscal" name="taxCondition" placeholder="Responsable inscripto" /><button>Guardar cliente</button></form><div className="card directoryPanel"><div className="directoryHeader"><div><span className="pageEyebrow">Directorio</span><h2>Clientes registrados</h2></div><label className="inlineSearch"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente" aria-label="Buscar cliente" /></label></div><Table headers={['Razón social', 'CUIT', 'Domicilio']} rows={customers.map((customer: AnyRecord) => <tr key={customer.id}><td><strong>{customer.legalName}</strong><small>{customer.taxCondition || 'Condición fiscal pendiente'}</small></td><td>{customer.cuit || '—'}</td><td>{customer.address || '—'}</td></tr>)} /></div></section>
+  </Page>;
+}
+
+function WhatsAppInbox({ data }: { data: AnyRecord }) {
+  const [query, setQuery] = useState('');
+  const messages = (data.whatsapp || []).filter((message: AnyRecord) => !query.trim() || `${message.fromNumber} ${message.body || ''}`.toLowerCase().includes(query.toLowerCase()));
+  return <Page eyebrow="Canales" title="WhatsApp" text="Mensajes recibidos y adjuntos listos para revisión." action={<span className="pageCount">{messages.length} mensajes</span>}>
+    <section className="whatsappOverview"><div className="whatsappStat"><span>Mensajes recibidos</span><strong>{messages.length}</strong></div><div className="whatsappStat"><span>Con adjuntos</span><strong>{messages.filter((message: AnyRecord) => message.mediaDocument).length}</strong></div><div className="whatsappStat"><span>Última actividad</span><strong>{messages[0]?.createdAt ? dateFmt.format(new Date(messages[0].createdAt)) : 'Sin actividad'}</strong></div></section>
+    <section className="card whatsappPanel"><div className="directoryHeader"><div><span className="pageEyebrow">Bandeja de entrada</span><h2>Conversaciones recientes</h2></div><label className="inlineSearch"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar número o mensaje" aria-label="Buscar WhatsApp" /></label></div><Table headers={['De', 'Tipo', 'Mensaje', 'Adjunto']} rows={messages.map((message: AnyRecord) => <tr key={message.id}><td><strong>{message.fromNumber}</strong><small>{message.createdAt ? dateFmt.format(new Date(message.createdAt)) : 'Fecha no disponible'}</small></td><td><Badge value={message.messageType} /></td><td><span className="messagePreview">{message.body || 'Mensaje multimedia'}</span></td><td>{message.mediaDocument ? <a href={`/api/documents/${message.mediaDocument.id}/content`} target="_blank" rel="noreferrer"><FileText size={14} /> {message.mediaDocument.fileName}</a> : '—'}</td></tr>)} /></section>
+  </Page>;
+}
+
+function SettingsCenter({ notify }: { notify: Function }) {
+  const [whatsappConfig, setWhatsappConfig] = useState<AnyRecord | null>(null);
+  useEffect(() => { api<AnyRecord>('/api/whatsapp/config').then(setWhatsappConfig).catch(() => setWhatsappConfig(null)); }, []);
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const company = await notify('Empresa creada.', () => postJson<AnyRecord>('/api/companies', { legalName: form.get('legalName'), tradeName: form.get('tradeName'), cuit: form.get('cuit'), taxCondition: form.get('taxCondition') }));
+    localStorage.setItem('companyId', company.id); location.reload();
+  }
+  return <Page eyebrow="Sistema" title="Ajustes" text="Configurá la empresa y revisá el estado de tus integraciones."><section className="settingsLayout"><form className="card form directoryForm" onSubmit={submit}><div><span className="pageEyebrow">Identidad</span><h2>Datos de empresa</h2><p className="mutedText">Esta información aparece en tus documentos y comprobantes.</p></div><Field label="Razón social" name="legalName" required /><Field label="Nombre comercial" name="tradeName" /><Field label="CUIT" name="cuit" required /><Field label="Condición fiscal" name="taxCondition" defaultValue="Responsable Inscripto" required /><button>Guardar empresa</button></form><div className="settingsStack"><div className="card settingsCard"><div className="sectionRow"><div><span className="pageEyebrow">Integración</span><h2>WhatsApp</h2></div><Badge value={whatsappConfig?.canReceive && whatsappConfig?.canSend ? 'OK' : 'Falta config'} /></div><div className="statusList"><div className="statusRow"><span>Webhook</span><code>{whatsappConfig?.webhookUrl || 'No disponible'}</code></div><div className="statusRow"><span>App ID</span><strong>{whatsappConfig?.appId || 'No configurado'}</strong></div><div className="statusRow"><span>Recibir mensajes</span><Badge value={whatsappConfig?.canReceive ? 'OK' : 'Falta config'} /></div><div className="statusRow"><span>Enviar documentos</span><Badge value={whatsappConfig?.canSend ? 'OK' : 'Falta token'} /></div></div></div><div className="card settingsCard"><span className="pageEyebrow">Facturación electrónica</span><h2>ARCA</h2><p className="mutedText">Configurá certificado, clave privada, CUIT y punto de venta en las variables del entorno de producción.</p><div className="integrationNotice"><CheckCircle2 size={16} /> La conexión se valida al autorizar una factura.</div></div></div></section></Page>;
 }
 
 function Customers({ data, companyId, notify }: { data: AnyRecord; companyId: string; notify: Function }) {
