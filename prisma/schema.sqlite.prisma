@@ -119,6 +119,7 @@ model Company {
   engineeringRegulations EngineeringRegulation[]
   engineeringDrawings EngineeringDrawingDocument[]
   engineeringDrawingTemplates EngineeringDrawingTemplate[]
+  structuralSections StructuralSection[]
 }
 
 model Supplier {
@@ -587,10 +588,44 @@ model EngineeringKnowledgeDocument {
   projects EngineeringProjectDocument[]
   reviews EngineeringReview[]
   vectorIndexes EngineeringVectorIndex[]
+  structuralSections StructuralSection[]
   @@unique([companyId, sha256])
   @@index([companyId, status])
   @@index([companyId, projectType])
   @@index([companyId, documentType])
+}
+
+model StructuralSection {
+  id String @id @default(cuid())
+  companyId String
+  designation String
+  type String
+  material String?
+  width Float?
+  height Float?
+  diameter Float?
+  thickness Float?
+  area Float?
+  massPerMeter Float?
+  ix Float?
+  iy Float?
+  rx Float?
+  ry Float?
+  yieldStrength Float?
+  commercialLength Float?
+  source String
+  sourceDocumentId String?
+  verified Boolean @default(false)
+  verifiedAt DateTime?
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sourceDocument EngineeringKnowledgeDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  @@unique([companyId, designation, source])
+  @@index([companyId, type])
+  @@index([companyId, verified])
+  @@index([sourceDocumentId])
 }
 
 model EngineeringProject {

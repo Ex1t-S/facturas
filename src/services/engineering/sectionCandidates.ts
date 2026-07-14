@@ -10,7 +10,7 @@ export type SectionCandidate = {
   areaMm2?: number;
   ixMm4?: number;
   iyMm4?: number;
-  source: 'INVENTORY' | 'HISTORICAL' | 'USER';
+  source: 'STRUCTURAL_CATALOG' | 'INVENTORY' | 'HISTORICAL' | 'USER';
   sourceTitle: string;
   verified: boolean;
   stockQuantity?: number;
@@ -50,11 +50,28 @@ export function parseRectangularHollowDesignation(value: string) {
 
 export async function searchEngineeringSectionCandidates(companyId: string, query: string, take = 12) {
   const terms = ['caño', 'cano', 'tubo', 'perfil', 'estructural', 'upn', 'ipn', 'ipe', 'hea', 'heb'];
-  const products = await prisma.product.findMany({
+  const queryTerms = normalizeEngineeringText(query).split(/\s+/).map((term) => term.trim()).filter((term) => term.length >= 2).slice(0, 8);
+  const [catalogRows, products] = await Promise.all([prisma.structuralSection.findMany({
+    where: { companyId, ...(queryTerms.length ? { OR: queryTerms.flatMap((term) => [{ designation: { contains: term } }, { type: { contains: term } }, { material: { contains: term } }]) } : {}) },
+    orderBy: [{ verified: 'desc' }, { massPerMeter: 'asc' }],
+    take: Math.max(take * 2, 24)
+  }), prisma.product.findMany({
     where: { companyId, active: true, type: 'MATERIAL', OR: terms.flatMap((term) => [{ name: { contains: term } }, { category: { contains: term } }, { description: { contains: term } }]) },
     include: { stocks: true, supplierPrices: { orderBy: { observedAt: 'desc' }, take: 1 } },
     take: Math.max(take * 4, 24)
-  });
+  })]);
+  const catalog = catalogRows.filter((row) => row.area && row.ix && row.iy).map((row) => ({
+    id: row.id,
+    designation: row.designation,
+    material: row.material || undefined,
+    kgPerM: row.massPerMeter || undefined,
+    areaMm2: row.area || undefined,
+    ixMm4: row.ix || undefined,
+    iyMm4: row.iy || undefined,
+    source: 'STRUCTURAL_CATALOG' as const,
+    sourceTitle: row.source,
+    verified: row.verified
+  } satisfies SectionCandidate));
   const inventory = products.map((product) => {
     const metadata = parseMetadata(product.metadataJson);
     const parsed = parseRectangularHollowDesignation(product.name);
@@ -80,5 +97,5 @@ export async function searchEngineeringSectionCandidates(companyId: string, quer
   });
   const historical = await searchEngineeringKnowledge({ companyId, q: `${query} caño perfil tubo estructura`, take: Math.max(3, Math.floor(take / 2)) });
   const references = historical.sources.map((source) => ({ id: source.id, designation: source.title, source: 'HISTORICAL' as const, sourceTitle: source.title, verified: false } satisfies SectionCandidate));
-  return [...inventory.filter((item) => item.areaMm2 && item.ixMm4 && item.iyMm4), ...references] as SectionCandidate[];
+  return [...catalog, ...inventory.filter((item) => item.areaMm2 && item.ixMm4 && item.iyMm4), ...references].slice(0, take) as SectionCandidate[];
 }

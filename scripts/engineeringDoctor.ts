@@ -13,10 +13,10 @@ const execution = await runEngineeringOpenAI({
   executeTool: async () => ({})
 });
 
-let database: { status: 'PASS' | 'FAIL'; error?: string; engineeringDocuments?: number; engineeringConversations?: number } = { status: 'PASS' };
+let database: { status: 'PASS' | 'FAIL'; error?: string; engineeringDocuments?: number; engineeringConversations?: number; structuralSections?: number } = { status: 'PASS' };
 try {
-  const [engineeringDocuments, engineeringConversations] = await Promise.all([prisma.engineeringKnowledgeDocument.count(), prisma.engineeringConversation.count()]);
-  database = { status: 'PASS', engineeringDocuments, engineeringConversations };
+  const [engineeringDocuments, engineeringConversations, structuralSections] = await Promise.all([prisma.engineeringKnowledgeDocument.count(), prisma.engineeringConversation.count(), prisma.structuralSection.count()]);
+  database = { status: 'PASS', engineeringDocuments, engineeringConversations, structuralSections };
 } catch (error) {
   database = { status: 'FAIL', error: error instanceof Error ? error.message : 'No se pudo consultar la base.' };
 }
