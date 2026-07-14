@@ -83,10 +83,9 @@ function wantsCreation(message: string) {
 
 export function detectDraftIntent(message: string): DraftIntent {
   const normalized = message.toLocaleLowerCase('es-AR');
-  if (!wantsCreation(normalized)) return 'none';
   if (normalized.includes('factura')) return 'invoice';
-  if (normalized.includes('remito')) return 'delivery_note';
-  if (normalized.includes('presupuesto')) return 'quote';
+  if (normalized.includes('remito') && (wantsCreation(normalized) || /\bremito\s+para\b/.test(normalized))) return 'delivery_note';
+  if (normalized.includes('presupuesto') && (wantsCreation(normalized) || /\bpresupuesto\s+para\b/.test(normalized))) return 'quote';
   return 'none';
 }
 
