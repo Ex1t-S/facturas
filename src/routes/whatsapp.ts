@@ -391,6 +391,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/api/whatsapp/messages/:id/reprocess', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
+    const body = z.object({ to: z.string().trim().optional() }).parse(request.body ?? {});
     const company = await prisma.company.findFirst();
     if (!company) return reply.code(409).send({ error: 'No company configured' });
     const inbound = await prisma.whatsAppMessage.findUnique({ where: { id: params.id }, include: { conversation: true } });
@@ -405,7 +406,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       }));
     if (!inbound.conversationId) await prisma.whatsAppMessage.update({ where: { id: inbound.id }, data: { conversationId: conversation.id } });
     try {
-      await sendAssistantReply({ company, inbound, fromNumber: inbound.fromNumber, phoneNumber: inbound.toNumber, conversation });
+      await sendAssistantReply({ company, inbound, fromNumber: body.to || inbound.fromNumber, phoneNumber: inbound.toNumber, conversation });
       return { ok: true };
     } catch (error) {
       app.log.error(error);
