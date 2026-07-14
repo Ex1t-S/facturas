@@ -25,8 +25,8 @@ async function extractText(filePath: string) {
   if (extension === '.pdf') {
     const pdfModule = await import('pdf-parse');
     const buffer = await fs.readFile(filePath);
-    const parser = 'default' in pdfModule && typeof pdfModule.default === 'function' ? pdfModule.default : (pdfModule as any).PDFParse;
-    if (typeof parser === 'function') return (await parser(buffer)).text ?? '';
+    const parser = 'default' in pdfModule && typeof pdfModule.default === 'function' ? pdfModule.default : undefined;
+    if (parser) return (await parser(buffer)).text ?? '';
     const instance = new (pdfModule as any).PDFParse({ data: buffer });
     const result = await instance.getText();
     await instance.destroy();
