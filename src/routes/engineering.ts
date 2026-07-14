@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
@@ -12,6 +13,8 @@ import { searchOfficialEngineeringRegulations } from '../services/engineering/re
 import { renderPreliminaryEngineeringPdf, renderPreliminaryEngineeringSvg, type EngineeringDrawingSpec } from '../services/engineering/drawing.js';
 import { getEngineeringDrawing, getEngineeringDrawingStatus, ingestEngineeringDrawings, listEngineeringDrawings, readEngineeringDrawingFile } from '../services/engineering/drawingLibrary.js';
 import { readStoredDocumentFile } from '../services/documentStorage.js';
+import { engineeringModelConfig, resolveEngineeringModel } from '../services/engineering/engineeringRuntime.js';
+import { parseOptionalBoolean } from '../services/engineering/queryParsing.js';
 
 const companyQuery = z.object({ companyId: z.string().min(1) });
 const chatSchema = z.object({ companyId: z.string().min(1), message: z.string().trim().min(1).max(6000) });
@@ -20,6 +23,7 @@ const reviewSchema = z.object({ status: z.enum(['VERIFIED', 'CORRECTED', 'REJECT
 const conversationCreateSchema = z.object({ companyId: z.string().min(1), title: z.string().trim().max(120).optional() });
 const conversationMessageSchema = z.object({ companyId: z.string().min(1), message: z.string().trim().min(1).max(12000) });
 const drawingSchema = z.object({ drawingType: z.enum(['SILO', 'HOPPER', 'WAREHOUSE', 'SUPPORT_STRUCTURE']), width: z.number().positive().optional(), length: z.number().positive().optional(), diameter: z.number().positive().optional(), height: z.number().positive().optional(), bodyHeight: z.number().positive().optional(), coneHeight: z.number().positive().optional(), freeHeight: z.number().positive().optional(), lowerOpening: z.number().positive().optional(), roofSlope: z.number().positive().optional(), capacityT: z.number().positive().optional(), supportCount: z.number().int().positive().optional(), customerName: z.string().max(160).optional(), projectName: z.string().max(160).optional(), quoteNumber: z.string().max(80).optional(), notes: z.array(z.string().max(300)).max(20).optional() });
+const optionalBooleanQuery = z.unknown().optional().transform(parseOptionalBoolean);
 
 function allowedRoot(rootPath: string) {
   const configured = [config.ENGINEERING_DRAWINGS_ROOT, config.ENGINEERING_KNOWLEDGE_ROOT, config.HISTORICAL_DOCUMENT_ROOT].filter(Boolean).map((root) => path.resolve(root));
@@ -43,6 +47,16 @@ export const engineeringRoutes: FastifyPluginAsync = async (app) => {
     const params = z.object({ id: z.string() }).parse(request.params);
     const body = conversationMessageSchema.parse(request.body);
     return answerEngineeringConversation(params.id, body.companyId, body.message);
+  });
+  app.get('/engineering/diagnostics', async (request) => {
+    const query = companyQuery.parse(request.query);
+    const [latestConversation, ingestion, documents, drawings] = await Promise.all([
+      prisma.engineeringConversation.findFirst({ where: { companyId: query.companyId }, orderBy: { updatedAt: 'desc' }, select: { id: true, currentIntent: true, intentConfidence: true, lastProvider: true, lastRequestedModel: true, lastActualModel: true, previousResponseId: true, lastLatencyMs: true, lastErrorJson: true, lastFallbackUsed: true, promptVersion: true, updatedAt: true } }),
+      prisma.engineeringIngestionRun.findFirst({ where: { companyId: query.companyId }, orderBy: { startedAt: 'desc' }, select: { status: true, rootPath: true, foundCount: true, processedCount: true, pendingCount: true, failedCount: true, lastError: true, finishedAt: true } }),
+      prisma.engineeringKnowledgeDocument.groupBy({ by: ['status', 'verified'], where: { OR: [{ companyId: query.companyId }, { companyId: null }] }, _count: { _all: true } }),
+      prisma.engineeringDrawingDocument.groupBy({ by: ['status'], where: { companyId: query.companyId }, _count: { _all: true } })
+    ]);
+    return { model: resolveEngineeringModel(), modelConfig: engineeringModelConfig(), openAiKeyConfigured: Boolean(config.OPENAI_API_KEY.trim()), latestConversation, ingestion, documents, drawings };
   });
   app.patch('/engineering/conversations/:id', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
@@ -69,7 +83,7 @@ export const engineeringRoutes: FastifyPluginAsync = async (app) => {
   app.post('/engineering/drawings/ingestion/start', async (request, reply) => { const body = startSchema.parse(request.body); const rootPath = allowedRoot(body.rootPath || config.ENGINEERING_DRAWINGS_ROOT || config.ENGINEERING_KNOWLEDGE_ROOT || config.HISTORICAL_DOCUMENT_ROOT); void ingestEngineeringDrawings({ companyId: body.companyId, rootPath }).catch(() => undefined); return reply.code(202).send({ status: 'RUNNING', rootPath }); });
 
   app.get('/engineering/knowledge', async (request) => {
-    const query = z.object({ ...companyQuery.shape, q: z.string().default(''), projectType: z.enum(projectTypes).optional(), material: z.string().optional(), verified: z.coerce.boolean().optional(), dateFrom: z.string().optional(), dateTo: z.string().optional(), take: z.coerce.number().int().min(1).max(100).default(30) }).parse(request.query);
+    const query = z.object({ ...companyQuery.shape, q: z.string().default(''), projectType: z.enum(projectTypes).optional(), material: z.string().optional(), verified: optionalBooleanQuery, dateFrom: z.string().optional(), dateTo: z.string().optional(), take: z.coerce.number().int().min(1).max(100).default(30) }).parse(request.query);
     return searchEngineeringKnowledge(query);
   });
 
@@ -98,6 +112,7 @@ export const engineeringRoutes: FastifyPluginAsync = async (app) => {
   app.post('/engineering/ingestion/start', async (request, reply) => {
     const body = startSchema.parse(request.body);
     const rootPath = allowedRoot(body.rootPath || config.ENGINEERING_KNOWLEDGE_ROOT || config.HISTORICAL_DOCUMENT_ROOT);
+    try { await fs.access(rootPath); } catch { return reply.code(409).send({ error: 'La carpeta configurada no está disponible en este servidor.', code: 'ENGINEERING_SOURCE_UNAVAILABLE', rootPath }); }
     const run = await prisma.engineeringIngestionRun.create({ data: { companyId: body.companyId, rootPath } });
     void ingestEngineeringKnowledge({ rootPath, companyId: body.companyId, runId: run.id }).catch(async (error) => {
       await prisma.engineeringIngestionRun.update({ where: { id: run.id }, data: { status: 'FAILED', lastError: error instanceof Error ? error.message : 'Error desconocido', finishedAt: new Date() } }).catch(() => undefined);

@@ -82,7 +82,7 @@ describe('engineering deterministic calculations', () => {
       { id: 'braces', designation: 'Tubo estructural de prueba B', kgPerM: 7, source: 'INVENTORY' as const, sourceTitle: 'Inventario sintético', verified: true, stockQuantity: 0, stockUnit: 'm', currentPrice: 80 },
       { id: 'beams', designation: 'Perfil estructural de prueba C', kgPerM: 15, source: 'INVENTORY' as const, sourceTitle: 'Inventario sintético', verified: true, stockQuantity: 0, stockUnit: 'm', currentPrice: 120 }
     ];
-    const result = buildSiloMaterialEstimate({ supportCount: 6, freeHeightM: 4, diameterM: 8, candidates });
+    const result = buildSiloMaterialEstimate({ supportCount: 6, freeHeightM: 4, diameterM: 8, candidates, assignments: { legCandidateId: 'legs', braceCandidateId: 'braces', beamCandidateId: 'beams' } });
     expect(result.materials).toHaveLength(3);
     expect(result.materials.reduce((sum, line) => sum + Number(line.totalLengthM || 0), 0)).toBeGreaterThan(70);
     expect(result.totalWeightKg).toBeGreaterThan(900);

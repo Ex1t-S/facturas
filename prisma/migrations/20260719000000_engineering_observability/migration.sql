@@ -1,0 +1,17 @@
+ALTER TABLE "EngineeringConversation" ADD COLUMN IF NOT EXISTS "currentIntent" TEXT;
+ALTER TABLE "EngineeringConversation" ADD COLUMN IF NOT EXISTS "intentConfidence" DOUBLE PRECISION;
+ALTER TABLE "EngineeringConversation" ADD COLUMN IF NOT EXISTS "lastProvider" TEXT;
+ALTER TABLE "EngineeringConversation" ADD COLUMN IF NOT EXISTS "lastRequestedModel" TEXT;
+ALTER TABLE "EngineeringConversation" ADD COLUMN IF NOT EXISTS "lastActualModel" TEXT;
+ALTER TABLE "EngineeringConversation" ADD COLUMN IF NOT EXISTS "lastLatencyMs" INTEGER;
+ALTER TABLE "EngineeringConversation" ADD COLUMN IF NOT EXISTS "lastErrorJson" TEXT;
+ALTER TABLE "EngineeringConversation" ADD COLUMN IF NOT EXISTS "lastFallbackUsed" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE "EngineeringConversation" ADD COLUMN IF NOT EXISTS "promptVersion" TEXT;
+ALTER TABLE "EngineeringMessage" ADD COLUMN IF NOT EXISTS "provider" TEXT;
+ALTER TABLE "EngineeringMessage" ADD COLUMN IF NOT EXISTS "requestedModel" TEXT;
+ALTER TABLE "EngineeringMessage" ADD COLUMN IF NOT EXISTS "actualModel" TEXT;
+ALTER TABLE "EngineeringMessage" ADD COLUMN IF NOT EXISTS "fallbackUsed" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE "EngineeringMessage" ADD COLUMN IF NOT EXISTS "latencyMs" INTEGER;
+ALTER TABLE "EngineeringMessage" ADD COLUMN IF NOT EXISTS "errorJson" TEXT;
+ALTER TABLE "EngineeringMessage" ADD COLUMN IF NOT EXISTS "intent" TEXT;
+ALTER TABLE "EngineeringMessage" ADD COLUMN IF NOT EXISTS "intentConfidence" DOUBLE PRECISION;

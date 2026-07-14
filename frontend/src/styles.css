@@ -693,6 +693,8 @@ button:hover, a:hover { transform: translateY(-1px); border-color: var(--line-st
 .assistantAvatar { display: grid; flex: 0 0 auto; place-items: center; width: 27px; height: 27px; margin-top: 2px; border-radius: 8px; background: var(--brand); color: #fff; }
 .messageBody { min-width: 0; }
 .messageRole { display: block; margin-bottom: 5px; color: var(--muted); font-size: 11px; font-weight: 650; }
+.assistantProvider { margin-left: 8px; color: var(--success, #2e7d52); font-weight: 650; }
+.assistantProvider.fallback { color: var(--warning, #9b6c1f); }
 .engineeringMessage p { margin: 0; color: var(--ink); font-size: 14px; line-height: 1.65; white-space: pre-wrap; }
 .engineeringComposer { display: flex; align-items: flex-end; gap: 10px; margin: 0 20px 18px; padding: 8px 8px 8px 13px; border: 1px solid var(--line-strong); border-radius: 13px; background: var(--panel); box-shadow: 0 6px 18px rgba(28,46,62,.07); }
 .composerField { flex: 1; min-width: 0; }

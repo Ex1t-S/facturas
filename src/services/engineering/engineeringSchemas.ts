@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { engineeringIntents } from './engineeringIntelligence.js';
 
 export const documentTypes = ['QUOTE', 'PROJECT', 'CALCULATION', 'DRAWING', 'PRODUCT', 'MATERIAL_LIST', 'INVOICE', 'DELIVERY_NOTE', 'TECHNICAL_NOTE', 'OTHER'] as const;
 export const projectTypes = ['SILO', 'WAREHOUSE', 'HOPPER', 'ELEVATOR', 'AUGER', 'CONVEYOR', 'STEEL_STRUCTURE', 'SUPPORT_STRUCTURE', 'PLATFORM', 'STAIR', 'WALKWAY', 'DUCT', 'PIPING', 'TANK', 'CHASSIS', 'BASE', 'REELER', 'REPAIR', 'INSTALLATION', 'CUSTOM_EQUIPMENT', 'OTHER'] as const;
@@ -21,9 +22,9 @@ export const engineeringExtractionSchema = z.object({
 });
 
 export const engineeringAssistantResultSchema = z.object({
-  intent: z.enum(['GENERAL_QUESTION', 'PRELIMINARY_CALCULATION', 'SIMILAR_PROJECT_SEARCH', 'MATERIAL_ESTIMATE', 'COST_ESTIMATE', 'PROJECT_COMPARISON', 'BOM', 'DATA_REQUEST', 'OTHER']),
+  intent: z.enum(engineeringIntents),
   subject: z.string(), answer: z.string(),
-  inputData: z.array(z.object({ name: z.string(), value: z.union([z.string(), z.number()]), unit: z.string().optional(), source: z.enum(['USER', 'DOCUMENT', 'ASSUMPTION']) })).default([]),
+  inputData: z.array(z.object({ name: z.string(), value: z.union([z.string(), z.number()]), unit: z.string().optional(), source: z.enum(['USER', 'DOCUMENT', 'ASSUMPTION', 'CALCULATION', 'FMH_PRECEDENT', 'INVENTORY', 'REGULATION', 'MODEL_INFERENCE']) })).default([]),
   missingData: z.array(z.object({ name: z.string(), reason: z.string(), critical: z.boolean() })).default([]), assumptions: z.array(z.string()).default([]),
   calculations: z.array(z.object({ title: z.string(), formula: z.string().optional(), inputs: z.array(z.object({ name: z.string(), value: z.number(), unit: z.string() })).default([]), result: z.number(), resultUnit: z.string(), explanation: z.string().optional() })).default([]),
   materials: z.array(z.object({ description: z.string(), specification: z.string().optional(), quantity: z.number().optional(), unit: z.string().optional(), estimatedWeightKg: z.number().optional(), totalLengthM: z.number().optional(), source: z.enum(['CALCULATED', 'USER', 'HISTORICAL', 'ESTIMATED']).optional(), sourceTitle: z.string().optional(), candidateId: z.string().optional() })).default([]),
@@ -34,7 +35,16 @@ export const engineeringAssistantResultSchema = z.object({
   toolCalls: z.array(z.object({ name: z.string(), status: z.string(), summary: z.string().optional() })).default([]),
   warnings: z.array(z.string()).default([]), confidence: z.number().min(0).max(1).default(0), reviewRequired: z.boolean().default(true),
   level: z.enum(['ORIENTATION', 'ESTIMATION', 'PRELIMINARY_DESIGN', 'VERIFIED_CALCULATION']).default('ORIENTATION'),
-  model: z.string().optional(), capability: z.enum(['SUPPORTED_DETERMINISTIC', 'PRELIMINARY_ASSISTED', 'NOT_IMPLEMENTED']).default('PRELIMINARY_ASSISTED')
+  model: z.string().optional(), capability: z.enum(['SUPPORTED_DETERMINISTIC', 'PRELIMINARY_ASSISTED', 'NOT_IMPLEMENTED']).default('PRELIMINARY_ASSISTED'),
+  provider: z.enum(['openai', 'local']).default('local'),
+  requestedModel: z.string().optional(),
+  actualModel: z.string().optional(),
+  responseId: z.string().optional(),
+  fallbackUsed: z.boolean().default(false),
+  latencyMs: z.number().int().nonnegative().optional(),
+  intentConfidence: z.number().min(0).max(1).optional(),
+  executionError: z.object({ type: z.string().optional(), code: z.string().optional(), status: z.number().optional(), message: z.string() }).optional(),
+  nextAction: z.object({ label: z.string(), type: z.string() }).optional()
 });
 
 export type EngineeringExtraction = z.infer<typeof engineeringExtractionSchema>;

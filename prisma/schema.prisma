@@ -693,6 +693,15 @@ model EngineeringConversation {
   summaryJson String @default("{}")
   previousResponseId String?
   model String?
+  currentIntent String?
+  intentConfidence Float?
+  lastProvider String?
+  lastRequestedModel String?
+  lastActualModel String?
+  lastLatencyMs Int?
+  lastErrorJson String?
+  lastFallbackUsed Boolean @default(false)
+  promptVersion String?
   archivedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -712,6 +721,14 @@ model EngineeringMessage {
   content String
   model String?
   responseId String?
+  provider String?
+  requestedModel String?
+  actualModel String?
+  fallbackUsed Boolean @default(false)
+  latencyMs Int?
+  errorJson String?
+  intent String?
+  intentConfidence Float?
   tokenUsageJson String?
   estimatedCost Decimal?
   structuredResultJson String?

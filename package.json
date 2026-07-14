@@ -29,6 +29,7 @@
     "restore:documents": "tsx scripts/restoreRenderDocuments.ts",
     "engineering:ingest": "tsx scripts/engineeringIngest.ts",
     "engineering:drawings": "tsx scripts/engineeringDrawingsIngest.ts",
+    "engineering:doctor": "tsx scripts/engineeringDoctor.ts",
     "copy:generated-client": "tsx scripts/copyGeneratedClient.ts",
     "render": ".\\tools\\render\\render.exe",
     "render:login": ".\\tools\\render\\render.exe login",
