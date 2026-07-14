@@ -1,0 +1,104 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import AdmZip from 'adm-zip';
+import { config } from '../config.js';
+import { convertDocxToPdf } from './fmhQuoteDocument.js';
+
+export type FmhDeliveryNoteDocumentInput = {
+  number?: string;
+  customerName: string;
+  issueDate: Date;
+  notes?: string | null;
+  items: Array<{
+    description: string;
+    quantity: string | number;
+    unit: string;
+  }>;
+};
+
+const templatePath = path.resolve('templates/fmh-remito-template.docx');
+
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function stripXml(value: string) {
+  return value.replace(/<[^>]+>/g, '');
+}
+
+function formatDate(date: Date) {
+  return date.toLocaleDateString('es-AR');
+}
+
+function paragraph(text: string, sourceParagraph?: string) {
+  const pPr = sourceParagraph?.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? '<w:pPr><w:spacing w:after="0"/></w:pPr>';
+  const rPr = sourceParagraph?.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] ?? '<w:rPr><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>';
+  return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:p>`;
+}
+
+function replaceParagraphContaining(xml: string, marker: string, replacement: string) {
+  const paragraphs = [...xml.matchAll(/<w:p[\s\S]*?<\/w:p>/g)];
+  const match = paragraphs.find((item) => stripXml(item[0]).includes(marker));
+  if (!match || match.index === undefined) return xml;
+  return `${xml.slice(0, match.index)}${replacement}${xml.slice(match.index + match[0].length)}`;
+}
+
+function replaceDetails(xml: string, input: FmhDeliveryNoteDocumentInput) {
+  const paragraphs = [...xml.matchAll(/<w:p[\s\S]*?<\/w:p>/g)].map((match) => ({
+    xml: match[0],
+    index: match.index ?? 0,
+    text: stripXml(match[0])
+  }));
+  const detailIndex = paragraphs.findIndex((item) => item.text.includes('DETALLE'));
+  const closingIndex = paragraphs.findIndex((item, index) => index > detailIndex && /Hago propicia|Hacemos llegar/.test(item.text));
+  if (detailIndex < 0 || closingIndex < 0 || closingIndex <= detailIndex + 1) {
+    throw new Error('FMH remito template detail markers were not found');
+  }
+
+  const sourceParagraph = paragraphs[detailIndex + 1].xml;
+  const lines = input.items.map((item, index) => {
+    const prefix = input.items.length > 1 ? `${index + 1}. ` : '';
+    return `${prefix}${item.quantity} ${item.unit} - ${item.description}`;
+  });
+  if (input.notes) lines.push(input.notes);
+  const replacement = lines.map((line) => paragraph(line, sourceParagraph)).join('');
+  const start = paragraphs[detailIndex + 1].index;
+  const end = paragraphs[closingIndex].index;
+  return `${xml.slice(0, start)}${replacement}${xml.slice(end)}`;
+}
+
+export async function renderFmhDeliveryNoteDocx(input: FmhDeliveryNoteDocumentInput) {
+  const zip = new AdmZip(await fs.readFile(templatePath));
+  const entry = zip.getEntry('word/document.xml');
+  if (!entry) throw new Error('FMH remito template is missing word/document.xml');
+  let xml = entry.getData().toString('utf8');
+  xml = replaceParagraphContaining(xml, 'Remito', paragraph(`Remito N°${input.number ? String(input.number).padStart(5, '0') : 'BORRADOR'}`));
+  xml = replaceParagraphContaining(xml, 'CLIENTE:', paragraph(`CLIENTE: ${input.customerName}`));
+  xml = replaceParagraphContaining(xml, 'Fecha de emisión:', paragraph(`Fecha de emisión: ${formatDate(input.issueDate)}`));
+  xml = replaceDetails(xml, input);
+  zip.updateFile('word/document.xml', Buffer.from(xml, 'utf8'));
+  return zip.toBuffer();
+}
+
+export async function writeFmhDeliveryNoteDocx(input: FmhDeliveryNoteDocumentInput, id: string) {
+  const dir = path.resolve(config.UPLOAD_DIR, 'generated', 'delivery-notes', id);
+  await fs.mkdir(dir, { recursive: true });
+  const filePath = path.join(dir, `remito-fmh-${input.number || 'borrador'}.docx`);
+  await fs.writeFile(filePath, await renderFmhDeliveryNoteDocx(input));
+  return filePath;
+}
+
+export async function renderFmhDeliveryNotePdf(input: FmhDeliveryNoteDocumentInput) {
+  const dir = path.resolve(config.UPLOAD_DIR, 'generated', 'delivery-note-previews');
+  await fs.mkdir(dir, { recursive: true });
+  const docxPath = path.join(dir, `preview-${Date.now()}-${Math.random().toString(16).slice(2)}.docx`);
+  await fs.writeFile(docxPath, await renderFmhDeliveryNoteDocx(input));
+  const pdfPath = await convertDocxToPdf(docxPath);
+  if (!pdfPath) return null;
+  return fs.readFile(pdfPath);
+}

@@ -13,6 +13,7 @@ import {
 } from './businessKnowledge.js';
 import { safeFileName, writeDocumentFile } from './documentStorage.js';
 import { convertDocxToPdf, renderFmhQuotePdf, writeFmhQuoteDocx, type QuoteWithDetails } from './fmhQuoteDocument.js';
+import { renderFmhDeliveryNotePdf, writeFmhDeliveryNoteDocx } from './fmhDeliveryNoteDocument.js';
 import { renderDeliveryNotePdf, renderQuotePdf } from './pdf.js';
 import { createDeliveryNoteRecord, listPendingDeliveryNotes, linkDeliveryNotesToQuote } from './deliveryNotes/deliveryNoteService.js';
 
@@ -486,13 +487,20 @@ async function createDeliveryNotePreviewDraft(companyId: string, message: string
   });
   const customerName = customer?.legalName || payload.customerName || 'Cliente pendiente';
   const items = payload.items.length ? payload.items : [{ description: message, quantity: 1, unit: 'trabajo' }];
-  const pdf = await renderDeliveryNotePdf({
+  const deliveryNoteInput = {
     number: 'borrador',
     customerName,
     issueDate: new Date(),
     notes: payload.notes || 'Remito para confirmacion.',
     items: items.map((item) => ({ description: item.description, quantity: item.quantity || 1, unit: item.unit || 'unidad' }))
-  });
+  };
+  let pdf: Buffer | null = null;
+  try {
+    pdf = await renderFmhDeliveryNotePdf(deliveryNoteInput);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+  }
+  pdf ??= await renderDeliveryNotePdf(deliveryNoteInput);
   const previewFileName = ensurePdfFileName(suggestedFileName || suggestedDocumentFileName('delivery_note', payload));
   const stored = await writeDocumentFile({
     buffer: pdf,
@@ -652,13 +660,22 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
   const number = String(count + 1).padStart(5, '0');
   const items = payload.items.length ? payload.items : [{ description: message, quantity: 1, unit: 'trabajo' }];
   const issueDate = new Date();
-  const pdf = await renderDeliveryNotePdf({
+  const deliveryNoteInput = {
     number,
     customerName: customer.legalName,
     issueDate,
     notes: payload.notes || 'Remito generado desde el asistente IA. Revisar antes de entregar.',
     items: items.map((item) => ({ description: item.description, quantity: item.quantity || 1, unit: item.unit || 'unidad' }))
-  });
+  };
+  let pdf: Buffer | null = null;
+  try {
+    const docxPath = await writeFmhDeliveryNoteDocx(deliveryNoteInput, `draft-${Date.now()}`);
+    const convertedPdfPath = await convertDocxToPdf(docxPath);
+    if (convertedPdfPath) pdf = await fs.readFile(convertedPdfPath);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+  }
+  pdf ??= await renderDeliveryNotePdf(deliveryNoteInput);
   const filename = ensurePdfFileName(fileName || suggestedDocumentFileName('delivery_note', payload, number)) || 'remito-' + slugify(customer.legalName) + '-' + number + '.pdf';
   const stored = await writeDocumentFile({
     buffer: pdf,

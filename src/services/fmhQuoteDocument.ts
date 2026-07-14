@@ -116,7 +116,7 @@ function replaceParagraphContaining(xml: string, marker: string, replacement: st
 function replaceTemplateText(xml: string, quote: QuoteWithDetails) {
   let output = xml;
   output = replaceParagraphContaining(output, 'CLIENTE:', paragraph(`CLIENTE: ${quote.customer.legalName}`, { size: 28 }));
-  output = replaceParagraphContaining(output, 'Fecha de emisión:', paragraph(`Fecha de emisión: ${formatDate(quote.issueDate)}`, { size: 16 }));
+  output = replaceParagraphContaining(output, 'Fecha de', paragraph(`Fecha de emisión: ${formatDate(quote.issueDate)}`, { size: 16 }));
   output = replaceFirst(output, '<w:t>Presupuesto</w:t>', `<w:t>Presupuesto N° ${String(quote.number).padStart(5, '0')}</w:t>`);
   return output;
 }

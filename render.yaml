@@ -1,10 +1,10 @@
 services:
   - type: web
     name: fmh-gestion
-    runtime: node
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
-    buildCommand: npm install && npx prisma db push --accept-data-loss --skip-generate && npx prisma generate && npm run build
-    startCommand: npx prisma migrate deploy && npm start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
@@ -34,6 +34,10 @@ services:
         value: "false"
       - key: MAX_ENGINEERING_TOOL_ROUNDS
         value: "8"
+      - key: OPENAI_ENGINEERING_MAX_OUTPUT_TOKENS
+        value: "2200"
+      - key: ENGINEERING_PROMPT_VERSION
+        value: engineering-v2
       - key: OPENAI_TRANSCRIBE_MODEL
         value: gpt-4o-mini-transcribe
       - key: OPENAI_VECTOR_STORE_ID
