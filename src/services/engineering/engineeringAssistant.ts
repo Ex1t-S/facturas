@@ -9,6 +9,28 @@ function number(value: string) { return Number(value.replace(',', '.')); }
 function sourceLabel(source: { title: string; verified?: boolean; confidence?: number }) { return `${source.title} (${source.verified ? 'verificado' : 'histórico'})`; }
 function traceText(calculation: CalculationTrace) { return `${calculation.title}: ${calculation.formula}\nResultado: ${calculation.result.value.toFixed(2)} ${calculation.result.unit}`; }
 
+async function explainWithOpenAI(message: string, result: EngineeringAssistantResult) {
+  if (!config.OPENAI_API_KEY) return null;
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${config.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: config.OPENAI_ENGINEERING_MODEL || config.OPENAI_MODEL,
+      reasoning: { effort: 'low' },
+      text: { verbosity: 'medium' },
+      input: [
+        { role: 'system', content: [{ type: 'input_text', text: 'Sos el Asistente de Ingeniería interno de FMH. Reescribí una respuesta técnica clara usando únicamente el resultado estructurado entregado. Diferenciá hechos históricos, cálculos, hipótesis y datos faltantes. No inventes perfiles, espesores, precios ni aprobaciones. Indicá que es preliminar cuando corresponda.' }] },
+        { role: 'user', content: [{ type: 'input_text', text: JSON.stringify({ question: message, structuredResult: result }) }] }
+      ],
+      max_output_tokens: 1400,
+      store: false
+    })
+  });
+  if (!response.ok) return null;
+  const data = await response.json() as { output_text?: string };
+  return data.output_text?.trim() || null;
+}
+
 function detectTolva(message: string) {
   const values = [...message.matchAll(/(\d+(?:[,.]\d+)?)\s*[×x*]\s*(\d+(?:[,.]\d+)?)\s*(?:m)?/gi)].map((match) => [number(match[1]), number(match[2])] as const);
   const height = message.match(/(?:alto|altura)\s*(?:de|=|:)?\s*(\d+(?:[,.]\d+)?)\s*m/i)?.[1];
@@ -67,5 +89,6 @@ export async function answerEngineering(input: { companyId: string; message: str
   answer += '\n\nEstos antecedentes son referencias históricas y no equivalen a una aprobación de fabricación ni reemplazan la revisión técnica.';
   const result = engineeringAssistantResultSchema.parse({ intent, subject, answer, inputData: [], missingData, assumptions, calculations, materials: [], sources, warnings: ['Verificar hipótesis, unidades y normativa antes de fabricar.'], confidence: sources.length ? 0.65 : 0.35, reviewRequired: true });
   if (input.companyId && calculations.length) await prisma.engineeringCalculation.createMany({ data: calculations.map((calculation) => ({ companyId: input.companyId, title: calculation.title, formula: calculation.formula, inputsJson: JSON.stringify(calculation.inputs), resultJson: JSON.stringify({ result: calculation.result, unit: calculation.resultUnit, explanation: calculation.explanation }), source: 'CALCULATED' })) });
-  return { ...result, mode: config.OPENAI_API_KEY ? 'openai' : 'local' };
+  const aiAnswer = await explainWithOpenAI(message, result).catch(() => null);
+  return { ...result, answer: aiAnswer || result.answer, mode: aiAnswer ? 'openai' : 'local' };
 }
