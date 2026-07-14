@@ -1,6 +1,13 @@
 import crypto from 'node:crypto';
 import { config } from '../config.js';
 
+const WHATSAPP_TIMEOUT_MS = 30_000;
+const TRANSCRIBE_TIMEOUT_MS = 45_000;
+
+function timeoutSignal(ms: number) {
+  return AbortSignal.timeout(ms);
+}
+
 export function verifyMetaSignature(rawBody: Buffer, signatureHeader?: string): boolean {
   if (!signatureHeader || config.WHATSAPP_APP_SECRET === 'change-me') return false;
   const expected = `sha256=${crypto.createHmac('sha256', config.WHATSAPP_APP_SECRET).update(rawBody).digest('hex')}`;
@@ -30,6 +37,7 @@ async function sendWhatsAppMessage(body: Record<string, unknown>): Promise<{ pro
 
   const response = await fetch(`https://graph.facebook.com/v20.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
     method: 'POST',
+    signal: timeoutSignal(WHATSAPP_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${config.WHATSAPP_ACCESS_TOKEN}`,
       'Content-Type': 'application/json'
@@ -81,6 +89,7 @@ export async function uploadWhatsAppMedia(input: { buffer: Buffer; mimeType: str
 
   const response = await fetch(`https://graph.facebook.com/v20.0/${config.WHATSAPP_PHONE_NUMBER_ID}/media`, {
     method: 'POST',
+    signal: timeoutSignal(WHATSAPP_TIMEOUT_MS),
     headers: { Authorization: `Bearer ${config.WHATSAPP_ACCESS_TOKEN}` },
     body: form
   });
@@ -100,6 +109,7 @@ export async function getWhatsAppMedia(mediaId: string): Promise<{ buffer: Buffe
   }
 
   const metadataResponse = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
+    signal: timeoutSignal(WHATSAPP_TIMEOUT_MS),
     headers: { Authorization: `Bearer ${config.WHATSAPP_ACCESS_TOKEN}` }
   });
 
@@ -109,6 +119,7 @@ export async function getWhatsAppMedia(mediaId: string): Promise<{ buffer: Buffe
 
   const metadata = (await metadataResponse.json()) as { url: string; mime_type?: string; file_size?: number; sha256?: string };
   const mediaResponse = await fetch(metadata.url, {
+    signal: timeoutSignal(WHATSAPP_TIMEOUT_MS),
     headers: { Authorization: `Bearer ${config.WHATSAPP_ACCESS_TOKEN}` }
   });
 
@@ -134,6 +145,7 @@ export async function transcribeWhatsAppAudio(buffer: Buffer, mimeType: string):
   form.append('language', 'es');
   const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
+    signal: timeoutSignal(TRANSCRIBE_TIMEOUT_MS),
     headers: { Authorization: 'Bearer ' + config.OPENAI_API_KEY },
     body: form
   });

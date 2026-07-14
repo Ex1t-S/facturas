@@ -15,6 +15,12 @@ import { safeFileName, writeDocumentFile } from './documentStorage.js';
 import { convertDocxToPdf, writeFmhQuoteDocx } from './fmhQuoteDocument.js';
 import { renderDeliveryNotePdf, renderQuotePdf } from './pdf.js';
 
+const OPENAI_TIMEOUT_MS = 35_000;
+
+function timeoutSignal(ms = OPENAI_TIMEOUT_MS) {
+  return AbortSignal.timeout(ms);
+}
+
 export type AssistantMessage = {
   role: 'user' | 'assistant';
   content: string;
@@ -287,6 +293,7 @@ async function parseOpenAiDraft(message: string, intent: DraftIntent): Promise<D
 
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
+    signal: timeoutSignal(),
     headers: {
       Authorization: `Bearer ${config.OPENAI_API_KEY}`,
       'Content-Type': 'application/json'
@@ -752,6 +759,7 @@ async function answerWithOpenAi(input: AssistantInput, context: string, knowledg
 
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
+    signal: timeoutSignal(),
     headers: {
       Authorization: `Bearer ${config.OPENAI_API_KEY}`,
       'Content-Type': 'application/json'

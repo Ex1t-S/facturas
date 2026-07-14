@@ -231,6 +231,175 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       .send(buffer);
   });
 
+  async function sendAssistantReply(input: {
+    company: { id: string };
+    inbound: { body: string | null };
+    fromNumber: string;
+    phoneNumber: string;
+    conversation: { id: string; pendingJson: string | null };
+  }) {
+    app.log.info({ conversationId: input.conversation.id, fromNumber: input.fromNumber }, 'whatsapp assistant reply started');
+    const history = await resolveInboundHistory(input.fromNumber);
+    app.log.info({ conversationId: input.conversation.id, history: history.length }, 'whatsapp assistant history loaded');
+    const assistantResponse = await answerAssistant({
+      companyId: input.company.id,
+      message: input.inbound.body ?? '',
+      history,
+      pendingDeliveryDraft: parsePending(input.conversation.pendingJson)
+    });
+    app.log.info({ conversationId: input.conversation.id, action: assistantResponse.action?.type }, 'whatsapp assistant response generated');
+    await prisma.whatsAppConversation.update({
+      where: { id: input.conversation.id },
+      data: { pendingJson: assistantResponse.pendingDeliveryDraft ? JSON.stringify(assistantResponse.pendingDeliveryDraft) : null }
+    });
+
+    const publicBaseUrl = config.PUBLIC_BASE_URL.replace(/\/$/, '');
+    const draftUrl = pendingDraftContentUrl(publicBaseUrl, assistantResponse.pendingDeliveryDraft);
+    const finalDocumentUrl = assistantResponse.action?.documentId
+      ? publicBaseUrl + '/api/documents/' + assistantResponse.action.documentId + '/content'
+      : '';
+    const documentUrl = draftUrl || finalDocumentUrl;
+    const storedDocument = assistantResponse.action?.documentId
+      ? await prisma.document.findUnique({ where: { id: assistantResponse.action.documentId } })
+      : null;
+    let documentSendFailed = false;
+
+    const pendingDraft = assistantResponse.pendingDeliveryDraft;
+    const outboundDocument = pendingDraft
+      ? {
+          buffer: await readStoredDocumentFile(pendingDraft.previewStoragePath),
+          mimeType: pendingDraft.previewMimeType || 'application/pdf',
+          filename: pendingDraft.previewFileName || pendingDraft.suggestedFileName || 'borrador.pdf',
+          documentId: undefined as string | undefined
+        }
+      : storedDocument
+        ? {
+            buffer: await readStoredDocumentFile(storedDocument.storagePath),
+            mimeType: storedDocument.mimeType,
+            filename: storedDocument.fileName,
+            documentId: storedDocument.id
+          }
+        : null;
+
+    if (outboundDocument) {
+      try {
+        app.log.info({ conversationId: input.conversation.id, filename: outboundDocument.filename }, 'whatsapp uploading pdf media');
+        const media = await uploadWhatsAppMedia({
+          buffer: outboundDocument.buffer,
+          mimeType: outboundDocument.mimeType,
+          filename: outboundDocument.filename
+        });
+        const sent = await sendWhatsAppDocument({
+          to: input.fromNumber,
+          mediaId: media.mediaId,
+          filename: outboundDocument.filename,
+          caption: assistantResponse.answer.slice(0, 900)
+        });
+        await prisma.whatsAppMessage.create({
+          data: {
+            direction: 'OUTBOUND',
+            fromNumber: input.phoneNumber,
+            toNumber: input.fromNumber,
+            providerMessageId: sent.providerMessageId,
+            messageType: 'document',
+            body: assistantResponse.answer,
+            mediaDocumentId: outboundDocument.documentId,
+            conversationId: input.conversation.id
+          }
+        });
+        app.log.info({ conversationId: input.conversation.id }, 'whatsapp pdf document sent');
+        return;
+      } catch (error) {
+        app.log.error(error);
+        documentSendFailed = true;
+      }
+    }
+
+    if (documentUrl && isPublicDocumentUrl(documentUrl)) {
+      try {
+        const sent = await sendWhatsAppDocument({
+          to: input.fromNumber,
+          documentUrl,
+          filename: assistantResponse.pendingDeliveryDraft?.previewFileName || storedDocument?.fileName || 'documento.pdf',
+          caption: assistantResponse.answer.slice(0, 900)
+        });
+        await prisma.whatsAppMessage.create({
+          data: {
+            direction: 'OUTBOUND',
+            fromNumber: input.phoneNumber,
+            toNumber: input.fromNumber,
+            providerMessageId: sent.providerMessageId,
+            messageType: 'document',
+            body: assistantResponse.answer,
+            mediaDocumentId: assistantResponse.action?.documentId,
+            conversationId: input.conversation.id
+          }
+        });
+        app.log.info({ conversationId: input.conversation.id }, 'whatsapp pdf link sent');
+        return;
+      } catch (error) {
+        app.log.error(error);
+        documentSendFailed = true;
+      }
+    }
+
+    const fallbackAnswer = outboundDocument || documentSendFailed
+      ? assistantResponse.answer + '\n\nNo pude adjuntar el PDF por WhatsApp. El borrador quedo generado; revisa la configuracion de WhatsApp/Media y reintenta.'
+      : documentUrl && !isPublicDocumentUrl(documentUrl)
+        ? assistantResponse.answer + '\n\nNo pude adjuntar el PDF porque PUBLIC_BASE_URL no es una URL publica accesible por WhatsApp. Configurala con la URL de Render/produccion y reintenta.'
+        : assistantResponse.answer;
+    const sent = await sendWhatsAppText({ to: input.fromNumber, body: fallbackAnswer });
+    await prisma.whatsAppMessage.create({
+      data: {
+        direction: 'OUTBOUND',
+        fromNumber: input.phoneNumber,
+        toNumber: input.fromNumber,
+        providerMessageId: sent.providerMessageId,
+        messageType: 'text',
+        body: fallbackAnswer,
+        conversationId: input.conversation.id
+      }
+    });
+    app.log.info({ conversationId: input.conversation.id }, 'whatsapp text sent');
+  }
+
+  app.post('/api/whatsapp/messages/:id/reprocess', async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const company = await prisma.company.findFirst();
+    if (!company) return reply.code(409).send({ error: 'No company configured' });
+    const inbound = await prisma.whatsAppMessage.findUnique({ where: { id: params.id }, include: { conversation: true } });
+    if (!inbound || inbound.direction !== 'INBOUND') return reply.code(404).send({ error: 'Inbound WhatsApp message not found' });
+    if (!inbound.body?.trim()) return reply.code(409).send({ error: 'Inbound WhatsApp message has no body' });
+    const conversation =
+      inbound.conversation ??
+      (await prisma.whatsAppConversation.upsert({
+        where: { companyId_fromNumber: { companyId: company.id, fromNumber: inbound.fromNumber } },
+        update: { toNumber: inbound.toNumber, lastMessageAt: new Date() },
+        create: { companyId: company.id, fromNumber: inbound.fromNumber, toNumber: inbound.toNumber, messageCount: 1, lastMessageAt: new Date() }
+      }));
+    if (!inbound.conversationId) await prisma.whatsAppMessage.update({ where: { id: inbound.id }, data: { conversationId: conversation.id } });
+    try {
+      await sendAssistantReply({ company, inbound, fromNumber: inbound.fromNumber, phoneNumber: inbound.toNumber, conversation });
+      return { ok: true };
+    } catch (error) {
+      app.log.error(error);
+      const body = 'Recibi el mensaje, pero no pude generar la respuesta automatica. Revisame configuracion de audio/PDF y volve a enviar el pedido.';
+      const sent = await sendWhatsAppText({ to: inbound.fromNumber, body });
+      await prisma.whatsAppMessage.create({
+        data: {
+          direction: 'OUTBOUND',
+          fromNumber: inbound.toNumber,
+          toNumber: inbound.fromNumber,
+          providerMessageId: sent.providerMessageId,
+          messageType: 'text',
+          body,
+          conversationId: conversation.id
+        }
+      });
+      return reply.code(500).send({ error: error instanceof Error ? error.message : 'Reprocess failed' });
+    }
+  });
+
   app.get('/webhooks/whatsapp', async (request, reply) => {
     const query = z
       .object({
@@ -277,124 +446,9 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
           if (config.WHATSAPP_TEST_MODE) continue;
 
           try {
-            const history = await resolveInboundHistory(message.from);
-            const assistantResponse = await answerAssistant({
-              companyId: company.id,
-              message: inbound.body,
-              history,
-              pendingDeliveryDraft: parsePending(conversation.pendingJson)
-            });
-            await prisma.whatsAppConversation.update({
-              where: { id: conversation.id },
-              data: { pendingJson: assistantResponse.pendingDeliveryDraft ? JSON.stringify(assistantResponse.pendingDeliveryDraft) : null }
-            });
-
-            const publicBaseUrl = config.PUBLIC_BASE_URL.replace(/\/$/, '');
-            const draftUrl = pendingDraftContentUrl(publicBaseUrl, assistantResponse.pendingDeliveryDraft);
-            const finalDocumentUrl = assistantResponse.action?.documentId
-              ? publicBaseUrl + '/api/documents/' + assistantResponse.action.documentId + '/content'
-              : '';
-            const documentUrl = draftUrl || finalDocumentUrl;
-            const storedDocument = assistantResponse.action?.documentId
-              ? await prisma.document.findUnique({ where: { id: assistantResponse.action.documentId } })
-              : null;
-            let documentSendFailed = false;
-
-            const pendingDraft = assistantResponse.pendingDeliveryDraft;
-            const outboundDocument = pendingDraft
-              ? {
-                  buffer: await readStoredDocumentFile(pendingDraft.previewStoragePath),
-                  mimeType: pendingDraft.previewMimeType || 'application/pdf',
-                  filename: pendingDraft.previewFileName || pendingDraft.suggestedFileName || 'borrador.pdf',
-                  documentId: undefined as string | undefined
-                }
-              : storedDocument
-                ? {
-                    buffer: await readStoredDocumentFile(storedDocument.storagePath),
-                    mimeType: storedDocument.mimeType,
-                    filename: storedDocument.fileName,
-                    documentId: storedDocument.id
-                  }
-                : null;
-
-            if (outboundDocument) {
-              try {
-                const media = await uploadWhatsAppMedia({
-                  buffer: outboundDocument.buffer,
-                  mimeType: outboundDocument.mimeType,
-                  filename: outboundDocument.filename
-                });
-                const sent = await sendWhatsAppDocument({
-                  to: message.from,
-                  mediaId: media.mediaId,
-                  filename: outboundDocument.filename,
-                  caption: assistantResponse.answer.slice(0, 900)
-                });
-                await prisma.whatsAppMessage.create({
-                  data: {
-                    direction: 'OUTBOUND',
-                    fromNumber: phoneNumber,
-                    toNumber: message.from,
-                    providerMessageId: sent.providerMessageId,
-                    messageType: 'document',
-                    body: assistantResponse.answer,
-                    mediaDocumentId: outboundDocument.documentId,
-                    conversationId: conversation.id
-                  }
-                });
-                continue;
-              } catch (error) {
-                appLog(error);
-                documentSendFailed = true;
-              }
-            }
-
-            if (documentUrl && isPublicDocumentUrl(documentUrl)) {
-              try {
-                const sent = await sendWhatsAppDocument({
-                  to: message.from,
-                  documentUrl,
-                  filename: assistantResponse.pendingDeliveryDraft?.previewFileName || storedDocument?.fileName || 'documento.pdf',
-                  caption: assistantResponse.answer.slice(0, 900)
-                });
-                await prisma.whatsAppMessage.create({
-                  data: {
-                    direction: 'OUTBOUND',
-                    fromNumber: phoneNumber,
-                    toNumber: message.from,
-                    providerMessageId: sent.providerMessageId,
-                    messageType: 'document',
-                    body: assistantResponse.answer,
-                    mediaDocumentId: assistantResponse.action?.documentId,
-                    conversationId: conversation.id
-                  }
-                });
-                continue;
-              } catch (error) {
-                appLog(error);
-                documentSendFailed = true;
-              }
-            }
-
-            const fallbackAnswer = outboundDocument || documentSendFailed
-              ? assistantResponse.answer + '\n\nNo pude adjuntar el PDF por WhatsApp. El borrador quedo generado; revisa la configuracion de WhatsApp/Media y reintenta.'
-              : documentUrl && !isPublicDocumentUrl(documentUrl)
-                ? assistantResponse.answer + '\n\nNo pude adjuntar el PDF porque PUBLIC_BASE_URL no es una URL publica accesible por WhatsApp. Configurala con la URL de Render/produccion y reintenta.'
-              : assistantResponse.answer;
-            const sent = await sendWhatsAppText({ to: message.from, body: fallbackAnswer });
-            await prisma.whatsAppMessage.create({
-              data: {
-                direction: 'OUTBOUND',
-                fromNumber: phoneNumber,
-                toNumber: message.from,
-                providerMessageId: sent.providerMessageId,
-                messageType: 'text',
-                body: fallbackAnswer,
-                conversationId: conversation.id
-              }
-            });
+            await sendAssistantReply({ company, inbound, fromNumber: message.from, phoneNumber, conversation });
           } catch (error) {
-            appLog(error);
+            app.log.error(error);
             const body = 'Recibi el mensaje, pero no pude generar la respuesta automatica. Revisame configuracion de audio/PDF y volve a enviar el pedido.';
             const sent = await sendWhatsAppText({ to: message.from, body });
             await prisma.whatsAppMessage.create({
