@@ -193,3 +193,13 @@ docs/deploy-render-neon.md
 ```
 
 Importante: hoy Prisma sigue con `SQLite`, así que antes de usar Neon hay que migrar la aplicación a `PostgreSQL`.
+
+## Ingeniería FMH
+
+Configurar `ENGINEERING_KNOWLEDGE_ROOT` o reutilizar `HISTORICAL_DOCUMENT_ROOT` y ejecutar:
+
+```powershell
+npm run engineering:ingest -- "C:\ruta\de\la\biblioteca"
+```
+
+La sección `Ingeniería FMH` permite buscar antecedentes, calcular geometría y masa preliminar, consultar materiales y revisar las fuentes. Ver `docs/engineering-assistant.md`.

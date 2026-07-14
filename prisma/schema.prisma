@@ -110,6 +110,10 @@ model Company {
   supplierPriceLists SupplierPriceList[]
   assistantChats AssistantChat[]
   whatsappConversations WhatsAppConversation[]
+  engineeringKnowledgeDocuments EngineeringKnowledgeDocument[]
+  engineeringProjects EngineeringProject[]
+  engineeringCalculations EngineeringCalculation[]
+  engineeringIngestionRuns EngineeringIngestionRun[]
 }
 
 model Supplier {
@@ -472,6 +476,139 @@ model AuditLog {
   afterJson   String?
   createdAt   DateTime @default(now())
   actor       User?    @relation(fields: [actorUserId], references: [id])
+}
+
+model EngineeringKnowledgeDocument {
+  id String @id @default(cuid())
+  companyId String?
+  sourceDocumentId String?
+  fileName String
+  relativePath String?
+  extension String
+  mimeType String
+  sha256 String
+  sizeBytes Int
+  status String @default("DISCOVERED")
+  documentType String @default("OTHER")
+  projectType String @default("OTHER")
+  projectName String?
+  customerName String?
+  documentDate DateTime?
+  rawText String?
+  structuredJson String?
+  metadataJson String?
+  extractorVersion String @default("engineering-extractor-v1")
+  promptVersion String?
+  model String?
+  confidence Decimal @default(0)
+  errorMessage String?
+  verified Boolean @default(false)
+  reviewNotes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projects EngineeringProjectDocument[]
+  reviews EngineeringReview[]
+  vectorIndexes EngineeringVectorIndex[]
+  @@unique([companyId, sha256])
+  @@index([companyId, status])
+  @@index([companyId, projectType])
+  @@index([companyId, documentType])
+}
+
+model EngineeringProject {
+  id String @id @default(cuid())
+  companyId String
+  name String
+  projectType String @default("OTHER")
+  customerName String?
+  projectDate DateTime?
+  status String @default("SUGGESTED")
+  description String?
+  technicalJson String?
+  notes String?
+  verified Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  documents EngineeringProjectDocument[]
+  reviews EngineeringReview[]
+  @@index([companyId, projectType])
+  @@index([companyId, status])
+}
+
+model EngineeringProjectDocument {
+  id String @id @default(cuid())
+  projectId String
+  knowledgeId String
+  project EngineeringProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  knowledge EngineeringKnowledgeDocument @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+  @@unique([projectId, knowledgeId])
+  @@index([knowledgeId])
+}
+
+model EngineeringCalculation {
+  id String @id @default(cuid())
+  companyId String
+  title String
+  formula String?
+  inputsJson String
+  resultJson String
+  source String @default("CALCULATED")
+  createdAt DateTime @default(now())
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  @@index([companyId, createdAt])
+}
+
+model EngineeringReview {
+  id String @id @default(cuid())
+  companyId String?
+  knowledgeId String?
+  projectId String?
+  originalJson String?
+  correctedJson String?
+  status String @default("VERIFIED")
+  note String?
+  reviewerName String?
+  createdAt DateTime @default(now())
+  knowledge EngineeringKnowledgeDocument? @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+  project EngineeringProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@index([companyId, status])
+  @@index([knowledgeId])
+  @@index([projectId])
+}
+
+model EngineeringIngestionRun {
+  id String @id @default(cuid())
+  companyId String?
+  rootPath String
+  status String @default("RUNNING")
+  foundCount Int @default(0)
+  newCount Int @default(0)
+  unchangedCount Int @default(0)
+  modifiedCount Int @default(0)
+  processedCount Int @default(0)
+  pendingCount Int @default(0)
+  failedCount Int @default(0)
+  lastError String?
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  @@index([companyId, startedAt])
+}
+
+model EngineeringVectorIndex {
+  id String @id @default(cuid())
+  knowledgeId String
+  vectorStoreId String
+  openaiFileId String?
+  localHash String
+  status String @default("PENDING")
+  indexedAt DateTime?
+  errorMessage String?
+  knowledge EngineeringKnowledgeDocument @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+  @@unique([knowledgeId, vectorStoreId])
+  @@index([vectorStoreId, status])
 }
 
 model AssistantChat {

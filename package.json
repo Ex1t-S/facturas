@@ -27,6 +27,7 @@
     "catalog:refine": "tsx scripts/refineProductCatalog.ts",
     "db:migrate:sqlite-to-postgres": "tsx scripts/migrateSqliteToPostgres.ts",
     "restore:documents": "tsx scripts/restoreRenderDocuments.ts",
+    "engineering:ingest": "tsx scripts/engineeringIngest.ts",
     "copy:generated-client": "tsx scripts/copyGeneratedClient.ts",
     "render": ".\\tools\\render\\render.exe",
     "render:login": ".\\tools\\render\\render.exe login",

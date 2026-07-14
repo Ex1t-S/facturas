@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, Bot, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Home, PackageSearch, ReceiptText, Send, Settings, Upload, Users } from 'lucide-react';
+import { Archive, Bot, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Home, PackageSearch, ReceiptText, Send, Settings, Upload, Users, Wrench } from 'lucide-react';
 import { api, dateFmt, money, postJson } from './api';
 
-type View = 'dashboard' | 'assistant' | 'documents' | 'quotes' | 'invoices' | 'inventory' | 'customers' | 'whatsapp' | 'settings';
+type View = 'dashboard' | 'assistant' | 'engineering' | 'documents' | 'quotes' | 'invoices' | 'inventory' | 'customers' | 'whatsapp' | 'settings';
 type AnyRecord = Record<string, any>;
 
 const nav: Array<{ id: View; label: string; icon: typeof Home }> = [
   { id: 'dashboard', label: 'Panel', icon: Home },
   { id: 'assistant', label: 'Asistente', icon: Bot },
+  { id: 'engineering', label: 'Ingeniería FMH', icon: Wrench },
   { id: 'documents', label: 'Documentos', icon: Archive },
   { id: 'quotes', label: 'Presupuestos', icon: ReceiptText },
   { id: 'invoices', label: 'Facturas', icon: ReceiptText },
@@ -172,6 +173,7 @@ export function App() {
   const content = useMemo(() => {
     if (view === 'documents') return <Documents data={data} companyId={companyId} notify={notify} />;
     if (view === 'assistant') return <AssistantView companyId={companyId} />;
+    if (view === 'engineering') return <EngineeringView companyId={companyId} />;
     if (view === 'quotes') return <Quotes data={data} companyId={companyId} notify={notify} />;
     if (view === 'invoices') return <Invoices data={data} companyId={companyId} notify={notify} />;
     if (view === 'inventory') return <Inventory data={data} companyId={companyId} notify={notify} />;
@@ -321,6 +323,45 @@ function AssistantView({ companyId }: { companyId: string }) {
       </section>
     </Page>
   );
+}
+
+function EngineeringView({ companyId }: { companyId: string }) {
+  const [message, setMessage] = useState('');
+  const [result, setResult] = useState<AnyRecord | null>(null);
+  const [knowledge, setKnowledge] = useState<AnyRecord>({ documents: [] });
+  const [status, setStatus] = useState<AnyRecord | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function loadLibrary() {
+    if (!companyId) return;
+    const [library, ingestion] = await Promise.all([
+      api<AnyRecord>(`/api/engineering/knowledge?companyId=${companyId}&q=&take=30`),
+      api<AnyRecord>(`/api/engineering/ingestion/status?companyId=${companyId}`)
+    ]);
+    setKnowledge(library); setStatus(ingestion);
+  }
+  useEffect(() => { loadLibrary().catch(() => undefined); }, [companyId]);
+  async function ask(event: React.FormEvent) {
+    event.preventDefault(); if (!message.trim() || !companyId) return;
+    setLoading(true);
+    try { setResult(await postJson<AnyRecord>('/api/engineering/chat', { companyId, message })); } finally { setLoading(false); }
+  }
+  async function startIngestion() {
+    if (!companyId) return;
+    await postJson('/api/engineering/ingestion/start', { companyId });
+    setTimeout(() => loadLibrary().catch(() => undefined), 800);
+  }
+  const totalFiles = Object.values(status?.counts || {}).reduce((sum: number, value: any) => sum + Number(value), 0);
+  return <Page title="Ingeniería FMH" text="Biblioteca técnica, cálculos preliminares y antecedentes trazables.">
+    <section className="engineeringGrid">
+      <div className="card engineeringChat">
+        <h2>Asistente de Ingeniería</h2>
+        <form className="form" onSubmit={ask}><label className="field"><span>Consulta técnica</span><textarea rows={5} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ej.: Necesito una tolva de 4 x 4 m, boca inferior 0,5 x 0,5 m y 3 m de alto." /></label><button disabled={loading}>{loading ? 'Calculando...' : 'Consultar'}</button></form>
+        {result && <div className="engineeringResult"><h3>Respuesta</h3><p>{result.answer}</p>{result.missingData?.length > 0 && <><h3>Datos faltantes</h3><ul>{result.missingData.map((item: AnyRecord) => <li key={item.name}><strong>{item.name}:</strong> {item.reason}</li>)}</ul></>}{result.calculations?.length > 0 && <><h3>Cálculos</h3>{result.calculations.map((item: AnyRecord) => <div className="trace" key={item.title}><strong>{item.title}</strong><span>{item.formula}</span><b>{Number(item.result).toFixed(2)} {item.resultUnit}</b></div>)}</>}{result.sources?.length > 0 && <><h3>Fuentes FMH</h3><ul>{result.sources.map((source: AnyRecord) => <li key={source.id}>{source.title}</li>)}</ul></>}</div>}
+      </div>
+      <div className="card engineeringLibrary"><div className="sectionRow"><h2>Biblioteca técnica FMH</h2><button onClick={startIngestion}>Actualizar biblioteca</button></div><div className="metrics compact"><article><span>Archivos</span><strong>{totalFiles}</strong></article><article><span>Procesados</span><strong>{status?.counts?.EXTRACTED || 0}</strong></article><article><span>Visión/revisión</span><strong>{(status?.counts?.NEEDS_VISION || 0) + (status?.counts?.NEEDS_REVIEW || 0)}</strong></article><article><span>Fallidos</span><strong>{status?.counts?.FAILED || 0}</strong></article></div><Table headers={['Archivo', 'Tipo', 'Proyecto', 'Estado']} rows={(knowledge.documents || []).map((doc: AnyRecord) => <tr key={doc.id}><td><strong>{doc.title}</strong><small>{doc.sourcePath}</small></td><td>{doc.documentType}</td><td>{doc.type}</td><td><Badge value={doc.verified ? 'VERIFIED_INTERNAL' : 'HISTORICAL_PROJECT'} /></td></tr>)} /></div>
+    </section>
+  </Page>;
 }
 
 function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: string; notify: Function }) {

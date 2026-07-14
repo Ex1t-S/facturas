@@ -21,6 +21,7 @@ import { quoteRoutes } from './routes/quotes.js';
 import { searchRoutes } from './routes/search.js';
 import { supplierRoutes } from './routes/suppliers.js';
 import { whatsappRoutes } from './routes/whatsapp.js';
+import { engineeringRoutes } from './routes/engineering.js';
 import { webRoutes } from './routes/web.js';
 import { syncPublicSupplierPrices } from './services/supplierPublicSync.js';
 
@@ -68,6 +69,7 @@ export async function buildServer() {
   await app.register(inventoryRoutes, { prefix: '/api' });
   await app.register(supplierRoutes, { prefix: '/api' });
   await app.register(whatsappRoutes);
+  await app.register(engineeringRoutes, { prefix: '/api' });
   await app.register(webRoutes);
 
   app.addHook('onClose', async () => {
