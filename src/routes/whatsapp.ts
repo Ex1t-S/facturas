@@ -161,6 +161,10 @@ function parsePending(value: string | null | undefined): PendingDeliveryDraft | 
   }
 }
 
+function errorText(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function pendingDraftContentUrl(baseUrl: string, pending?: PendingDeliveryDraft) {
   return pending?.token ? baseUrl + '/api/whatsapp/drafts/' + pending.token + '/content' : '';
 }
@@ -238,6 +242,20 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     phoneNumber: string;
     conversation: { id: string; pendingJson: string | null };
   }) {
+    async function recordOutboundFailure(messageType: string, body: string, error: unknown) {
+      await prisma.whatsAppMessage.create({
+        data: {
+          direction: 'OUTBOUND',
+          fromNumber: input.phoneNumber,
+          toNumber: input.fromNumber,
+          messageType,
+          body: body + '\n\n[Error de envio WhatsApp: ' + errorText(error).slice(0, 900) + ']',
+          status: 'failed',
+          conversationId: input.conversation.id
+        }
+      });
+    }
+
     app.log.info({ conversationId: input.conversation.id, fromNumber: input.fromNumber }, 'whatsapp assistant reply started');
     const history = await resolveInboundHistory(input.fromNumber);
     app.log.info({ conversationId: input.conversation.id, history: history.length }, 'whatsapp assistant history loaded');
@@ -311,6 +329,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
         return;
       } catch (error) {
         app.log.error(error);
+        await recordOutboundFailure('document', assistantResponse.answer, error);
         documentSendFailed = true;
       }
     }
@@ -339,6 +358,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
         return;
       } catch (error) {
         app.log.error(error);
+        await recordOutboundFailure('document', assistantResponse.answer, error);
         documentSendFailed = true;
       }
     }
@@ -348,19 +368,25 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       : documentUrl && !isPublicDocumentUrl(documentUrl)
         ? assistantResponse.answer + '\n\nNo pude adjuntar el PDF porque PUBLIC_BASE_URL no es una URL publica accesible por WhatsApp. Configurala con la URL de Render/produccion y reintenta.'
         : assistantResponse.answer;
-    const sent = await sendWhatsAppText({ to: input.fromNumber, body: fallbackAnswer });
-    await prisma.whatsAppMessage.create({
-      data: {
-        direction: 'OUTBOUND',
-        fromNumber: input.phoneNumber,
-        toNumber: input.fromNumber,
-        providerMessageId: sent.providerMessageId,
-        messageType: 'text',
-        body: fallbackAnswer,
-        conversationId: input.conversation.id
-      }
-    });
-    app.log.info({ conversationId: input.conversation.id }, 'whatsapp text sent');
+    try {
+      const sent = await sendWhatsAppText({ to: input.fromNumber, body: fallbackAnswer });
+      await prisma.whatsAppMessage.create({
+        data: {
+          direction: 'OUTBOUND',
+          fromNumber: input.phoneNumber,
+          toNumber: input.fromNumber,
+          providerMessageId: sent.providerMessageId,
+          messageType: 'text',
+          body: fallbackAnswer,
+          conversationId: input.conversation.id
+        }
+      });
+      app.log.info({ conversationId: input.conversation.id }, 'whatsapp text sent');
+    } catch (error) {
+      app.log.error(error);
+      await recordOutboundFailure('text', fallbackAnswer, error);
+      throw error;
+    }
   }
 
   app.post('/api/whatsapp/messages/:id/reprocess', async (request, reply) => {
