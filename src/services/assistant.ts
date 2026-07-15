@@ -155,7 +155,7 @@ function suggestedDocumentFileName(type: PendingDeliveryDraft['type'], payload: 
   return safeFileName(base + '-' + customer + extra + '.pdf');
 }
 
-const conversationalInstruction = /\b(haceme|armame|generame|preparame|prepar[aá](?:\s+el)?\s+pdf|mandamelo|envialo|guardalo(?:\s+como)?|para\s+revisarlo|antes\s+de\s+guardarlo|confirmalo|haceme\s+un\s+(?:remito|presupuesto))\b/gi;
+const conversationalInstruction = /\b(haceme|armame|generame|preparame|prepar[aá]melo|prepar[aá](?:\s+el)?\s+pdf|mandamelo|envialo|guardalo(?:\s+como)?|para\s+revisarlo|antes\s+de\s+guardarlo|confirmalo|haceme\s+un\s+(?:remito|presupuesto))\b/gi;
 
 /** Second line of defense: document descriptions never contain chat control language. */
 export function sanitizeDocumentInstructions(value: string) {
@@ -217,7 +217,7 @@ function confirmsPendingDraft(message: string) {
 }
 
 function requestsPreview(message: string) {
-  return /\b(listo|terminamos|prepara(?:me)?(?:\s+el)?\s+pdf|haceme\s+el\s+pdf|mostrame\s+como\s+quedo|mandame\s+el\s+borrador|quiero\s+revisarlo)\b/i.test(normalizeText(message));
+  return /\b(listo|terminamos|preparamelo|preparalo|prepara(?:me)?(?:\s+el)?\s+pdf|haceme\s+el\s+pdf|mostrame\s+como\s+quedo|mandame\s+el\s+borrador|quiero\s+revisarlo)\b/i.test(normalizeText(message));
 }
 
 function requestsDraftStatus(message: string) {
@@ -269,7 +269,7 @@ function pendingDeliveryNote(history?: AssistantMessage[]) {
 function isCustomerOnlyDeliverySetup(message: string) {
   const normalized = normalizeText(message);
   const withoutCustomer = normalized
-    .replace(/\b(vamos\s+a\s+armarlo|armarlo|lo\s+armamos|hacerlo|hacelo|hacer\s+remito|remito)\b/g, ' ')
+    .replace(/\b(vamos\s+a\s+armarlo|armarlo|lo\s+armamos|hacerlo|hacelo|hacer\s+remito|haceme|armame|generame|preparame|remito)\b/g, ' ')
     .replace(/\b(para|cliente)\s+[^,.;\n]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -1107,7 +1107,7 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
   if (intent === 'quote' || intent === 'delivery_note' || (pendingDeliveryNote(input.history) && firstCustomerGuess(input.message))) {
     const effectiveIntent: DraftIntent = intent === 'none' ? 'delivery_note' : intent;
     const payload =
-      effectiveIntent === 'delivery_note' && intent === 'none'
+      effectiveIntent === 'delivery_note' && (intent === 'none' || isCustomerOnlyDeliverySetup(input.message))
         ? parseFollowUpDeliveryNoteForTest(input.message)
         : (await parseOpenAiDraft(input.message, effectiveIntent)) ?? parseLocalDraft(input.message);
     const matchedCustomer = (payload.customerName || payload.customerCuit)
