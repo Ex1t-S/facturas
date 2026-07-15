@@ -31,7 +31,7 @@ export async function importStructuralSectionCatalog(input: { companyId: string;
     const values = Object.fromEntries(numericFields.map((field) => [field, numberOrNull(row[field])])) as Record<(typeof numericFields)[number], number | null>;
     const missing = numericFields.filter((field) => values[field] === null);
     const verified = Boolean(input.verified) && source.verificationStatus !== 'UNKNOWN';
-    const data = { companyId: input.companyId, designation, type: String(row.type || 'CUSTOM').toUpperCase(), material: row.material ? String(row.material) : null, ...values, source: source.title, sourceDocumentId: input.sourceDocumentId, verified, verifiedAt: verified ? new Date() : null, notes: missing.length ? `PROPERTY_MISSING: ${missing.join(', ')}` : null };
+    const data = { companyId: input.companyId, designation, type: String(row.type || 'CUSTOM').toUpperCase(), material: row.material ? String(row.material) : null, ...values, source: source.title, sourceId: source.id, sourcePage: numberOrNull(row.sourcePage), sourceDocumentId: input.sourceDocumentId, reviewStatus: verified ? 'CONFIRMED' : 'PENDING_REVIEW', verified, verifiedAt: verified ? new Date() : null, notes: missing.length ? `PROPERTY_MISSING: ${missing.join(', ')}` : null };
     imported.push(await prisma.structuralSection.upsert({ where: { companyId_designation_source: { companyId: input.companyId, designation, source: source.title } }, update: data, create: data }));
   }
   return { sourceId: source.id, rows: rows.length, imported: imported.length, verified: imported.filter((row) => row.verified).length, propertyMissing: imported.filter((row) => row.notes?.includes('PROPERTY_MISSING')).length };
@@ -64,7 +64,10 @@ export function parseCirsocRectangularSections(text: string) {
   const start = Math.max(text.lastIndexOf('Tubos de acero'), text.lastIndexOf('Tubos de acero'));
   const body = start >= 0 ? text.slice(start) : text;
   const candidates: CirsocRectangularSectionCandidate[] = [];
+  let sourcePage: number | undefined;
   for (const line of body.split(/\r?\n/)) {
+    const marker = line.match(/--\s*(\d+)\s+of\s+\d+\s+--/i);
+    if (marker) { sourcePage = Number(marker[1]); continue; }
     const values = [...line.matchAll(/[-+]?\d+(?:[.,]\d+)?/g)].map((match) => Number(match[0].replace(',', '.')));
     if (values.length < 16) continue;
     let width: number; let height: number; let row: number[];
@@ -74,7 +77,7 @@ export function parseCirsocRectangularSections(text: string) {
     if (row.length < 14 || row[0] <= 0 || row[1] <= 0 || row[4] <= 0 || row[5] <= 0) continue;
     const [thickness, _p, areaCm2, massPerMeter, ixCm4, _sx, rxCm, _zx, iyCm4, _sy, ryCm, ..._] = row;
     if (thickness * 2 >= Math.min(width, height)) continue;
-    candidates.push({ designation: `RHS ${width}x${height}x${thickness}`, type: 'RHS', width, height, thickness, area: areaCm2 * 100, massPerMeter, ix: ixCm4 * 10_000, iy: iyCm4 * 10_000, rx: rxCm * 10, ry: ryCm * 10, notes: 'EXTRACTED_NEEDS_REVIEW: confirmar fila y página contra PDF oficial.' });
+    candidates.push({ designation: `RHS ${width}x${height}x${thickness}`, type: 'RHS', width, height, thickness, area: areaCm2 * 100, massPerMeter, ix: ixCm4 * 10_000, iy: iyCm4 * 10_000, rx: rxCm * 10, ry: ryCm * 10, sourcePage, notes: 'EXTRACTED_NEEDS_REVIEW: confirmar fila y página contra PDF oficial.' });
   }
   return candidates;
 }
@@ -91,7 +94,7 @@ export async function importCirsocRectangularSections(input: { companyId: string
   const rows = parseCirsocRectangularSections(text);
   let imported = 0;
   for (const row of rows) {
-    await prisma.structuralSection.upsert({ where: { companyId_designation_source: { companyId: input.companyId, designation: row.designation, source: source.title } }, update: { ...row, source: source.title, sourceDocumentId: input.sourceDocumentId, verified: Boolean(input.verified), verifiedAt: input.verified ? new Date() : null }, create: { companyId: input.companyId, ...row, source: source.title, sourceDocumentId: input.sourceDocumentId, verified: Boolean(input.verified), verifiedAt: input.verified ? new Date() : null } });
+    await prisma.structuralSection.upsert({ where: { companyId_designation_source: { companyId: input.companyId, designation: row.designation, source: source.title } }, update: { ...row, source: source.title, sourceId: source.id, sourceDocumentId: input.sourceDocumentId, reviewStatus: input.verified ? 'CONFIRMED' : 'PENDING_REVIEW', verified: Boolean(input.verified), verifiedAt: input.verified ? new Date() : null }, create: { companyId: input.companyId, ...row, source: source.title, sourceId: source.id, sourceDocumentId: input.sourceDocumentId, reviewStatus: input.verified ? 'CONFIRMED' : 'PENDING_REVIEW', verified: Boolean(input.verified), verifiedAt: input.verified ? new Date() : null } });
     imported += 1;
   }
   return { sourceId: input.sourceId, rows: rows.length, imported, verified: input.verified ? imported : 0 };

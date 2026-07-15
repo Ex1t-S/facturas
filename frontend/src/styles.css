@@ -224,7 +224,22 @@ td strong, td small { display: block; }
 .goldenRow { display: grid; gap: 3px; padding: 9px 0; border-top: 1px solid var(--line); }
 .goldenRow strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .goldenRow span, .goldenRow small { color: var(--muted); font-size: 11px; }
+.reviewWizard { margin-top: 24px; }
+.reviewProgress { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+.reviewProgress span { background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; color: var(--muted); font-size: 12px; }
+.reviewProgress strong { color: var(--ink); margin-left: 4px; }
+.reviewKindTabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.reviewKindTabs button { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 9px 13px; cursor: pointer; }
+.reviewKindTabs button.active { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+.reviewEntityCard { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; border: 1px solid var(--line); border-radius: 14px; padding: 22px; background: var(--panel); box-shadow: var(--shadow); }
+.reviewEntityCard h3 { margin: 6px 0 8px; }
+.reviewEntityCard p { max-width: 820px; white-space: pre-wrap; }
+.reviewActions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; min-width: 180px; }
+.reviewActions button, .reviewActions a { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 9px 12px; cursor: pointer; text-decoration: none; color: inherit; }
+.reviewActions .primaryButton { color: #fff; border-color: var(--brand); }
+.reviewMessage { color: var(--brand); font-size: 13px; }
 @media (max-width: 760px) { .goldenLibraryGrid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .reviewEntityCard { display: block; } .reviewActions { justify-content: flex-start; margin-top: 18px; } }
 .engineeringChat, .engineeringLibrary { min-width: 0; }
 .engineeringResult { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 16px; white-space: pre-wrap; }
 .engineeringResult h3 { margin: 15px 0 7px; font-size: 15px; }

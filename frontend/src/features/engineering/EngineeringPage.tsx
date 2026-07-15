@@ -24,13 +24,14 @@ import {
 import { api, dateFmt, postJson } from '../../api';
 
 type AnyRecord = Record<string, any>;
-type EngineeringTab = 'assistant' | 'cases' | 'drawings' | 'library' | 'import';
+type EngineeringTab = 'assistant' | 'cases' | 'drawings' | 'library' | 'review' | 'import';
 
 const tabItems: Array<{ id: EngineeringTab; label: string; icon: typeof Sparkles }> = [
   { id: 'assistant', label: 'Asistente', icon: Sparkles },
   { id: 'cases', label: 'Casos', icon: FolderKanban },
   { id: 'drawings', label: 'Planos FMH', icon: DraftingCompass },
   { id: 'library', label: 'Biblioteca', icon: Library },
+  { id: 'review', label: 'Revisión', icon: Check },
   { id: 'import', label: 'Importación', icon: Upload }
 ];
 
@@ -115,6 +116,7 @@ export function EngineeringPage({ companyId }: { companyId: string }) {
     {tab === 'cases' && <CasesView companyId={companyId} refreshKey={refreshKey} onOpenCase={(id) => { setFocusConversationId(id); changeTab('assistant'); }} />}
     {tab === 'drawings' && <DrawingsView companyId={companyId} />}
     {tab === 'library' && <><LibraryView companyId={companyId} /><GoldenLibraryPanel companyId={companyId} /></>}
+    {tab === 'review' && <ReviewView companyId={companyId} />}
     {tab === 'import' && <ImportView companyId={companyId} />}
   </div>;
 }
@@ -266,6 +268,27 @@ function GoldenLibraryPanel({ companyId }: { companyId: string }) {
   async function load() { const [library, sourceRows, validationRows] = await Promise.all([api<AnyRecord>(`/api/engineering/library?companyId=${companyId}&q=&take=12`), api<AnyRecord[]>(`/api/engineering/sources?companyId=${companyId}`), api<AnyRecord[]>(`/api/engineering/validations?companyId=${companyId}`)]); setData(library); setSources(sourceRows); setValidations(validationRows); }
   useEffect(() => { if (companyId) load().catch(() => undefined); }, [companyId]);
   return <section className="engineeringSection goldenPanel"><SectionHeader eyebrow="Procedencia y validación" title="Golden Library" text="La recuperación separa fuentes oficiales, ejemplos, antecedentes FMH, catálogo y referencias internacionales." action={<button type="button" onClick={load}><RefreshCw size={16} /> Actualizar</button>} /><div className="goldenLibraryGrid"><article className="goldenLibraryCard"><h3><BookOpen size={16} /> Fuentes</h3>{sources.slice(0, 8).map((source) => <div className="goldenRow" key={source.id}><strong>{source.title}</strong><span>{source.publisher} · {source.jurisdiction} · {source.sourceType}</span><StatusBadge value={source.verificationStatus} /><small>{source.downloadStatus} {source.fileHash ? `· SHA ${String(source.fileHash).slice(0, 12)}…` : ''}</small></div>)}{!sources.length && <p className="mutedText">Todavía no hay fuentes sincronizadas.</p>}</article><article className="goldenLibraryCard"><h3><FileText size={16} /> Ejemplos resueltos / benchmarks</h3>{(data.benchmarks || []).slice(0, 8).map((benchmark: AnyRecord) => <div className="goldenRow" key={benchmark.id}><strong>{benchmark.title}</strong><span>{benchmark.standardCode || 'Norma pendiente'} · {benchmark.source?.title || 'Fuente pendiente'}</span><StatusBadge value={benchmark.verified ? 'VERIFIED' : benchmark.status} /></div>)}{!data.benchmarks?.length && <p className="mutedText">La extracción inicial queda pendiente de revisión humana.</p>}</article><article className="goldenLibraryCard"><h3><FolderKanban size={16} /> Proyectos FMH</h3>{(data.fmhPrecedents || []).slice(0, 8).map((item: AnyRecord) => <div className="goldenRow" key={item.id}><strong>{item.title}</strong><span>{labelFor(item.type)} · {item.customerName || 'Cliente no identificado'}</span><StatusBadge value={item.trustLevel} /></div>)}{!data.fmhPrecedents?.length && <p className="mutedText">No hay antecedentes indexados.</p>}</article><article className="goldenLibraryCard"><h3><Wrench size={16} /> Catálogo estructural</h3>{(data.sectionCandidates || []).slice(0, 8).map((item: AnyRecord) => <div className="goldenRow" key={item.id}><strong>{item.designation}</strong><span>{item.material || 'Material pendiente'} · {item.sourceTitle}</span><StatusBadge value={item.verified ? 'VERIFIED' : item.source} /></div>)}{!data.sectionCandidates?.length && <p className="mutedText">Sin secciones verificadas. No se inventan propiedades faltantes.</p>}</article><article className="goldenLibraryCard"><h3><Check size={16} /> Validación de herramientas</h3>{validations.slice(0, 8).map((item) => <div className="goldenRow" key={item.id}><strong>{item.toolName} {item.toolVersion}</strong><span>{item.benchmark?.title || item.benchmarkId}</span><StatusBadge value={item.passed ? 'PASSED' : 'FAILED'} /></div>)}{!validations.length && <p className="mutedText">No hay benchmarks verificados todavía; las herramientas permanecen sin validar.</p>}</article></div></section>;
+}
+
+type ReviewKind = 'BENCHMARK' | 'CATALOG' | 'PROJECT' | 'DRAWING' | 'DOCUMENT';
+const reviewKindLabels: Record<ReviewKind, string> = { BENCHMARK: 'Benchmarks', CATALOG: 'Catálogo', PROJECT: 'Proyectos', DRAWING: 'Planos', DOCUMENT: 'Documentos' };
+
+function ReviewView({ companyId }: { companyId: string }) {
+  const [kind, setKind] = useState<ReviewKind>('BENCHMARK');
+  const [items, setItems] = useState<AnyRecord[]>([]);
+  const [progress, setProgress] = useState<AnyRecord>({});
+  const [sessionId, setSessionId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const reviewer = window.localStorage.getItem('fmhEngineeringReviewer') || 'FMH';
+  const item = items[0];
+  async function load() { const [queue, current] = await Promise.all([api<AnyRecord[]>(`/api/engineering/review/queue?companyId=${companyId}&type=${kind}&take=1`), api<AnyRecord>(`/api/engineering/review/progress?companyId=${companyId}`)]); setItems(queue); setProgress(current); }
+  useEffect(() => { if (companyId) load().catch((error) => setMessage(String(error))); }, [companyId, kind]);
+  async function ensureSession() { if (sessionId) return sessionId; const created = await postJson<AnyRecord>('/api/engineering/review/sessions', { companyId, reviewType: kind, reviewer }); setSessionId(created.id); return created.id; }
+  async function decide(decision: 'CONFIRMED' | 'SKIPPED' | 'REJECTED') { if (!item) return; setBusy(true); setMessage(''); try { const id = await ensureSession(); const golden = kind === 'PROJECT' && decision === 'CONFIRMED' ? window.confirm('¿Marcar este proyecto como antecedente FMH prioritario?') : false; await postJson(`/api/engineering/review/${kind}/${item.id}`, { sessionId: id, reviewer, decision, golden }); setMessage('Decisión guardada.'); await load(); } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); } finally { setBusy(false); } }
+  function sourceUrl() { return item?.source?.sourceUrl || item?.sourceRecord?.sourceUrl; }
+  const context = !item ? '' : kind === 'BENCHMARK' ? item.problemStatement : kind === 'CATALOG' ? `Área ${item.area ?? '—'} mm² · Peso ${item.massPerMeter ?? '—'} kg/m · Ix ${item.ix ?? '—'} · Iy ${item.iy ?? '—'} · rx ${item.rx ?? '—'} · ry ${item.ry ?? '—'}` : kind === 'PROJECT' ? `${item.customerName || 'Cliente pendiente'} · ${item.projectType} · ${item.documents?.length || 0} archivos` : kind === 'DRAWING' ? `${item.customerName || 'Cliente pendiente'} · ${item.projectType || 'Tipo pendiente'} · Plano ${item.drawingNumber || 'sin número'}` : `${item.documentType} · ${item.projectName || item.customerName || 'Proyecto pendiente'}`;
+  return <section className="engineeringSection reviewWizard"><SectionHeader eyebrow="Decisión humana" title="Revisión de Ingeniería" text="Una entidad por vez. Cada confirmación, omisión o rechazo se guarda inmediatamente." action={<button type="button" onClick={load}><RefreshCw size={16} /> Actualizar</button>} /><div className="reviewProgress"><span>Benchmarks <strong>{progress.benchmarks?.verified || 0}/{progress.benchmarks?.total || 0}</strong></span><span>Catálogo <strong>{progress.catalog?.confirmed || 0}/{progress.catalog?.total || 0}</strong></span><span>Proyectos <strong>{progress.projects?.confirmed || 0}</strong></span><span>Planos <strong>{progress.drawings?.reviewed || 0}/{progress.drawings?.total || 0}</strong></span></div><div className="reviewKindTabs">{(Object.keys(reviewKindLabels) as ReviewKind[]).map((value) => <button className={kind === value ? 'active' : ''} key={value} onClick={() => { setKind(value); setSessionId(''); }}>{reviewKindLabels[value]}</button>)}</div>{item ? <article className="reviewEntityCard"><div><span className="eyebrow">{reviewKindLabels[kind]} · siguiente pendiente</span><h3>{item.title || item.designation || item.name || item.drawingTitle || item.fileName}</h3><p>{context}</p>{kind === 'BENCHMARK' && <small>Fuente: {item.source?.title} · Página {JSON.parse(item.pageReferencesJson || '[]').join(', ') || 'pendiente'}</small>}{message && <p className="reviewMessage">{message}</p>}</div><div className="reviewActions"><button className="primaryButton" disabled={busy} onClick={() => decide('CONFIRMED')}><Check size={15} /> Confirmar</button><button disabled={busy} onClick={() => setMessage('Para correcciones estructuradas usá npm run engineering:review; evita editar JSON manualmente.')}><Wrench size={15} /> Corregir</button><button disabled={busy} onClick={() => decide('SKIPPED')}>Omitir</button><button disabled={busy} onClick={() => decide('REJECTED')}>Rechazar</button>{sourceUrl() && <a href={sourceUrl()} target="_blank" rel="noreferrer">Ver fuente</a>}</div></article> : <EmptyState icon={Check} title={`No hay ${reviewKindLabels[kind].toLowerCase()} pendientes`} text="El progreso queda guardado y podés continuar con otra categoría." />}</section>;
 }
 
 function ImportView({ companyId }: { companyId: string }) {

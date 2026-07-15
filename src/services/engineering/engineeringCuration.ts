@@ -55,25 +55,35 @@ export async function suggestEngineeringProjects(companyId: string) {
   const suggestions = [];
   for (const [key, rows] of groups) {
     if (rows.length < 2) continue;
-    const [projectType, normalizedName] = key.split('|');
-    const existing = await prisma.engineeringProject.findFirst({ where: { companyId, name: { equals: normalizedName, mode: 'insensitive' } } });
+    const [projectType] = key.split('|');
+    const candidateName = rows[0].projectName || rows[0].customerName || rows[0].fileName;
+    const existing = await prisma.engineeringProject.findFirst({ where: { companyId, OR: [{ name: { equals: candidateName, mode: 'insensitive' } }, { technicalJson: { contains: `"groupingKey":"${key}"` } }] } });
     if (existing) continue;
-    const candidate = await prisma.engineeringProject.create({ data: { companyId, name: rows[0].projectName || rows[0].customerName || rows[0].fileName, projectType, customerName: rows[0].customerName, status: 'SUGGESTED', verified: false, description: `Sugerencia asistida por ${rows.length} documentos relacionados; requiere confirmacion humana.`, technicalJson: JSON.stringify({ candidateDocumentIds: rows.map((row) => row.id), groupingKey: key }) } });
+    const hasDrawing = rows.some((row) => row.documentType === 'DRAWING');
+    const hasQuote = rows.some((row) => row.documentType === 'QUOTE');
+    const hasCustomer = rows.some((row) => Boolean(row.customerName));
+    const confidence = Math.min(0.95, 0.45 + Math.min(rows.length, 5) * 0.06 + (hasDrawing ? 0.12 : 0) + (hasQuote ? 0.1 : 0) + (hasCustomer ? 0.08 : 0));
+    const candidate = await prisma.engineeringProject.create({ data: { companyId, name: candidateName, projectType, customerName: rows.find((row) => row.customerName)?.customerName, status: 'SUGGESTED', verified: false, description: `Sugerencia asistida por ${rows.length} documentos relacionados; confianza ${(confidence * 100).toFixed(0)} %; requiere confirmacion humana.`, technicalJson: JSON.stringify({ candidateDocumentIds: rows.map((row) => row.id), groupingKey: key, confidence, evidence: { hasDrawing, hasQuote, hasCustomer } }) } });
     await prisma.engineeringProjectDocument.createMany({ data: rows.map((row) => ({ projectId: candidate.id, knowledgeId: row.id })), skipDuplicates: true });
     suggestions.push({ projectId: candidate.id, documentCount: rows.length, status: candidate.status, reason: candidate.description });
   }
   return suggestions;
 }
 
-export async function extractBenchmarkCandidates() {
+export async function extractBenchmarkCandidates(limit = 15) {
   const sources = await prisma.engineeringSource.findMany({ where: { sourceType: 'WORKED_EXAMPLE' }, include: { documents: true } });
+  const existingCount = await prisma.engineeringBenchmark.count({ where: { source: { sourceType: 'WORKED_EXAMPLE' } } });
+  const targetNew = Math.max(0, limit - existingCount);
   const created = [];
   for (const source of sources) {
+    if (created.length >= targetNew) break;
     for (const document of source.documents) {
+      if (created.length >= targetNew) break;
       const text = document.rawText || '';
-      const slices = extractBenchmarkSlices(text);
+      const slices = extractBenchmarkSlices(text, Math.max(0, targetNew - created.length));
       const candidates = slices.length ? slices : [{ heading: 'extraccion candidata', excerpt: text.slice(0, 1800), pageReferences: [] }];
       for (const candidate of candidates) {
+        if (created.length >= targetNew) break;
         const title = `${source.title} — ${candidate.heading}`;
         const exists = await prisma.engineeringBenchmark.findFirst({ where: { sourceId: source.id, title } });
         if (exists) continue;

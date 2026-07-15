@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { assertMethodContext, sourcePriority, validatePublicSourceUrl } from './engineeringSourceImporter.js';
 import { parseCirsocRectangularSections, parseStructuralCatalogCsv } from './structuralCatalogImporter.js';
 import { extractBenchmarkSlices } from './engineeringCuration.js';
+import { entityReviewPatch, isBenchmarkReady, mergeDrawingCorrection, updatedSessionCounters } from './engineeringReview.js';
 
 describe('engineering golden library controls', () => {
   it('accepts only HTTPS URLs on the declared official domain', () => {
@@ -38,5 +39,20 @@ describe('engineering golden library controls', () => {
     const slices = extractBenchmarkSlices('-- 4 of 10 --\nEJEMPLO N°1 ....\n-- 5 of 10 --\nEJEMPLO N°1\nEnunciado: dimensionar una barra.');
     expect(slices[0].pageReferences).toEqual([5]);
     expect(slices[0].excerpt).toContain('Enunciado');
+  });
+
+  it('only allows a benchmark to be confirmed when structured evidence exists', () => {
+    expect(isBenchmarkReady({ inputJson: '{}', expectedOutputJson: '{"result":{"value":1}}', implementedTool: 'calculate_vertical_load' })).toBe(false);
+    expect(isBenchmarkReady({ inputJson: '{"storedMassT":20}', expectedOutputJson: '{"result":{"value":196}}', implementedTool: 'calculate_vertical_load' })).toBe(true);
+  });
+
+  it('keeps human decisions explicit and resumable', () => {
+    expect(entityReviewPatch('PROJECT', 'CONFIRMED', true)).toEqual({ status: 'CONFIRMED', verified: true });
+    expect(entityReviewPatch('CATALOG', 'SKIPPED')).toEqual({ reviewStatus: 'SKIPPED', verified: false });
+    expect(updatedSessionCounters({ processedCount: 2, confirmedCount: 1, correctedCount: 0, skippedCount: 1, rejectedCount: 0 }, 'CORRECTED').correctedCount).toBe(1);
+  });
+
+  it('merges drawing corrections without losing extracted fields', () => {
+    expect(mergeDrawingCorrection({ diameter: 10, customer: 'FMH' }, 'diameter', 12)).toEqual({ diameter: 12, customer: 'FMH' });
   });
 });

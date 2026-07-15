@@ -124,6 +124,7 @@ model Company {
   engineeringBenchmarks         EngineeringBenchmark[]
   engineeringToolValidations    EngineeringToolValidation[]
   engineeringCurationJobs       EngineeringCurationJob[]
+  engineeringReviewSessions     EngineeringReviewSession[]
 }
 
 model Supplier {
@@ -638,6 +639,7 @@ model EngineeringSource {
   supersededBy       EngineeringSource?             @relation("EngineeringSourceSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
   supersedes         EngineeringSource[]            @relation("EngineeringSourceSupersession")
   benchmarks         EngineeringBenchmark[]
+  structuralSections StructuralSection[]
 
   @@index([companyId, sourceType])
   @@index([jurisdiction, verificationStatus])
@@ -735,7 +737,10 @@ model StructuralSection {
   yieldStrength    Float?
   commercialLength Float?
   source           String
+  sourceId         String?
+  sourcePage       Int?
   sourceDocumentId String?
+  reviewStatus     String                        @default("PENDING_REVIEW")
   verified         Boolean                       @default(false)
   verifiedAt       DateTime?
   notes            String?
@@ -743,11 +748,14 @@ model StructuralSection {
   updatedAt        DateTime                      @updatedAt
   company          Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   sourceDocument   EngineeringKnowledgeDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  sourceRecord     EngineeringSource?            @relation(fields: [sourceId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, designation, source])
   @@index([companyId, type])
   @@index([companyId, verified])
   @@index([sourceDocumentId])
+  @@index([sourceId])
+  @@index([companyId, reviewStatus])
 }
 
 model EngineeringProject {
@@ -803,6 +811,10 @@ model EngineeringReview {
   companyId     String?
   knowledgeId   String?
   projectId     String?
+  sessionId     String?
+  entityType    String?
+  entityId      String?
+  decision      String?
   originalJson  String?
   correctedJson String?
   status        String                        @default("VERIFIED")
@@ -813,10 +825,35 @@ model EngineeringReview {
   createdAt     DateTime                      @default(now())
   knowledge     EngineeringKnowledgeDocument? @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
   project       EngineeringProject?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  session       EngineeringReviewSession?      @relation(fields: [sessionId], references: [id], onDelete: SetNull)
 
   @@index([companyId, status])
   @@index([knowledgeId])
   @@index([projectId])
+  @@index([sessionId])
+  @@index([entityType, entityId])
+}
+
+model EngineeringReviewSession {
+  id             String              @id @default(cuid())
+  companyId      String?
+  reviewType     String
+  reviewer       String
+  status         String              @default("ACTIVE")
+  cursorJson     String              @default("{}")
+  processedCount Int                 @default(0)
+  confirmedCount Int                 @default(0)
+  correctedCount Int                 @default(0)
+  skippedCount   Int                 @default(0)
+  rejectedCount  Int                 @default(0)
+  startedAt      DateTime            @default(now())
+  lastActivityAt DateTime            @updatedAt
+  finishedAt     DateTime?
+  company        Company?            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  reviews        EngineeringReview[]
+
+  @@index([companyId, reviewType, status])
+  @@index([reviewer, lastActivityAt])
 }
 
 model EngineeringIngestionRun {

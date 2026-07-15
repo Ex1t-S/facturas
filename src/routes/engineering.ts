@@ -18,6 +18,8 @@ import { parseOptionalBoolean } from '../services/engineering/queryParsing.js';
 import { engineeringSourceStatus } from '../services/engineering/engineeringSourceImporter.js';
 import { searchEngineeringGoldenLibrary } from '../services/engineering/engineeringGoldenLibrary.js';
 import { createEngineeringCurationJob, listEngineeringCurationJobs, curationJobTypes } from '../services/engineering/engineeringCuration.js';
+import { pendingReviewItems, reviewBenchmark, reviewCatalogSection, reviewDrawing, reviewKnowledgeDocument, reviewProgress, reviewProject, runEngineeringGoldenValidation, setReviewSessionStatus, startOrResumeReviewSession, reviewTypes, reviewDecisions } from '../services/engineering/engineeringReview.js';
+import { engineeringFinalizationStatus } from '../services/engineering/engineeringFinalization.js';
 
 const companyQuery = z.object({ companyId: z.string().min(1) });
 const chatSchema = z.object({ companyId: z.string().min(1), message: z.string().trim().min(1).max(6000) });
@@ -100,6 +102,32 @@ export const engineeringRoutes: FastifyPluginAsync = async (app) => {
     const body = z.object({ companyId: z.string().optional(), type: z.enum(curationJobTypes) }).parse(request.body);
     return reply.code(202).send(await createEngineeringCurationJob(body.companyId, body.type));
   });
+  app.get('/engineering/review/progress', async (request) => reviewProgress(companyQuery.parse(request.query).companyId));
+  app.get('/engineering/review/queue', async (request) => {
+    const query = z.object({ companyId: z.string(), type: z.enum(reviewTypes), take: z.coerce.number().int().min(1).max(100).default(20) }).parse(request.query);
+    return pendingReviewItems(query.type, query.companyId, query.take);
+  });
+  app.post('/engineering/review/sessions', async (request, reply) => {
+    const body = z.object({ companyId: z.string(), reviewType: z.enum(reviewTypes), reviewer: z.string().trim().min(1).max(120) }).parse(request.body);
+    return reply.code(201).send(await startOrResumeReviewSession(body));
+  });
+  app.patch('/engineering/review/sessions/:id', async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const body = z.object({ status: z.enum(['ACTIVE', 'PAUSED', 'COMPLETED']) }).parse(request.body);
+    return setReviewSessionStatus(params.id, body.status);
+  });
+  app.post('/engineering/review/:type/:id', async (request) => {
+    const params = z.object({ type: z.enum(reviewTypes), id: z.string() }).parse(request.params);
+    const body = z.object({ sessionId: z.string(), reviewer: z.string().trim().min(1).max(120), decision: z.enum(reviewDecisions), correction: z.record(z.string(), z.unknown()).optional(), golden: z.boolean().optional(), note: z.string().max(2000).optional() }).parse(request.body);
+    if (params.type === 'BENCHMARK') return reviewBenchmark({ id: params.id, ...body });
+    if (params.type === 'CATALOG') return reviewCatalogSection({ id: params.id, ...body });
+    if (params.type === 'PROJECT') return reviewProject({ id: params.id, ...body });
+    if (params.type === 'DRAWING') return reviewDrawing({ id: params.id, ...body, correction: body.correction && typeof body.correction.field === 'string' ? { field: body.correction.field, value: body.correction.value } : undefined });
+    if (params.type === 'DOCUMENT') return reviewKnowledgeDocument({ id: params.id, ...body });
+    return { reviewed: false, reason: 'Los conflictos se resuelven revisando el benchmark o la herramienta de origen.' };
+  });
+  app.post('/engineering/review/validate', async (request) => runEngineeringGoldenValidation(companyQuery.parse(request.body).companyId));
+  app.get('/engineering/finalization/status', async (request) => engineeringFinalizationStatus(companyQuery.parse(request.query).companyId));
   app.post('/engineering/drawing', async (request) => { const spec = drawingSchema.parse(request.body) as EngineeringDrawingSpec; return { spec, svg: renderPreliminaryEngineeringSvg(spec) }; });
   app.post('/engineering/drawing/pdf', async (request, reply) => { const spec = drawingSchema.parse(request.body) as EngineeringDrawingSpec; return reply.type('application/pdf').send(await renderPreliminaryEngineeringPdf(spec)); });
   app.get('/engineering/drawings', async (request) => { const query = z.object({ companyId: z.string(), q: z.string().optional(), projectType: z.string().optional(), customerName: z.string().optional(), take: z.coerce.number().int().min(1).max(300).default(100) }).parse(request.query); return listEngineeringDrawings(query); });

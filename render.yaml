@@ -18,6 +18,8 @@ services:
         sync: false
       - key: UPLOAD_DIR
         value: ./uploads
+      - key: ENGINEERING_SOURCE_STORAGE_ROOT
+        value: ./uploads/engineering-sources
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
