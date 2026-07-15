@@ -280,7 +280,9 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     });
 
     const publicBaseUrl = config.PUBLIC_BASE_URL.replace(/\/$/, '');
-    const draftUrl = pendingDraftContentUrl(publicBaseUrl, assistantResponse.pendingDeliveryDraft);
+    const draftUrl = assistantResponse.previewDocument
+      ? pendingDraftContentUrl(publicBaseUrl, assistantResponse.pendingDeliveryDraft)
+      : null;
     const finalDocumentUrl = assistantResponse.action?.documentId
       ? publicBaseUrl + '/api/documents/' + assistantResponse.action.documentId + '/content'
       : '';
@@ -300,23 +302,12 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const pendingDraft = assistantResponse.pendingDeliveryDraft;
-    const pendingPreviewAvailable = Boolean(pendingDraft?.previewStoragePath && pendingDraft.previewFileName);
-    const pendingBuffer = !assistantResponse.previewDocument && pendingDraft && pendingPreviewAvailable
-      ? await storedBuffer(pendingDraft.previewStoragePath)
-      : null;
     const finalBuffer = !assistantResponse.previewDocument && !pendingDraft && storedDocument
       ? await storedBuffer(storedDocument.storagePath)
       : null;
     const outboundDocument = assistantResponse.previewDocument
       ? {
           ...assistantResponse.previewDocument,
-          documentId: undefined as string | undefined
-        }
-      : pendingDraft && pendingPreviewAvailable && pendingBuffer
-      ? {
-          buffer: pendingBuffer,
-          mimeType: pendingDraft.previewMimeType || 'application/pdf',
-          filename: pendingDraft.previewFileName || pendingDraft.suggestedFileName || 'borrador.pdf',
           documentId: undefined as string | undefined
         }
       : storedDocument && finalBuffer

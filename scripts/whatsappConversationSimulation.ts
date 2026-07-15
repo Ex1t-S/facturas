@@ -30,10 +30,48 @@ async function main() {
     const beginFirst = await answerAssistant({ companyId: company.id, message: `Haceme un remito para ${clientReference}.` });
     first.draft = beginFirst.pendingDeliveryDraft;
     if (first.draft?.status !== 'COLLECTING_INFORMATION') throw new Error('El primer teléfono no abrió un borrador.');
-    const firstAudio1 = await answerAssistant({ companyId: company.id, message: 'Cambiamos dos rodamientos de la noria.', pendingDeliveryDraft: first.draft });
+    const queryWhileDrafting = await answerAssistant({
+      companyId: company.id,
+      message: `¿Qué remitos pendientes tiene ${clientReference}?`,
+      pendingDeliveryDraft: first.draft
+    });
+    if (!queryWhileDrafting.pendingDeliveryDraft || queryWhileDrafting.pendingDeliveryDraft.payload.items.length !== 0) {
+      throw new Error('La consulta interna cerró o contaminó el borrador activo.');
+    }
+    const reminder = await answerAssistant({
+      companyId: company.id,
+      message: 'Recordame mañana que tenemos que ir a trabajar a la planta de silos.',
+      pendingDeliveryDraft: queryWhileDrafting.pendingDeliveryDraft
+    });
+    if (!reminder.answer.includes('no puedo crear recordatorios') || reminder.pendingDeliveryDraft?.payload.items.length !== 0) {
+      throw new Error('El recordatorio contaminó el borrador activo.');
+    }
+    const ambiguous = await answerAssistant({
+      companyId: company.id,
+      message: 'Eso de mañana quedó más o menos.',
+      pendingDeliveryDraft: reminder.pendingDeliveryDraft
+    });
+    if (!ambiguous.answer.includes('No estoy seguro') || ambiguous.pendingDeliveryDraft?.payload.items.length !== 0) {
+      throw new Error('El audio ambiguo no pidió aclaración o modificó el borrador.');
+    }
+    const firstAudio1 = await answerAssistant({ companyId: company.id, message: 'Cambiamos dos rodamientos de la noria.', pendingDeliveryDraft: ambiguous.pendingDeliveryDraft });
     const firstAudio2 = await answerAssistant({ companyId: company.id, message: 'También soldamos el soporte inferior.', pendingDeliveryDraft: firstAudio1.pendingDeliveryDraft });
-    const firstPreview = await answerAssistant({ companyId: company.id, message: 'Pasame el PDF ya limpio.', pendingDeliveryDraft: firstAudio2.pendingDeliveryDraft });
-    if (!firstPreview.previewDocument || firstPreview.pendingDeliveryDraft?.rendererUsed !== 'FMH_TEMPLATE') throw new Error('No se generó el PDF FMH del primer teléfono.');
+    const firstPreviewV1 = await answerAssistant({ companyId: company.id, message: 'Pasame el PDF ya limpio.', pendingDeliveryDraft: firstAudio2.pendingDeliveryDraft });
+    if (!firstPreviewV1.previewDocument || firstPreviewV1.pendingDeliveryDraft?.rendererUsed !== 'FMH_TEMPLATE') throw new Error('No se generó el PDF FMH del primer teléfono.');
+    const changedAfterPreview = await answerAssistant({
+      companyId: company.id,
+      message: 'También revisamos el motor.',
+      pendingDeliveryDraft: firstPreviewV1.pendingDeliveryDraft
+    });
+    if (changedAfterPreview.pendingDeliveryDraft?.previewVersion !== undefined) throw new Error('No se invalidó el preview anterior.');
+    const staleConfirmation = await answerAssistant({ companyId: company.id, message: 'Guardalo.', pendingDeliveryDraft: changedAfterPreview.pendingDeliveryDraft });
+    if (staleConfirmation.action?.documentId || !staleConfirmation.answer.includes('PDF actualizado')) {
+      throw new Error('Se permitió confirmar un preview desactualizado.');
+    }
+    const firstPreview = await answerAssistant({ companyId: company.id, message: 'Ahora sí, pasame el PDF.', pendingDeliveryDraft: staleConfirmation.pendingDeliveryDraft });
+    if (!firstPreview.previewDocument || firstPreview.pendingDeliveryDraft?.previewVersion !== firstPreview.pendingDeliveryDraft?.draftVersion) {
+      throw new Error('No se regeneró el preview actualizado.');
+    }
     const firstPdf = path.join(outputDir, '01-remito-rodamientos-y-soporte.pdf');
     await fs.writeFile(firstPdf, firstPreview.previewDocument.buffer);
 

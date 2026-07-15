@@ -17,6 +17,12 @@ import { renderFmhDeliveryNotePdf, writeFmhDeliveryNoteDocx } from './fmhDeliver
 import { renderDocumentFromTemplate, type RendererUsed } from './documentTemplateRenderer.js';
 import { renderDeliveryNotePdf, renderQuotePdf } from './pdf.js';
 import { createDeliveryNoteRecord, listPendingDeliveryNotes, linkDeliveryNotesToQuote } from './deliveryNotes/deliveryNoteService.js';
+import {
+  resolveDocumentConversationMessage,
+  unsupportedWhatsAppAnswer,
+  type DocumentConversationAction,
+  type DocumentConversationResolution
+} from './documentConversationResolver.js';
 
 const OPENAI_TIMEOUT_MS = 35_000;
 
@@ -91,7 +97,20 @@ export type PendingDeliveryDraft = {
   rawSourceMessages?: string[];
   rendererUsed?: RendererUsed;
   rendererError?: string;
+  lastConversationAction?: DocumentConversationAction;
+  lastConversationConfidence?: DocumentConversationResolution['confidence'];
+  lastConversationReason?: string;
 };
+
+function withConversationResolution(pending: PendingDeliveryDraft, resolution: DocumentConversationResolution): PendingDeliveryDraft {
+  return {
+    ...pending,
+    lastConversationAction: resolution.action,
+    lastConversationConfidence: resolution.confidence,
+    lastConversationReason: resolution.reason,
+    updatedAt: new Date().toISOString()
+  };
+}
 
 function wantsCreation(message: string) {
   const normalized = message.toLocaleLowerCase('es-AR');
@@ -211,25 +230,8 @@ function extractRequestedFileName(message: string) {
   return match?.[1] ? ensurePdfFileName(match[1]) : undefined;
 }
 
-function confirmsPendingDraft(message: string) {
-  const normalized = normalizeText(message);
-  return /\b(guardar|guardalo|confirmar|confirmalo|crear|crealo|generar|generalo|dale|ok|listo|confirmado)\b/.test(normalized);
-}
-
 export function requestsPreview(message: string) {
   return /\b(listo|terminamos|preparamelo|preparalo|prepara(?:me)?(?:\s+el)?\s+pdf|haceme\s+el\s+pdf|(?:dame|pasame|mandame|enviame|quiero\s+que\s+me\s+pases)\s+(?:el\s+)?pdf(?:\s+final)?|mostrame\s+como\s+quedo|mandame\s+el\s+borrador|quiero\s+revisarlo)\b/i.test(normalizeText(message));
-}
-
-function requestsDraftStatus(message: string) {
-  return /\b(que\s+tenes\s+anotado|como\s+va\s+el\s+remito|mostrame\s+lo\s+que\s+anotaste)\b/i.test(normalizeText(message));
-}
-
-function cancelsDraft(message: string) {
-  return /\b(cancela|cancelalo|cancela\s+el|borra\s+ese\s+borrador|empecemos\s+de\s+nuevo)\b/i.test(normalizeText(message));
-}
-
-function looksLikeUnrelatedQuestion(message: string) {
-  return /^\s*(?:cuanto|que|qu[eé]|hay|tenemos|stock|precio|lista|buscar|mostra)/i.test(message) && !/\b(remito|presupuesto)\b/i.test(message);
 }
 
 function draftKindLabel(type: PendingDeliveryDraft['type']) {
@@ -979,15 +981,53 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     return { mode: 'local', answer: 'No hay empresa activa cargada para consultar o guardar datos.', sources: [], suggestions };
   }
 
+  const conversationResolution = resolveDocumentConversationMessage({
+    message: input.message,
+    hasActiveDraft: Boolean(input.pendingDeliveryDraft),
+    waitingConfirmation: input.pendingDeliveryDraft?.status === 'WAITING_CONFIRMATION'
+  });
+
+  if (conversationResolution.action === 'UNSUPPORTED') {
+    return {
+      mode: 'local',
+      answer: unsupportedWhatsAppAnswer(conversationResolution.reason),
+      sources: [],
+      suggestions,
+      pendingDeliveryDraft: input.pendingDeliveryDraft
+        ? withConversationResolution(input.pendingDeliveryDraft, conversationResolution)
+        : undefined
+    };
+  }
+
+  // Una consulta se responde fuera del borrador y luego se restaura su contexto.
+  // Así una pregunta de stock o documentos nunca termina dentro del detalle.
+  if (input.pendingDeliveryDraft && conversationResolution.action === 'QUERY') {
+    const queryResponse = await answerAssistant({ ...input, pendingDeliveryDraft: undefined });
+    return {
+      ...queryResponse,
+      pendingDeliveryDraft: withConversationResolution(input.pendingDeliveryDraft, conversationResolution)
+    };
+  }
+
+  if (input.pendingDeliveryDraft && conversationResolution.action === 'AMBIGUOUS') {
+    return {
+      mode: 'local',
+      answer: `No estoy seguro de si eso va en el ${draftKindLabel(input.pendingDeliveryDraft.type)} abierto o si es otra consulta. Decime si querés que lo agregue.`,
+      sources: [],
+      suggestions,
+      pendingDeliveryDraft: withConversationResolution(input.pendingDeliveryDraft, conversationResolution)
+    };
+  }
+
   // Un pedido explicito de un documento nuevo reemplaza cualquier borrador
   // pendiente anterior. Las confirmaciones y ajustes sin una nueva intencion
   // siguen operando sobre el borrador pendiente.
   if (input.pendingDeliveryDraft && intent === 'none') {
-    const pending = input.pendingDeliveryDraft;
-    if (cancelsDraft(input.message)) {
+    const pending = withConversationResolution(input.pendingDeliveryDraft, conversationResolution);
+    if (conversationResolution.action === 'CANCEL_DOCUMENT') {
       return { mode: 'local', answer: `Cancelé el borrador de ${draftKindLabel(pending.type)}.`, sources: [], suggestions };
     }
-    if (requestsDraftStatus(input.message)) {
+    if (conversationResolution.action === 'ASK_DRAFT_STATUS') {
       return {
         mode: 'local',
         answer: `${formatDocumentDraft(pending).replace(/\nNombre sugerido:[\s\S]*/m, '')}\n\nTodavía no generé el PDF.`,
@@ -996,10 +1036,10 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
         pendingDeliveryDraft: pending
       };
     }
-    if (!requestsPreview(input.message) && !looksLikeUnrelatedQuestion(input.message)) {
+    if (conversationResolution.action === 'APPEND_TO_DOCUMENT_DRAFT' || conversationResolution.action === 'UPDATE_DOCUMENT_DRAFT') {
       const appended = structuredDeliveryItemsFromMessage(input.message);
       if (appended.length && pending.type === 'delivery_note') {
-        const correction = /\b(perdon|en realidad|fueron|corregi|reemplaza)\b/i.test(normalizeText(input.message));
+        const correction = conversationResolution.action === 'UPDATE_DOCUMENT_DRAFT';
         const nextItems = correction && pending.payload.items.length
           ? [...pending.payload.items.slice(0, -1), ...appended]
           : [...pending.payload.items, ...appended];
@@ -1018,9 +1058,25 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
           sources: [], suggestions, pendingDeliveryDraft: next
         };
       }
+      return {
+        mode: 'local',
+        answer: `No pude identificar con seguridad el trabajo. Decímelo de otra forma y lo agrego al ${draftKindLabel(pending.type)}.`,
+        sources: [],
+        suggestions,
+        pendingDeliveryDraft: pending
+      };
     }
     const requestedFileName = extractRequestedFileName(input.message);
-    if ((confirmsPendingDraft(input.message) || requestedFileName) && pending.status !== 'COLLECTING_INFORMATION') {
+    if (conversationResolution.action === 'CONFIRM_DOCUMENT') {
+      if (pending.status !== 'WAITING_CONFIRMATION' || pending.previewVersion !== pending.draftVersion) {
+        return {
+          mode: 'local',
+          answer: 'Antes de guardarlo necesito generar el PDF actualizado. Pedime el PDF para revisarlo.',
+          sources: [],
+          suggestions,
+          pendingDeliveryDraft: pending
+        };
+      }
       const nextFileName = requestedFileName || input.pendingDeliveryDraft.suggestedFileName;
       const created = input.pendingDeliveryDraft.type === 'quote'
         ? await createQuoteDraft(companyId, input.message, input.pendingDeliveryDraft.payload, nextFileName, input.pendingDeliveryDraft.sourceDeliveryNoteIds)
@@ -1037,7 +1093,7 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
       };
     }
 
-    if (!requestsPreview(input.message)) {
+    if (conversationResolution.action !== 'REQUEST_PREVIEW') {
       return { mode: 'local', answer: 'El borrador sigue abierto. Decime los trabajos, pedime el PDF o cancelalo.', sources: [], suggestions, pendingDeliveryDraft: pending };
     }
     const fileName = requestedFileName || pending.suggestedFileName;
