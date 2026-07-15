@@ -3,6 +3,7 @@ import path from 'node:path';
 import AdmZip from 'adm-zip';
 import { config } from '../config.js';
 import { convertDocxToPdf } from './fmhQuoteDocument.js';
+import { applyFmhA4Layout, buildBottomAnchoredFmhBody } from './fmhDocumentLayout.js';
 
 export type FmhDeliveryNoteDocumentInput = {
   number?: string;
@@ -63,17 +64,23 @@ function replaceDetails(xml: string, input: FmhDeliveryNoteDocumentInput) {
   }
 
   const sourceParagraph = paragraphs[detailIndex + 1].xml;
+  const closingParagraph = paragraphs[closingIndex].xml;
   const lines = input.items.map((item, index) => {
     const prefix = input.items.length > 1 ? `${index + 1}. ` : '';
     const quantity = String(item.quantity ?? '').trim();
     const unit = item.unit?.trim();
-    const itemPrefix = quantity ? `${quantity}${unit ? ` ${unit}` : ''} - ` : '';
+    const genericSingleWork = quantity === '1' && /^(?:trabajo|servicio|unidad)$/i.test(unit || '');
+    const itemPrefix = quantity && !genericSingleWork ? `${quantity}${unit ? ` ${unit}` : ''} - ` : '';
     return `${prefix}${itemPrefix}${item.description}`;
   });
   if (input.notes) lines.push(input.notes);
-  const replacement = lines.map((line) => paragraph(line, sourceParagraph)).join('');
+  const replacement = buildBottomAnchoredFmhBody({
+    detailsXml: lines.map((line) => paragraph(line, sourceParagraph)).join(''),
+    closingXml: paragraph('Hago propicia la oportunidad para saludarlos muy atte.', closingParagraph),
+    detailAreaHeightTwips: 4400
+  });
   const start = paragraphs[detailIndex + 1].index;
-  const end = paragraphs[closingIndex].index;
+  const end = paragraphs[closingIndex].index + paragraphs[closingIndex].xml.length;
   return `${xml.slice(0, start)}${replacement}${xml.slice(end)}`;
 }
 
@@ -86,6 +93,7 @@ export async function renderFmhDeliveryNoteDocx(input: FmhDeliveryNoteDocumentIn
   xml = replaceParagraphContaining(xml, 'CLIENTE:', paragraph(`CLIENTE: ${input.customerName}`));
   xml = replaceParagraphContaining(xml, 'Fecha de emisión:', paragraph(`Fecha de emisión: ${formatDate(input.issueDate)}`));
   xml = replaceDetails(xml, input);
+  xml = applyFmhA4Layout(xml);
   zip.updateFile('word/document.xml', Buffer.from(xml, 'utf8'));
   return zip.toBuffer();
 }

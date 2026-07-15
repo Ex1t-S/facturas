@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import AdmZip from 'adm-zip';
 import type { Quote, QuoteItem, Customer } from '../generated/postgres-client/index.js';
 import { config } from '../config.js';
+import { applyFmhA4Layout, buildBottomAnchoredFmhBody } from './fmhDocumentLayout.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -98,9 +99,10 @@ function buildQuoteParagraphs(quote: QuoteWithDetails) {
     blocks.push(paragraph(costLeader(quote.currency, lineNet(item), Number(item.taxRate)), { style: 'Prrafodelista', size: 28 }));
   });
   if (quote.notes) blocks.push(paragraph(quote.notes, { style: 'Prrafodelista', size: 24 }));
-  const closingSpacing = Math.max(0, 5200 - blocks.length * 360);
-  blocks.push(paragraph('hacemos propicia la oportunidad para saludar muy atentamente. -', { style: 'Prrafodelista', size: 28, before: closingSpacing }));
-  return blocks.join('');
+  return {
+    detailsXml: blocks.join(''),
+    closingXml: paragraph('hacemos propicia la oportunidad para saludar muy atentamente. -', { style: 'Prrafodelista', size: 28 })
+  };
 }
 
 function replaceFirst(value: string, search: string, replacement: string) {
@@ -132,7 +134,8 @@ function replaceQuoteBody(xml: string, quote: QuoteWithDetails) {
   if (!start || !end) {
     throw new Error('FMH template body markers were not found');
   }
-  const replacement = buildQuoteParagraphs(quote);
+  const body = buildQuoteParagraphs(quote);
+  const replacement = buildBottomAnchoredFmhBody(body);
   return `${xml.slice(0, start.index)}${replacement}${xml.slice(end.index + end.xml.length)}`;
 }
 
@@ -149,6 +152,7 @@ export async function renderFmhQuoteDocx(quote: QuoteWithDetails) {
   let xml = entry.getData().toString('utf8');
   xml = replaceTemplateText(xml, quote);
   xml = replaceQuoteBody(xml, quote);
+  xml = applyFmhA4Layout(xml);
   zip.updateFile('word/document.xml', Buffer.from(xml, 'utf8'));
   return zip.toBuffer();
 }

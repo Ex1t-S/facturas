@@ -24,5 +24,10 @@ describe('FMH delivery note DOCX template', () => {
     expect(text).toContain('2 caños - Destapar dos caños de llenado de silo');
     expect(text).not.toContain('Matadero Municipal');
     expect(text).toContain('F.M.H.');
+    expect(documentXml).toContain('<w:pgSz w:w="11906" w:h="16838"/>');
+    expect(documentXml).toContain('<w:trHeight w:val="6000" w:hRule="atLeast"/>');
+    expect(documentXml.match(/<w:tbl>/g)?.length).toBe(2);
+    expect(text).not.toContain('1 trabajo - Acortar cinta de noria');
+    expect(text.indexOf('Destapar dos caños')).toBeLessThan(text.indexOf('Hago propicia'));
   });
 });

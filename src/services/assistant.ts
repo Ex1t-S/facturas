@@ -195,8 +195,10 @@ function deliveryDescriptionsFromMessage(message: string) {
   let content = (afterWorkLabel || afterCustomer)
     .replace(/\b(?:prepar[aá](?:me)?\s+(?:el\s+)?pdf|mandamelo|envialo|guardalo|confirmalo|para\s+revisarlo|antes\s+de\s+guardarlo).*$/i, '');
   content = sanitizeDocumentInstructions(content);
+  const workVerb = '(?:realiz(?:ar|amos|aron|ó)|hac(?:er|emos|en)|revis(?:ar|amos|aron|ó)|sold(?:ar|amos|aron|ó)|cambi(?:ar|amos|aron|ó)|destap(?:ar|amos|aron|ó)|acort(?:ar|amos|aron|ó)|repar(?:ar|amos|aron|ó)|fabric(?:ar|amos|aron|ó)|instal(?:ar|amos|aron|ó)|abulon(?:ar|amos|aron|ó)|levant(?:ar|amos|aron|ó)|limpi(?:ar|amos|aron|ó)|coloc(?:ar|amos|aron|ó)|retir(?:ar|amos|aron|ó)|mont(?:ar|amos|aron|ó))';
+  const itemSeparator = new RegExp(`\\s*[,;\\n]\\s*|\\s+(?:y|e)\\s+(?=${workVerb}\\b)|\\.\\s+(?=${workVerb}\\b)`, 'i');
   return content
-    .split(/\s*,\s*|\s+y\s+(?=(?:realizar|hacer|revisar|soldar|cambiar|destapar|acortar|reparar|fabricar|instalar)\b)/i)
+    .split(itemSeparator)
     .map((description) => sanitizeDocumentInstructions(description))
     .filter((description) => description.length >= 3);
 }

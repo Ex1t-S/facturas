@@ -52,6 +52,13 @@ describe('structured commercial delivery-note data', () => {
     expect(sanitizeDocumentInstructions('Prepará el PDF para revisarlo antes de guardarlo')).toBe('');
     expect(() => validateGeneratedBusinessDocument({ customerName: 'Cooperativa Adolfo Alsina', items: [{ description: 'Haceme un remito' }] })).toThrow();
   });
+
+  it('separates independently billable work joined by a conjunction', () => {
+    expect(structuredDeliveryItemsFromMessage('Le abulonamos unos cangilones y soldamos una cremallera').map((item) => item.description)).toEqual([
+      'Le abulonamos unos cangilones',
+      'soldamos una cremallera'
+    ]);
+  });
 });
 
 describe('PDF requests from WhatsApp transcriptions', () => {
