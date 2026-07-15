@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDeterministicEngineeringResult } from './engineeringDeterministic.js';
 import { classifyEngineeringIntent, extractEngineeringFacts, normalizeEngineeringText } from './engineeringIntelligence.js';
 import { parseConversationState, updateConversationState } from './conversationState.js';
-import { requiredToolForEngineeringIntent, runEngineeringOrchestrator } from './engineeringConversation.js';
+import { normalizeEngineeringToolArguments, requiredToolForEngineeringIntent, runEngineeringOrchestrator } from './engineeringConversation.js';
 import { parseOptionalBoolean } from './queryParsing.js';
 import { engineeringToolDefinitions } from './engineeringTools.js';
 import { engineeringHistoryItem, extractEngineeringResponseText } from './engineeringRuntime.js';
@@ -90,5 +90,11 @@ describe('engineering conversational flow', () => {
 
   it('requires the deterministic support-load tool for a complete support calculation', () => {
     expect(requiredToolForEngineeringIntent('LOAD_PER_SUPPORT')).toBe('calculate_load_per_support');
+  });
+
+  it('does not allow a model-selected default support count to override the user', () => {
+    let state = parseConversationState();
+    state = updateConversationState(state, 'Tengo un silo de 200 toneladas y 20 patas. Â¿QuÃ© carga toma cada una?');
+    expect(normalizeEngineeringToolArguments('calculate_load_per_support', { totalLoadKN: 1961.33, supportCount: 4 }, state)).toMatchObject({ supportCount: 20 });
   });
 });

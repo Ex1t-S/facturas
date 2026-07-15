@@ -32,6 +32,28 @@ export function requiredToolForEngineeringIntent(intent?: string) {
   return undefined;
 }
 
+/**
+ * The model is allowed to choose tool arguments, but explicit values supplied
+ * by the user are authoritative.  In particular, a support-load response
+ * must never silently fall back to a conventional four-leg silo when the
+ * conversation state says twenty supports.
+ */
+export function normalizeEngineeringToolArguments(name: string, args: Record<string, unknown>, state: EngineeringConversationState) {
+  const active = activeInputs(state);
+  const valueOf = (key: string) => active.find((item) => item.key === key)?.value;
+  if (name === 'calculate_load_per_support') {
+    const supportCount = Number(valueOf('supportCount'));
+    return Number.isInteger(supportCount) && supportCount > 0 ? { ...args, supportCount } : args;
+  }
+  if (name === 'compare_support_alternatives') {
+    const supportAlternatives = valueOf('supportAlternatives');
+    return Array.isArray(supportAlternatives) && supportAlternatives.length >= 2
+      ? { ...args, supportCounts: supportAlternatives.map(Number).filter((value) => Number.isInteger(value) && value > 0) }
+      : args;
+  }
+  return args;
+}
+
 async function loadContext(companyId: string, state: EngineeringConversationState, message: string) {
   if (!shouldSearch(state)) return { sources: [], regulations: [] };
   const query = [message, state.subject, state.projectType, ...activeInputs(state).map((item) => `${item.key} ${item.value}`)].filter(Boolean).join(' ');
@@ -66,7 +88,7 @@ export async function runEngineeringOrchestrator(input: { companyId: string; mes
     message: input.message,
     tools: [...engineeringToolDefinitions, ...(modelConfig.webSearchEnabled ? [{ type: 'web_search' }] : [])],
     requiredToolName: state.missingData.length ? undefined : requiredToolForEngineeringIntent(state.currentIntent),
-    executeTool: (name, args) => executeEngineeringTool(name, args, input.companyId)
+    executeTool: (name, args) => executeEngineeringTool(name, normalizeEngineeringToolArguments(name, args, state), input.companyId)
   });
   const fallbackUsed = !execution.success;
   const result = engineeringAssistantResultSchema.parse({ ...localBase, answer: execution.outputText || localBase.answer, provider: execution.success ? 'openai' : 'local', requestedModel: execution.requestedModel, actualModel: execution.actualModel, model: execution.success ? (execution.actualModel || execution.requestedModel) : 'local', responseId: execution.responseId, fallbackUsed, latencyMs: execution.latencyMs, executionError: execution.error, toolCalls: execution.toolCalls.map((tool) => ({ name: tool.name, status: tool.status, summary: tool.status })), intent: state.currentIntent, intentConfidence: state.intentConfidence });
