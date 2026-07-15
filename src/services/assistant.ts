@@ -14,6 +14,7 @@ import {
 import { safeFileName, writeDocumentFile } from './documentStorage.js';
 import { convertDocxToPdf, renderFmhQuotePdf, writeFmhQuoteDocx, type QuoteWithDetails } from './fmhQuoteDocument.js';
 import { renderFmhDeliveryNotePdf, writeFmhDeliveryNoteDocx } from './fmhDeliveryNoteDocument.js';
+import { renderDocumentFromTemplate, type RendererUsed } from './documentTemplateRenderer.js';
 import { renderDeliveryNotePdf, renderQuotePdf } from './pdf.js';
 import { createDeliveryNoteRecord, listPendingDeliveryNotes, linkDeliveryNotesToQuote } from './deliveryNotes/deliveryNoteService.js';
 
@@ -57,8 +58,8 @@ type DraftIntent = 'quote' | 'delivery_note' | 'invoice' | 'none';
 
 type DraftItem = {
   description: string;
-  quantity: number;
-  unit: string;
+  quantity?: number;
+  unit?: string;
   unitPrice?: number;
   taxRate?: number;
 };
@@ -81,6 +82,15 @@ export type PendingDeliveryDraft = {
   previewFileName: string;
   previewMimeType: string;
   sourceDeliveryNoteIds?: string[];
+  status?: 'COLLECTING_INFORMATION' | 'READY_FOR_PREVIEW' | 'WAITING_CONFIRMATION' | 'CANCELLED' | 'EXPIRED';
+  draftVersion?: number;
+  previewVersion?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  expiresAt?: string;
+  rawSourceMessages?: string[];
+  rendererUsed?: RendererUsed;
+  rendererError?: string;
 };
 
 function wantsCreation(message: string) {
@@ -145,6 +155,51 @@ function suggestedDocumentFileName(type: PendingDeliveryDraft['type'], payload: 
   return safeFileName(base + '-' + customer + extra + '.pdf');
 }
 
+const conversationalInstruction = /\b(haceme|armame|generame|preparame|prepar[aá](?:\s+el)?\s+pdf|mandamelo|envialo|guardalo(?:\s+como)?|para\s+revisarlo|antes\s+de\s+guardarlo|confirmalo|haceme\s+un\s+(?:remito|presupuesto))\b/gi;
+
+/** Second line of defense: document descriptions never contain chat control language. */
+export function sanitizeDocumentInstructions(value: string) {
+  return value
+    .replace(conversationalInstruction, ' ')
+    .replace(/\b(?:por\s+los\s+siguientes\s+trabajos|cantidad\s*:\s*\d+\s*trabajos?)\s*:?[\s]*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[,;:.\-\s]+|[,;:.\-\s]+$/g, '')
+    .trim();
+}
+
+function deliveryDescriptionsFromMessage(message: string) {
+  const afterWorkLabel = message.match(/\b(?:por\s+los\s+siguientes\s+trabajos|trabajos\s+realizados)\s*:\s*([\s\S]*)$/i)?.[1];
+  const customer = firstCustomerGuess(message);
+  const afterCustomer = customer
+    ? message.slice(message.toLocaleLowerCase('es-AR').indexOf(customer.toLocaleLowerCase('es-AR')) + customer.length).replace(/^\s*(?:por\s+)?/i, '')
+    : message;
+  let content = (afterWorkLabel || afterCustomer)
+    .replace(/\b(?:prepar[aá](?:me)?\s+(?:el\s+)?pdf|mandamelo|envialo|guardalo|confirmalo|para\s+revisarlo|antes\s+de\s+guardarlo).*$/i, '');
+  content = sanitizeDocumentInstructions(content);
+  return content
+    .split(/\s*,\s*|\s+y\s+(?=(?:realizar|hacer|revisar|soldar|cambiar|destapar|acortar|reparar|fabricar|instalar)\b)/i)
+    .map((description) => sanitizeDocumentInstructions(description))
+    .filter((description) => description.length >= 3);
+}
+
+export function structuredDeliveryItemsFromMessage(message: string): DraftItem[] {
+  return deliveryDescriptionsFromMessage(message).map((description) => {
+    const quantityMatch = description.match(/^(\d+(?:[,.]\d+)?)\s+(unidades?|horas?|metros?|mts|kg)\s+(?:de\s+)?(.+)$/i);
+    return quantityMatch
+      ? { quantity: parseNumber(quantityMatch[1]), unit: quantityMatch[2].toLocaleLowerCase('es-AR'), description: sanitizeDocumentInstructions(quantityMatch[3]) }
+      : { description };
+  });
+}
+
+export function validateGeneratedBusinessDocument(input: { customerName?: string; items: DraftItem[] }) {
+  if (!input.customerName?.trim()) throw new Error('El documento no tiene cliente.');
+  if (!input.items.length) throw new Error('El documento no tiene detalle comercial.');
+  const combined = input.items.map((item) => item.description).join('\n');
+  if (/\{\{[^}]+\}\}|\b(haceme|prepara(?:\s+el)?\s+pdf|guardalo|para\s+revisarlo|antes\s+de\s+guardarlo)\b/i.test(combined)) {
+    throw new Error('El detalle contiene instrucciones conversacionales o placeholders.');
+  }
+}
+
 function ensurePdfFileName(value: string) {
   const cleaned = safeFileName(value.trim().replace(/^["']|["']$/g, ''));
   if (!cleaned) return '';
@@ -159,6 +214,22 @@ function extractRequestedFileName(message: string) {
 function confirmsPendingDraft(message: string) {
   const normalized = normalizeText(message);
   return /\b(guardar|guardalo|confirmar|confirmalo|crear|crealo|generar|generalo|dale|ok|listo|confirmado)\b/.test(normalized);
+}
+
+function requestsPreview(message: string) {
+  return /\b(listo|terminamos|prepara(?:me)?(?:\s+el)?\s+pdf|haceme\s+el\s+pdf|mostrame\s+como\s+quedo|mandame\s+el\s+borrador|quiero\s+revisarlo)\b/i.test(normalizeText(message));
+}
+
+function requestsDraftStatus(message: string) {
+  return /\b(que\s+tenes\s+anotado|como\s+va\s+el\s+remito|mostrame\s+lo\s+que\s+anotaste)\b/i.test(normalizeText(message));
+}
+
+function cancelsDraft(message: string) {
+  return /\b(cancela|cancelalo|cancela\s+el|borra\s+ese\s+borrador|empecemos\s+de\s+nuevo)\b/i.test(normalizeText(message));
+}
+
+function looksLikeUnrelatedQuestion(message: string) {
+  return /^\s*(?:cuanto|que|qu[eé]|hay|tenemos|stock|precio|lista|buscar|mostra)/i.test(message) && !/\b(remito|presupuesto)\b/i.test(message);
 }
 
 function draftKindLabel(type: PendingDeliveryDraft['type']) {
@@ -242,17 +313,9 @@ function parseLocalDraft(message: string): DraftPayload {
     })
     .filter((item): item is DraftItem => item !== null);
 
-  if (items.length === 0) {
-    const description = message
-      .replace(/\b(armame|arma|crear|crea|generar|genera|hacer|hace|preparar|prepara)\b/gi, '')
-      .replace(/\b(un|una)?\s*(presupuesto|remito|factura)\b/gi, '')
-      .trim();
-    if (description.length > 12) {
-      items.push({ description, quantity: 1, unit: 'trabajo', unitPrice: 0, taxRate: 21 });
-    }
-  }
+  if (items.length === 0) items.push(...structuredDeliveryItemsFromMessage(message).map((item) => ({ ...item, unitPrice: 0, taxRate: 21 })));
 
-  return { customerName, currency, items, notes: 'Borrador generado desde el asistente IA. Revisar antes de enviar.' };
+  return { customerName, currency, items, notes: undefined };
 }
 
 export function parseFollowUpDeliveryNoteForTest(message: string): DraftPayload {
@@ -265,15 +328,11 @@ export function parseFollowUpDeliveryNoteForTest(message: string): DraftPayload 
       items: []
     };
   }
-  const description = message
-    .replace(/\bpara\s+([^,.;\n]+?)(?:,|$)/i, '')
-    .replace(/\b(armame|arma|crear|crea|generar|genera|hacer|hace|preparar|prepara|remito)\b/gi, '')
-    .trim();
   return {
     customerName,
     currency: 'ARS',
     notes: 'Remito generado desde el asistente IA. Revisar antes de entregar.',
-    items: description ? [{ description, quantity: 1, unit: 'trabajo' }] : []
+    items: structuredDeliveryItemsFromMessage(message)
   };
 }
 
@@ -338,7 +397,8 @@ async function parseOpenAiDraft(message: string, intent: DraftIntent): Promise<D
                 'No inventes CUIT, precios ni direcciones.',
                 'Si falta precio, usa null.',
                 'Si falta cantidad, usa 1.',
-                'Si falta unidad, usa "trabajo" para servicios o "unidad" para bienes.'
+                'Si falta unidad, usa "trabajo" para servicios o "unidad" para bienes.',
+                'Nunca copies instrucciones conversacionales al detalle: haceme, prepará el PDF, mandamelo, guardalo o revisarlo no son ítems.'
               ].join('\n')
             }
           ]
@@ -361,16 +421,21 @@ async function parseOpenAiDraft(message: string, intent: DraftIntent): Promise<D
       customerName: parsed.customerName || undefined,
       customerCuit: parsed.customerCuit || undefined,
       customerAddress: parsed.customerAddress || undefined,
-      notes: parsed.notes || 'Borrador generado desde el asistente IA. Revisar antes de enviar.',
+      notes: parsed.notes ? sanitizeDocumentInstructions(parsed.notes) : undefined,
       items: (parsed.items || [])
         .map((item) => ({
-          description: item.description,
+          description: sanitizeDocumentInstructions(item.description),
           quantity: Number(item.quantity || 1),
           unit: item.unit || 'unidad',
           unitPrice: item.unitPrice === null ? undefined : parseNumber(item.unitPrice),
           taxRate: item.taxRate === null ? 21 : parseNumber(item.taxRate) ?? 21
         }))
-        .filter((item) => item.description)
+        .filter((item) => item.description.length > 0)
+        .flatMap((item) => {
+          if (intent !== 'delivery_note') return [item];
+          const split = structuredDeliveryItemsFromMessage(item.description);
+          return split.length > 1 ? split.map((part) => ({ ...item, ...part })) : [item];
+        })
     };
   } catch {
     return null;
@@ -438,7 +503,10 @@ async function createQuotePreviewDraft(companyId: string, message: string, paylo
     customer: customer || { id: 'preview', companyId, legalName: customerName, tradeName: null, cuit: null, taxCondition: null, address: null, contactName: null, phone: null, email: null, paymentTerms: null, notes: null, createdAt: new Date() },
     items: items.map((item) => ({ id: 'preview', quoteId: 'preview', productId: null, description: item.description, quantity: item.quantity, unit: item.unit, unitPrice: item.unitPrice, discount: 0, taxRate: item.taxRate, total: item.quantity * item.unitPrice }))
   } as unknown as QuoteWithDetails;
-  let pdf: Buffer | null = await renderFmhQuotePdf(previewQuote);
+  validateGeneratedBusinessDocument({ customerName, items });
+  const rendered = await renderDocumentFromTemplate({ templateType: 'QUOTE', quote: previewQuote });
+  let pdf: Buffer | null = rendered.pdf;
+  if (!pdf) console.warn({ templateType: 'QUOTE', reason: rendered.fallbackReason }, 'FMH template renderer fell back to generic PDF');
   pdf ??= await renderQuotePdf({ number: 0, customerName, issueDate: new Date(), validUntil: undefined, currency: payload.currency ?? 'ARS', subtotal: totals.subtotal, taxTotal: totals.taxTotal, total: totals.total, notes: payload.notes || 'Borrador para confirmacion.', items: items.map((item) => ({ description: item.description, quantity: item.quantity.toString(), unit: item.unit, unitPrice: item.unitPrice.toString(), total: (item.quantity * item.unitPrice).toString() })) });
   const previewFileName = ensurePdfFileName(suggestedFileName || suggestedDocumentFileName('quote', payload));
   const stored = await writeDocumentFile({
@@ -456,7 +524,16 @@ async function createQuotePreviewDraft(companyId: string, message: string, paylo
     previewStoragePath: stored.storagePath,
     previewFileName,
     previewMimeType: 'application/pdf',
-    sourceDeliveryNoteIds
+    sourceDeliveryNoteIds,
+    status: 'WAITING_CONFIRMATION',
+    draftVersion: 1,
+    previewVersion: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + config.WHATSAPP_DOCUMENT_DRAFT_TTL_HOURS * 3600_000).toISOString(),
+    rawSourceMessages: [message],
+    rendererUsed: pdf && rendered.rendererUsed === 'FMH_TEMPLATE' ? 'FMH_TEMPLATE' : 'GENERIC_FALLBACK',
+    rendererError: rendered.fallbackReason
   };
   return {
     mode: config.OPENAI_API_KEY ? 'openai' : 'local',
@@ -486,20 +563,18 @@ async function createDeliveryNotePreviewDraft(companyId: string, message: string
     source: 'remito generado por asistente IA'
   });
   const customerName = customer?.legalName || payload.customerName || 'Cliente pendiente';
-  const items = payload.items.length ? payload.items : [{ description: message, quantity: 1, unit: 'trabajo' }];
+  const items = payload.items.length ? payload.items : structuredDeliveryItemsFromMessage(message);
+  validateGeneratedBusinessDocument({ customerName, items });
   const deliveryNoteInput = {
     number: 'borrador',
     customerName,
     issueDate: new Date(),
-    notes: payload.notes || 'Remito para confirmacion.',
-    items: items.map((item) => ({ description: item.description, quantity: item.quantity || 1, unit: item.unit || 'unidad' }))
+    notes: payload.notes,
+    items: items.map((item) => ({ description: item.description, quantity: item.quantity ?? '', unit: item.unit || '' }))
   };
-  let pdf: Buffer | null = null;
-  try {
-    pdf = await renderFmhDeliveryNotePdf(deliveryNoteInput);
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : error);
-  }
+  const rendered = await renderDocumentFromTemplate({ templateType: 'DELIVERY_NOTE', deliveryNote: deliveryNoteInput });
+  let pdf: Buffer | null = rendered.pdf;
+  if (!pdf) console.warn({ templateType: 'DELIVERY_NOTE', reason: rendered.fallbackReason }, 'FMH template renderer fell back to generic PDF');
   pdf ??= await renderDeliveryNotePdf(deliveryNoteInput);
   const previewFileName = ensurePdfFileName(suggestedFileName || suggestedDocumentFileName('delivery_note', payload));
   const stored = await writeDocumentFile({
@@ -516,7 +591,16 @@ async function createDeliveryNotePreviewDraft(companyId: string, message: string
     token: nanoid(),
     previewStoragePath: stored.storagePath,
     previewFileName,
-    previewMimeType: 'application/pdf'
+    previewMimeType: 'application/pdf',
+    status: 'WAITING_CONFIRMATION',
+    draftVersion: 1,
+    previewVersion: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + config.WHATSAPP_DOCUMENT_DRAFT_TTL_HOURS * 3600_000).toISOString(),
+    rawSourceMessages: [message],
+    rendererUsed: pdf && rendered.rendererUsed === 'FMH_TEMPLATE' ? 'FMH_TEMPLATE' : 'GENERIC_FALLBACK',
+    rendererError: rendered.fallbackReason
   };
   return {
     mode: config.OPENAI_API_KEY ? 'openai' : 'local',
@@ -898,8 +982,44 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
   // pendiente anterior. Las confirmaciones y ajustes sin una nueva intencion
   // siguen operando sobre el borrador pendiente.
   if (input.pendingDeliveryDraft && intent === 'none') {
+    const pending = input.pendingDeliveryDraft;
+    if (cancelsDraft(input.message)) {
+      return { mode: 'local', answer: `Cancelé el borrador de ${draftKindLabel(pending.type)}.`, sources: [], suggestions };
+    }
+    if (requestsDraftStatus(input.message)) {
+      return {
+        mode: 'local',
+        answer: `${formatDocumentDraft(pending).replace(/\nNombre sugerido:[\s\S]*/m, '')}\n\nTodavía no generé el PDF.`,
+        sources: [],
+        suggestions,
+        pendingDeliveryDraft: pending
+      };
+    }
+    if (!requestsPreview(input.message) && !looksLikeUnrelatedQuestion(input.message)) {
+      const appended = structuredDeliveryItemsFromMessage(input.message);
+      if (appended.length && pending.type === 'delivery_note') {
+        const correction = /\b(perdon|en realidad|fueron|corregi|reemplaza)\b/i.test(normalizeText(input.message));
+        const nextItems = correction && pending.payload.items.length
+          ? [...pending.payload.items.slice(0, -1), ...appended]
+          : [...pending.payload.items, ...appended];
+        const next: PendingDeliveryDraft = {
+          ...pending,
+          payload: { ...pending.payload, items: nextItems },
+          status: 'COLLECTING_INFORMATION',
+          draftVersion: (pending.draftVersion ?? 1) + 1,
+          previewVersion: undefined,
+          updatedAt: new Date().toISOString(),
+          rawSourceMessages: [...(pending.rawSourceMessages ?? []), input.message]
+        };
+        return {
+          mode: 'local',
+          answer: correction ? 'Corregido en el remito. Cuando quieras, pedime el PDF.' : 'Agregado al remito. Cuando quieras, pedime el PDF.',
+          sources: [], suggestions, pendingDeliveryDraft: next
+        };
+      }
+    }
     const requestedFileName = extractRequestedFileName(input.message);
-    if (confirmsPendingDraft(input.message) || requestedFileName) {
+    if ((confirmsPendingDraft(input.message) || requestedFileName) && pending.status !== 'COLLECTING_INFORMATION') {
       const nextFileName = requestedFileName || input.pendingDeliveryDraft.suggestedFileName;
       const created = input.pendingDeliveryDraft.type === 'quote'
         ? await createQuoteDraft(companyId, input.message, input.pendingDeliveryDraft.payload, nextFileName, input.pendingDeliveryDraft.sourceDeliveryNoteIds)
@@ -916,16 +1036,25 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
       };
     }
 
-    const fileName = requestedFileName || input.pendingDeliveryDraft.suggestedFileName;
-    return input.pendingDeliveryDraft.type === 'quote'
+    if (!requestsPreview(input.message)) {
+      return { mode: 'local', answer: 'El borrador sigue abierto. Decime los trabajos, pedime el PDF o cancelalo.', sources: [], suggestions, pendingDeliveryDraft: pending };
+    }
+    const fileName = requestedFileName || pending.suggestedFileName;
+    const preview = pending.type === 'quote'
       ? await createQuotePreviewDraft(
           companyId,
           input.message,
-          input.pendingDeliveryDraft.payload,
+          pending.payload,
           fileName,
-          input.pendingDeliveryDraft.sourceDeliveryNoteIds
+          pending.sourceDeliveryNoteIds
         )
-      : await createDeliveryNotePreviewDraft(companyId, input.message, input.pendingDeliveryDraft.payload, fileName);
+      : await createDeliveryNotePreviewDraft(companyId, input.message, pending.payload, fileName);
+    if (preview.pendingDeliveryDraft) {
+      preview.pendingDeliveryDraft.draftVersion = pending.draftVersion ?? 1;
+      preview.pendingDeliveryDraft.previewVersion = pending.draftVersion ?? 1;
+      preview.pendingDeliveryDraft.rawSourceMessages = [...(pending.rawSourceMessages ?? []), input.message];
+    }
+    return preview;
   }
 
   if (asksPendingDeliveryNotes(input.message)) {
@@ -987,16 +1116,25 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     const missing: string[] = [];
     if (!payload.customerName && !payload.customerCuit) missing.push('cliente y CUIT');
     if (payload.items.length === 0) missing.push('items o descripcion');
-    if (missing.length) {
+      if (missing.length) {
       const answer =
         effectiveIntent === 'delivery_note' && payload.customerName && missing.length === 1 && missing[0] === 'items o descripcion'
           ? 'Perfecto, lo armamos para ' + payload.customerName + '. Decime que tenemos que agregar al remito: trabajos, materiales, cantidades o descripcion.'
           : 'Para crear el ' + (effectiveIntent === 'quote' ? 'presupuesto' : 'remito') + ' necesito estos datos: ' + missing.join(', ') + '. Pasamelos en un mensaje y lo guardo como borrador editable.';
+      const collecting: PendingDeliveryDraft | undefined = effectiveIntent === 'delivery_note' && payload.customerName && missing.length === 1
+        ? {
+            type: 'delivery_note', payload, suggestedFileName: suggestedDocumentFileName('delivery_note', payload), token: nanoid(),
+            previewStoragePath: '', previewFileName: '', previewMimeType: 'application/pdf', status: 'COLLECTING_INFORMATION',
+            draftVersion: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + config.WHATSAPP_DOCUMENT_DRAFT_TTL_HOURS * 3600_000).toISOString(), rawSourceMessages: [input.message]
+          }
+        : undefined;
       return {
         mode: config.OPENAI_API_KEY ? 'openai' : 'local',
         answer,
         sources: [],
-        suggestions
+        suggestions,
+        pendingDeliveryDraft: collecting
       };
     }
 

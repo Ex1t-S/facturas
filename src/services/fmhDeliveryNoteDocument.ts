@@ -16,7 +16,9 @@ export type FmhDeliveryNoteDocumentInput = {
   }>;
 };
 
-const templatePath = path.resolve('templates/fmh-remito-template.docx');
+function templatePath() {
+  return path.resolve(config.FMH_DELIVERY_NOTE_TEMPLATE_PATH);
+}
 
 function escapeXml(value: string) {
   return value
@@ -63,7 +65,10 @@ function replaceDetails(xml: string, input: FmhDeliveryNoteDocumentInput) {
   const sourceParagraph = paragraphs[detailIndex + 1].xml;
   const lines = input.items.map((item, index) => {
     const prefix = input.items.length > 1 ? `${index + 1}. ` : '';
-    return `${prefix}${item.quantity} ${item.unit} - ${item.description}`;
+    const quantity = String(item.quantity ?? '').trim();
+    const unit = item.unit?.trim();
+    const itemPrefix = quantity ? `${quantity}${unit ? ` ${unit}` : ''} - ` : '';
+    return `${prefix}${itemPrefix}${item.description}`;
   });
   if (input.notes) lines.push(input.notes);
   const replacement = lines.map((line) => paragraph(line, sourceParagraph)).join('');
@@ -73,11 +78,11 @@ function replaceDetails(xml: string, input: FmhDeliveryNoteDocumentInput) {
 }
 
 export async function renderFmhDeliveryNoteDocx(input: FmhDeliveryNoteDocumentInput) {
-  const zip = new AdmZip(await fs.readFile(templatePath));
+  const zip = new AdmZip(await fs.readFile(templatePath()));
   const entry = zip.getEntry('word/document.xml');
   if (!entry) throw new Error('FMH remito template is missing word/document.xml');
   let xml = entry.getData().toString('utf8');
-  xml = replaceParagraphContaining(xml, 'Remito', paragraph(`Remito N°${input.number ? String(input.number).padStart(5, '0') : 'BORRADOR'}`));
+  xml = replaceParagraphContaining(xml, 'Remito', paragraph(`REMITO N.º ${input.number ? String(input.number).padStart(5, '0') : 'BORRADOR'}`));
   xml = replaceParagraphContaining(xml, 'CLIENTE:', paragraph(`CLIENTE: ${input.customerName}`));
   xml = replaceParagraphContaining(xml, 'Fecha de emisión:', paragraph(`Fecha de emisión: ${formatDate(input.issueDate)}`));
   xml = replaceDetails(xml, input);

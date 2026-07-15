@@ -14,7 +14,9 @@ export type QuoteWithDetails = Quote & {
   items: QuoteItem[];
 };
 
-const templatePath = path.resolve('templates/fmh-presupuesto-template.docx');
+function templatePath() {
+  return path.resolve(config.FMH_QUOTE_TEMPLATE_PATH);
+}
 
 function escapeXml(value: string) {
   return value
@@ -140,7 +142,7 @@ async function quoteOutputDir(quoteId: string) {
 }
 
 export async function renderFmhQuoteDocx(quote: QuoteWithDetails) {
-  const zip = new AdmZip(await fs.readFile(templatePath));
+  const zip = new AdmZip(await fs.readFile(templatePath()));
   const entry = zip.getEntry('word/document.xml');
   if (!entry) throw new Error('Template is missing word/document.xml');
   let xml = entry.getData().toString('utf8');

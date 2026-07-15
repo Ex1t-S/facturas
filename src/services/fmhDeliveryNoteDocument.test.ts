@@ -18,7 +18,7 @@ describe('FMH delivery note DOCX template', () => {
     const documentXml = zip.getEntry('word/document.xml')?.getData().toString('utf8') ?? '';
     const text = documentXml.replace(/<[^>]+>/g, '');
 
-    expect(documentXml).toContain('Remito N°00007');
+    expect(documentXml).toContain('REMITO N.º 00007');
     expect(text).toContain('CLIENTE: Cooperativa Adolfo Alsina');
     expect(text).toContain('Acortar cinta de noria');
     expect(text).toContain('2 caños - Destapar dos caños de llenado de silo');

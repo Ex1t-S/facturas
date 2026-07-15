@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectDraftIntent, parseFollowUpDeliveryNoteForTest } from './assistant.js';
+import { detectDraftIntent, parseFollowUpDeliveryNoteForTest, sanitizeDocumentInstructions, structuredDeliveryItemsFromMessage, validateGeneratedBusinessDocument } from './assistant.js';
 
 describe('detectDraftIntent', () => {
   it('detects quote draft requests', () => {
@@ -34,5 +34,22 @@ describe('parseFollowUpDeliveryNoteForTest', () => {
     const parsed = parseFollowUpDeliveryNoteForTest('para mario alvarez, retiramos espira y atornillamos la malla');
     expect(parsed.customerName).toBe('mario alvarez');
     expect(parsed.items[0]?.description).toBe('retiramos espira y atornillamos la malla');
+  });
+});
+
+describe('structured commercial delivery-note data', () => {
+  const request = 'Haceme un remito para Cooperativa Adolfo Alsina por los siguientes trabajos: acortar cinta de noria, destapar dos caños de llenado de silo y realizar una revisión general. Prepará el PDF para revisarlo antes de guardarlo.';
+
+  it('keeps only commercial items from a conversational request', () => {
+    expect(structuredDeliveryItemsFromMessage(request).map((item) => item.description)).toEqual([
+      'acortar cinta de noria',
+      'destapar dos caños de llenado de silo',
+      'realizar una revisión general'
+    ]);
+  });
+
+  it('removes chat-only instructions deterministically', () => {
+    expect(sanitizeDocumentInstructions('Prepará el PDF para revisarlo antes de guardarlo')).toBe('');
+    expect(() => validateGeneratedBusinessDocument({ customerName: 'Cooperativa Adolfo Alsina', items: [{ description: 'Haceme un remito' }] })).toThrow();
   });
 });
