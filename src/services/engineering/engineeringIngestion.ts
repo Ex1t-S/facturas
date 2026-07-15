@@ -58,7 +58,8 @@ export async function scanEngineeringRoot(rootPath: string) { return { rootPath:
 
 export async function ingestEngineeringKnowledge(input: { rootPath: string; companyId?: string; runId?: string }) {
   const scan = await scanEngineeringRoot(input.rootPath);
-  const run = input.runId ? await prisma.engineeringIngestionRun.findUnique({ where: { id: input.runId } }) : await prisma.engineeringIngestionRun.create({ data: { companyId: input.companyId, rootPath: scan.rootPath, foundCount: scan.files.length } });
+  const scopeCompanyId = input.companyId ?? null;
+  const run = input.runId ? await prisma.engineeringIngestionRun.findUnique({ where: { id: input.runId } }) : await prisma.engineeringIngestionRun.create({ data: { companyId: scopeCompanyId, rootPath: scan.rootPath, foundCount: scan.files.length } });
   if (!run) throw new Error('No se encontró la ejecución de ingesta.');
   const counts = { found: scan.files.length, newCount: 0, unchanged: 0, modified: 0, processed: 0, pending: 0, failed: 0 };
   for (const filePath of scan.files) {
@@ -67,28 +68,28 @@ export async function ingestEngineeringKnowledge(input: { rootPath: string; comp
       const buffer = await fs.readFile(filePath);
       const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
       const relativePath = path.relative(scan.rootPath, filePath);
-      const existing = await prisma.engineeringKnowledgeDocument.findFirst({ where: { companyId: input.companyId, relativePath } });
+      const existing = await prisma.engineeringKnowledgeDocument.findFirst({ where: { companyId: scopeCompanyId, relativePath } });
       if (existing?.sha256 === sha256 && existing.status !== 'FAILED') { counts.unchanged++; continue; }
       if (existing) counts.modified++; else counts.newCount++;
       const extension = path.extname(filePath).toLowerCase();
       const mimeType = extension === '.pdf' ? 'application/pdf' : extension === '.docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : extension.startsWith('.jp') ? 'image/jpeg' : extension === '.png' ? 'image/png' : 'text/plain';
       if (!supported.has(extension)) {
         const data = { fileName: path.basename(filePath), relativePath, extension, mimeType, sha256, sizeBytes: stat.size, status: 'UNSUPPORTED', documentType: extension === '.dwg' ? 'DRAWING' : 'OTHER', projectType: 'OTHER', metadataJson: JSON.stringify({ reason: 'Formato no procesable directamente' }), errorMessage: 'Requiere conversión o herramienta especializada.' };
-        if (existing) await prisma.engineeringKnowledgeDocument.update({ where: { id: existing.id }, data }); else await prisma.engineeringKnowledgeDocument.create({ data: { ...data, companyId: input.companyId } });
+        if (existing) await prisma.engineeringKnowledgeDocument.update({ where: { id: existing.id }, data }); else await prisma.engineeringKnowledgeDocument.create({ data: { ...data, companyId: scopeCompanyId } });
         counts.pending++; continue;
       }
       const text = await extractText(filePath);
       const extracted = structured(filePath, text);
       const status = ['.jpg', '.jpeg', '.png'].includes(extension) || !text.trim() ? 'NEEDS_VISION' : 'EXTRACTED';
       const data = { fileName: path.basename(filePath), relativePath, extension, mimeType, sha256, sizeBytes: stat.size, status, documentType: extracted.documentType, projectType: extracted.projectType, rawText: text || null, structuredJson: JSON.stringify(extracted), metadataJson: JSON.stringify({ originalPath: filePath }), confidence: extracted.extractionConfidence, errorMessage: null };
-      if (existing) await prisma.engineeringKnowledgeDocument.update({ where: { id: existing.id }, data }); else await prisma.engineeringKnowledgeDocument.create({ data: { ...data, companyId: input.companyId } });
+      if (existing) await prisma.engineeringKnowledgeDocument.update({ where: { id: existing.id }, data }); else await prisma.engineeringKnowledgeDocument.create({ data: { ...data, companyId: scopeCompanyId } });
       status === 'NEEDS_VISION' ? counts.pending++ : counts.processed++;
     } catch (error) {
       counts.failed++;
       const relativePath = path.relative(scan.rootPath, filePath);
-      const existing = await prisma.engineeringKnowledgeDocument.findFirst({ where: { companyId: input.companyId, relativePath } });
+      const existing = await prisma.engineeringKnowledgeDocument.findFirst({ where: { companyId: scopeCompanyId, relativePath } });
       const data = { fileName: path.basename(filePath), relativePath, extension: path.extname(filePath).toLowerCase(), mimeType: 'application/octet-stream', sha256: `failed-${Date.now()}`, sizeBytes: 0, status: 'FAILED', documentType: 'OTHER', projectType: 'OTHER', errorMessage: error instanceof Error ? error.message : 'Error desconocido' };
-      if (existing) await prisma.engineeringKnowledgeDocument.update({ where: { id: existing.id }, data }); else await prisma.engineeringKnowledgeDocument.create({ data: { ...data, companyId: input.companyId } });
+      if (existing) await prisma.engineeringKnowledgeDocument.update({ where: { id: existing.id }, data }); else await prisma.engineeringKnowledgeDocument.create({ data: { ...data, companyId: scopeCompanyId } });
     }
   }
   await prisma.engineeringIngestionRun.update({ where: { id: run.id }, data: { status: counts.failed ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED', foundCount: counts.found, newCount: counts.newCount, unchangedCount: counts.unchanged, modifiedCount: counts.modified, processedCount: counts.processed, pendingCount: counts.pending, failedCount: counts.failed, finishedAt: new Date() } });

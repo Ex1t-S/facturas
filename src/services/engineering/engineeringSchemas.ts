@@ -32,6 +32,13 @@ export const engineeringAssistantResultSchema = z.object({
   estimatedCost: z.object({ currency: z.string(), materials: z.number().optional(), labor: z.number().optional(), other: z.number().optional(), total: z.number().optional() }).optional(),
   sources: z.array(z.object({ id: z.string(), title: z.string(), type: z.string(), relevance: z.number(), url: z.string().url().optional(), excerpt: z.string().optional() })).default([]),
   regulations: z.array(z.object({ code: z.string(), title: z.string(), status: z.string(), sourceUrl: z.string().url().optional(), sourceType: z.enum(['OFFICIAL', 'LOCAL_VERIFIED', 'INTERNAL', 'SECONDARY']).default('INTERNAL') })).default([]),
+  goldenLibrary: z.object({
+    fmhPrecedents: z.array(z.unknown()).default([]),
+    regulations: z.array(z.unknown()).default([]),
+    benchmarks: z.array(z.unknown()).default([]),
+    sectionCandidates: z.array(z.unknown()).default([]),
+    internationalReferences: z.array(z.unknown()).default([])
+  }).optional(),
   toolCalls: z.array(z.object({ name: z.string(), status: z.string(), summary: z.string().optional() })).default([]),
   warnings: z.array(z.string()).default([]), confidence: z.number().min(0).max(1).default(0), reviewRequired: z.boolean().default(true),
   level: z.enum(['ORIENTATION', 'ESTIMATION', 'PRELIMINARY_DESIGN', 'VERIFIED_CALCULATION']).default('ORIENTATION'),

@@ -4,7 +4,7 @@ import { buildMissingData, classifyEngineeringIntent, normalizeEngineeringText }
 import { activeInputs, engineeringConversationStateSchema, parseConversationState, updateConversationState, type EngineeringConversationState } from './conversationState.js';
 import { engineeringAssistantResultSchema } from './engineeringSchemas.js';
 import { ensureRegulationCandidates } from './regulations.js';
-import { searchEngineeringKnowledge } from './engineeringKnowledge.js';
+import { searchEngineeringGoldenLibrary } from './engineeringGoldenLibrary.js';
 import { engineeringToolDefinitions, executeEngineeringTool } from './engineeringTools.js';
 import { engineeringModelConfig, runEngineeringOpenAI, type EngineeringModelExecution, type EngineeringToolAudit } from './engineeringRuntime.js';
 
@@ -35,11 +35,15 @@ export function requiredToolForEngineeringIntent(intent?: string) {
 async function loadContext(companyId: string, state: EngineeringConversationState, message: string) {
   if (!shouldSearch(state)) return { sources: [], regulations: [] };
   const query = [message, state.subject, state.projectType, ...activeInputs(state).map((item) => `${item.key} ${item.value}`)].filter(Boolean).join(' ');
-  const [knowledge, regulations] = await Promise.all([
-    searchEngineeringKnowledge({ companyId, q: query, projectType: state.projectType, take: 8 }).catch(() => ({ sources: [], documents: [], projects: [], products: [] })),
+  const [golden, regulations] = await Promise.all([
+    searchEngineeringGoldenLibrary({ companyId, q: query, take: 8 }).catch(() => ({ fmhPrecedents: [], regulations: [], benchmarks: [], sectionCandidates: [], internationalReferences: [], sources: [], projects: [] })),
     ['PRELIMINARY_DESIGN', 'SECTION_SELECTION'].includes(state.currentIntent || '') ? ensureRegulationCandidates(companyId).then((rows) => rows.filter((row) => row.status === 'CURRENT').map((row) => ({ code: row.code, title: row.title, status: row.status, sourceUrl: row.sourceUrl || undefined, sourceType: 'OFFICIAL' as const }))).catch(() => []) : Promise.resolve([])
   ]);
-  return { sources: knowledge.sources, regulations };
+  const fmhSources = golden.fmhPrecedents.map((item: any) => ({ id: item.id, title: item.title || item.projectName || item.fileName, type: `FMH_PRECEDENT_${item.trustLevel || 'HISTORICAL'}`, relevance: Number(item.confidence) || 0.5, excerpt: item.excerpt }));
+  const benchmarkSources = golden.benchmarks.map((item: any) => ({ id: item.id, title: item.title, type: 'WORKED_EXAMPLE_BENCHMARK', relevance: item.verified ? 1 : 0.5, excerpt: item.problemStatement, url: item.source?.sourceUrl }));
+  const sectionSources = golden.sectionCandidates.map((item: any) => ({ id: item.id, title: item.designation, type: item.source === 'STRUCTURAL_CATALOG' ? 'VERIFIED_CATALOG_CANDIDATE' : String(item.source || 'SECTION_CANDIDATE'), relevance: item.verified ? 1 : 0.5, excerpt: item.sourceTitle }));
+  const internationalSources = golden.internationalReferences.map((item: any) => ({ id: item.id, title: item.title, type: 'INTERNATIONAL_REFERENCE', relevance: 0.35, excerpt: item.publisher, url: item.sourceUrl }));
+  return { sources: [...fmhSources, ...benchmarkSources, ...sectionSources, ...internationalSources], regulations, goldenLibrary: { fmhPrecedents: golden.fmhPrecedents, regulations: golden.regulations, benchmarks: golden.benchmarks, sectionCandidates: golden.sectionCandidates, internationalReferences: golden.internationalReferences } };
 }
 
 function serializeError(error?: EngineeringModelExecution['error']) {

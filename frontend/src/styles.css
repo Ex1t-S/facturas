@@ -218,6 +218,13 @@ td strong, td small { display: block; }
   min-height: calc(100vh - 170px);
 }
 .engineeringGrid { display: grid; grid-template-columns: minmax(320px, .8fr) minmax(0, 1.2fr); gap: 16px; align-items: start; }
+.goldenLibraryGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.goldenLibraryCard { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--panel-2); min-width: 0; }
+.goldenLibraryCard h3 { display: flex; gap: 7px; align-items: center; margin: 0 0 10px; font-size: 14px; }
+.goldenRow { display: grid; gap: 3px; padding: 9px 0; border-top: 1px solid var(--line); }
+.goldenRow strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goldenRow span, .goldenRow small { color: var(--muted); font-size: 11px; }
+@media (max-width: 760px) { .goldenLibraryGrid { grid-template-columns: 1fr; } }
 .engineeringChat, .engineeringLibrary { min-width: 0; }
 .engineeringResult { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 16px; white-space: pre-wrap; }
 .engineeringResult h3 { margin: 15px 0 7px; font-size: 15px; }

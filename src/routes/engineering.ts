@@ -15,11 +15,14 @@ import { getEngineeringDrawing, getEngineeringDrawingStatus, ingestEngineeringDr
 import { readStoredDocumentFile } from '../services/documentStorage.js';
 import { engineeringModelConfig, resolveEngineeringModel } from '../services/engineering/engineeringRuntime.js';
 import { parseOptionalBoolean } from '../services/engineering/queryParsing.js';
+import { engineeringSourceStatus } from '../services/engineering/engineeringSourceImporter.js';
+import { searchEngineeringGoldenLibrary } from '../services/engineering/engineeringGoldenLibrary.js';
+import { createEngineeringCurationJob, listEngineeringCurationJobs, curationJobTypes } from '../services/engineering/engineeringCuration.js';
 
 const companyQuery = z.object({ companyId: z.string().min(1) });
 const chatSchema = z.object({ companyId: z.string().min(1), message: z.string().trim().min(1).max(6000) });
 const startSchema = z.object({ companyId: z.string().min(1), rootPath: z.string().trim().min(1).optional() });
-const reviewSchema = z.object({ status: z.enum(['VERIFIED', 'CORRECTED', 'REJECTED', 'OBSOLETE']), correctedJson: z.string().optional(), note: z.string().max(2000).optional(), reviewerName: z.string().max(120).optional() });
+const reviewSchema = z.object({ status: z.enum(['VERIFIED', 'CORRECTED', 'REJECTED', 'OBSOLETE']), correctedJson: z.string().optional(), note: z.string().max(2000).optional(), reviewerName: z.string().max(120).optional(), reviewerUserId: z.string().optional(), fieldName: z.string().max(120).optional() });
 const conversationCreateSchema = z.object({ companyId: z.string().min(1), title: z.string().trim().max(120).optional() });
 const conversationMessageSchema = z.object({ companyId: z.string().min(1), message: z.string().trim().min(1).max(12000) });
 const drawingSchema = z.object({ drawingType: z.enum(['SILO', 'HOPPER', 'WAREHOUSE', 'SUPPORT_STRUCTURE']), width: z.number().positive().optional(), length: z.number().positive().optional(), diameter: z.number().positive().optional(), height: z.number().positive().optional(), bodyHeight: z.number().positive().optional(), coneHeight: z.number().positive().optional(), freeHeight: z.number().positive().optional(), lowerOpening: z.number().positive().optional(), roofSlope: z.number().positive().optional(), capacityT: z.number().positive().optional(), supportCount: z.number().int().positive().optional(), customerName: z.string().max(160).optional(), projectName: z.string().max(160).optional(), quoteNumber: z.string().max(80).optional(), notes: z.array(z.string().max(300)).max(20).optional() });
@@ -72,6 +75,30 @@ export const engineeringRoutes: FastifyPluginAsync = async (app) => {
   app.get('/engineering/regulations', async (request) => {
     const query = z.object({ companyId: z.string(), q: z.string().default('') }).parse(request.query);
     return searchOfficialEngineeringRegulations(query.companyId, query.q);
+  });
+  app.get('/engineering/library', async (request) => {
+    const query = z.object({ companyId: z.string(), q: z.string().default(''), take: z.coerce.number().int().min(1).max(50).default(8) }).parse(request.query);
+    return searchEngineeringGoldenLibrary(query);
+  });
+  app.get('/engineering/sources', async (request) => {
+    companyQuery.parse(request.query);
+    return engineeringSourceStatus();
+  });
+  app.get('/engineering/benchmarks', async (request) => {
+    const query = z.object({ companyId: z.string(), q: z.string().default(''), status: z.string().optional(), take: z.coerce.number().int().min(1).max(200).default(100) }).parse(request.query);
+    return prisma.engineeringBenchmark.findMany({ where: { AND: [{ OR: [{ companyId: query.companyId }, { companyId: null }] }, ...(query.status ? [{ status: query.status }] : []), ...(query.q ? [{ OR: [{ title: { contains: query.q } }, { problemStatement: { contains: query.q } }, { standardCode: { contains: query.q } }] }] : [])] }, include: { source: { select: { id: true, title: true, jurisdiction: true, sourceType: true, verificationStatus: true, sourceUrl: true } }, validations: true }, orderBy: [{ verified: 'desc' }, { updatedAt: 'desc' }], take: query.take });
+  });
+  app.get('/engineering/validations', async (request) => {
+    const query = z.object({ companyId: z.string(), toolName: z.string().optional(), take: z.coerce.number().int().min(1).max(200).default(100) }).parse(request.query);
+    return prisma.engineeringToolValidation.findMany({ where: { OR: [{ companyId: query.companyId }, { companyId: null }], toolName: query.toolName }, include: { benchmark: { select: { id: true, title: true, status: true, verified: true, sourceId: true } } }, orderBy: { validatedAt: 'desc' }, take: query.take });
+  });
+  app.get('/engineering/curation/jobs', async (request) => {
+    const query = z.object({ companyId: z.string(), take: z.coerce.number().int().min(1).max(100).default(50) }).parse(request.query);
+    return listEngineeringCurationJobs(query.companyId, query.take);
+  });
+  app.post('/engineering/curation/jobs', async (request, reply) => {
+    const body = z.object({ companyId: z.string().optional(), type: z.enum(curationJobTypes) }).parse(request.body);
+    return reply.code(202).send(await createEngineeringCurationJob(body.companyId, body.type));
   });
   app.post('/engineering/drawing', async (request) => { const spec = drawingSchema.parse(request.body) as EngineeringDrawingSpec; return { spec, svg: renderPreliminaryEngineeringSvg(spec) }; });
   app.post('/engineering/drawing/pdf', async (request, reply) => { const spec = drawingSchema.parse(request.body) as EngineeringDrawingSpec; return reply.type('application/pdf').send(await renderPreliminaryEngineeringPdf(spec)); });
@@ -126,8 +153,8 @@ export const engineeringRoutes: FastifyPluginAsync = async (app) => {
     const body = reviewSchema.parse(request.body);
     const document = await prisma.engineeringKnowledgeDocument.findFirst({ where: { id: params.id, OR: [{ companyId: query.companyId }, { companyId: null }] } });
     if (!document) return reply.code(404).send({ error: 'Documento de ingeniería no encontrado' });
-    const updated = await prisma.engineeringKnowledgeDocument.update({ where: { id: document.id }, data: { verified: body.status === 'VERIFIED' || body.status === 'CORRECTED', status: body.status === 'OBSOLETE' ? 'NEEDS_REVIEW' : 'INDEXED', reviewNotes: body.note } });
-    await prisma.engineeringReview.create({ data: { companyId: query.companyId, knowledgeId: document.id, originalJson: document.structuredJson, correctedJson: body.correctedJson, status: body.status, note: body.note, reviewerName: body.reviewerName } });
+    const updated = await prisma.engineeringKnowledgeDocument.update({ where: { id: document.id }, data: { verified: body.status === 'VERIFIED' || body.status === 'CORRECTED', status: body.status === 'OBSOLETE' ? 'NEEDS_REVIEW' : 'INDEXED', structuredJson: body.correctedJson || document.structuredJson, reviewNotes: body.note } });
+    await prisma.engineeringReview.create({ data: { companyId: query.companyId, knowledgeId: document.id, originalJson: document.structuredJson, correctedJson: body.correctedJson, status: body.status, note: body.note, reviewerName: body.reviewerName, reviewerUserId: body.reviewerUserId, fieldName: body.fieldName } });
     return updated;
   });
 };

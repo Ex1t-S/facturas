@@ -95,146 +95,150 @@ model User {
 }
 
 model Company {
-  id           String     @id @default(cuid())
-  legalName    String
-  tradeName    String?
-  cuit         String     @unique
-  taxCondition String
-  address      String?
-  phone        String?
-  email        String?
-  createdAt    DateTime   @default(now())
-  customers    Customer[]
-  deliveryNotes DeliveryNote[]
-  products     Product[]
-  suppliers    Supplier[]
-  supplierPriceLists SupplierPriceList[]
-  assistantChats AssistantChat[]
-  whatsappConversations WhatsAppConversation[]
+  id                            String                         @id @default(cuid())
+  legalName                     String
+  tradeName                     String?
+  cuit                          String                         @unique
+  taxCondition                  String
+  address                       String?
+  phone                         String?
+  email                         String?
+  createdAt                     DateTime                       @default(now())
+  customers                     Customer[]
+  deliveryNotes                 DeliveryNote[]
+  products                      Product[]
+  suppliers                     Supplier[]
+  supplierPriceLists            SupplierPriceList[]
+  assistantChats                AssistantChat[]
+  whatsappConversations         WhatsAppConversation[]
   engineeringKnowledgeDocuments EngineeringKnowledgeDocument[]
-  engineeringProjects EngineeringProject[]
-  engineeringCalculations EngineeringCalculation[]
-  engineeringIngestionRuns EngineeringIngestionRun[]
-  engineeringConversations EngineeringConversation[]
-  engineeringCases EngineeringCase[]
-  engineeringRegulations EngineeringRegulation[]
-  engineeringDrawings EngineeringDrawingDocument[]
-  engineeringDrawingTemplates EngineeringDrawingTemplate[]
-  structuralSections StructuralSection[]
+  engineeringProjects           EngineeringProject[]
+  engineeringCalculations       EngineeringCalculation[]
+  engineeringIngestionRuns      EngineeringIngestionRun[]
+  engineeringConversations      EngineeringConversation[]
+  engineeringCases              EngineeringCase[]
+  engineeringRegulations        EngineeringRegulation[]
+  engineeringDrawings           EngineeringDrawingDocument[]
+  engineeringDrawingTemplates   EngineeringDrawingTemplate[]
+  structuralSections            StructuralSection[]
+  engineeringSources            EngineeringSource[]
+  engineeringBenchmarks         EngineeringBenchmark[]
+  engineeringToolValidations    EngineeringToolValidation[]
+  engineeringCurationJobs       EngineeringCurationJob[]
 }
 
 model Supplier {
-  id          String   @id @default(cuid())
-  companyId   String
-  name        String
-  cuit        String?
-  phone       String?
-  email       String?
-  website     String?
-  notes       String?
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  company     Company  @relation(fields: [companyId], references: [id])
-  priceLists  SupplierPriceList[]
-  prices      SupplierProductPrice[]
+  id         String                 @id @default(cuid())
+  companyId  String
+  name       String
+  cuit       String?
+  phone      String?
+  email      String?
+  website    String?
+  notes      String?
+  active     Boolean                @default(true)
+  createdAt  DateTime               @default(now())
+  company    Company                @relation(fields: [companyId], references: [id])
+  priceLists SupplierPriceList[]
+  prices     SupplierProductPrice[]
 
   @@unique([companyId, name])
   @@index([companyId])
 }
 
 model SupplierPriceList {
-  id          String   @id @default(cuid())
-  companyId   String
-  supplierId  String
-  name        String
-  sourceType  String   @default("manual")
-  documentId  String?
-  currency    String   @default("ARS")
-  validFrom   DateTime @default(now())
-  importedAt  DateTime @default(now())
-  notes       String?
-  company     Company  @relation(fields: [companyId], references: [id])
-  supplier    Supplier @relation(fields: [supplierId], references: [id])
-  prices      SupplierProductPrice[]
+  id         String                 @id @default(cuid())
+  companyId  String
+  supplierId String
+  name       String
+  sourceType String                 @default("manual")
+  documentId String?
+  currency   String                 @default("ARS")
+  validFrom  DateTime               @default(now())
+  importedAt DateTime               @default(now())
+  notes      String?
+  company    Company                @relation(fields: [companyId], references: [id])
+  supplier   Supplier               @relation(fields: [supplierId], references: [id])
+  prices     SupplierProductPrice[]
 
   @@index([companyId])
   @@index([supplierId])
 }
 
 model Customer {
-  id           String            @id @default(cuid())
-  companyId    String
-  legalName    String
-  tradeName    String?
-  cuit         String?
-  taxCondition String?
-  address      String?
-  contactName  String?
-  phone        String?
-  email        String?
-  paymentTerms String?
-  notes        String?
-  createdAt    DateTime          @default(now())
-  company      Company           @relation(fields: [companyId], references: [id])
-  quotes       Quote[]
-  invoices     Invoice[]
+  id            String              @id @default(cuid())
+  companyId     String
+  legalName     String
+  tradeName     String?
+  cuit          String?
+  taxCondition  String?
+  address       String?
+  contactName   String?
+  phone         String?
+  email         String?
+  paymentTerms  String?
+  notes         String?
+  createdAt     DateTime            @default(now())
+  company       Company             @relation(fields: [companyId], references: [id])
+  quotes        Quote[]
+  invoices      Invoice[]
   deliveryNotes DeliveryNote[]
-  whatsapp     WhatsAppMessage[]
-  candidates   CustomerCandidate[]
+  whatsapp      WhatsAppMessage[]
+  candidates    CustomerCandidate[]
 
   @@index([companyId])
 }
 
 model Product {
-  id          String      @id @default(cuid())
-  companyId   String
-  sku         String?
-  name        String
-  type        String      @default("PRODUCT")
-  normalizedName String?
-  aliasesJson String?
-  metadataJson String?
-  description String?
-  unit        String      @default("unidad")
-  category    String?
-  baseCost    Decimal     @default(0)
-  lastCost    Decimal?
-  price       Decimal
-  taxRate     Decimal     @default(21)
-  stockTracked Boolean    @default(false)
-  active      Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  company     Company     @relation(fields: [companyId], references: [id])
-  quoteItems  QuoteItem[]
+  id                String                  @id @default(cuid())
+  companyId         String
+  sku               String?
+  name              String
+  type              String                  @default("PRODUCT")
+  normalizedName    String?
+  aliasesJson       String?
+  metadataJson      String?
+  description       String?
+  unit              String                  @default("unidad")
+  category          String?
+  baseCost          Decimal                 @default(0)
+  lastCost          Decimal?
+  price             Decimal
+  taxRate           Decimal                 @default(21)
+  stockTracked      Boolean                 @default(false)
+  active            Boolean                 @default(true)
+  createdAt         DateTime                @default(now())
+  company           Company                 @relation(fields: [companyId], references: [id])
+  quoteItems        QuoteItem[]
   deliveryNoteItems DeliveryNoteItem[]
-  invoiceItems InvoiceItem[]
-  itemCandidates DocumentItemCandidate[]
-  stocks      InventoryStock[]
-  stockMovements StockMovement[]
-  supplierPrices SupplierProductPrice[]
+  invoiceItems      InvoiceItem[]
+  itemCandidates    DocumentItemCandidate[]
+  stocks            InventoryStock[]
+  stockMovements    StockMovement[]
+  supplierPrices    SupplierProductPrice[]
 
   @@index([companyId])
 }
 
 model SupplierProductPrice {
-  id           String   @id @default(cuid())
-  companyId    String
-  supplierId   String
-  priceListId  String?
-  productId    String?
-  supplierSku  String?
-  rawName      String
+  id             String             @id @default(cuid())
+  companyId      String
+  supplierId     String
+  priceListId    String?
+  productId      String?
+  supplierSku    String?
+  rawName        String
   normalizedName String
-  unit         String   @default("unidad")
-  currency     String  @default("ARS")
-  price        Decimal
-  taxIncluded  Boolean @default(false)
-  available    Boolean @default(true)
-  observedAt   DateTime @default(now())
-  notes        String?
-  supplier     Supplier @relation(fields: [supplierId], references: [id])
-  priceList    SupplierPriceList? @relation(fields: [priceListId], references: [id])
-  product      Product? @relation(fields: [productId], references: [id])
+  unit           String             @default("unidad")
+  currency       String             @default("ARS")
+  price          Decimal
+  taxIncluded    Boolean            @default(false)
+  available      Boolean            @default(true)
+  observedAt     DateTime           @default(now())
+  notes          String?
+  supplier       Supplier           @relation(fields: [supplierId], references: [id])
+  priceList      SupplierPriceList? @relation(fields: [priceListId], references: [id])
+  product        Product?           @relation(fields: [productId], references: [id])
 
   @@index([companyId])
   @@index([supplierId])
@@ -243,24 +247,24 @@ model SupplierProductPrice {
 }
 
 model Quote {
-  id          String      @id @default(cuid())
-  companyId   String
-  customerId  String
-  number      Int
-  version     Int         @default(1)
-  status      QuoteStatus @default(DRAFT)
-  issueDate   DateTime    @default(now())
-  validUntil  DateTime?
-  currency    String      @default("ARS")
-  subtotal    Decimal     @default(0)
-  taxTotal    Decimal     @default(0)
-  total       Decimal     @default(0)
-  notes       String?
-  createdById String?
-  customer    Customer    @relation(fields: [customerId], references: [id])
-  createdBy   User?       @relation(fields: [createdById], references: [id])
-  items       QuoteItem[]
-  invoices    Invoice[]
+  id                String              @id @default(cuid())
+  companyId         String
+  customerId        String
+  number            Int
+  version           Int                 @default(1)
+  status            QuoteStatus         @default(DRAFT)
+  issueDate         DateTime            @default(now())
+  validUntil        DateTime?
+  currency          String              @default("ARS")
+  subtotal          Decimal             @default(0)
+  taxTotal          Decimal             @default(0)
+  total             Decimal             @default(0)
+  notes             String?
+  createdById       String?
+  customer          Customer            @relation(fields: [customerId], references: [id])
+  createdBy         User?               @relation(fields: [createdById], references: [id])
+  items             QuoteItem[]
+  invoices          Invoice[]
   deliveryNoteLinks DeliveryNoteQuote[]
 
   @@unique([companyId, number, version])
@@ -283,47 +287,47 @@ model QuoteItem {
 }
 
 model Document {
-  id          String                @id @default(cuid())
-  companyId   String?
-  kind        DocumentKind          @default(UNKNOWN)
-  sourceType  String
-  fileName    String
-  mimeType    String
-  storagePath String
-  sha256      String
-  status      DocumentStatus        @default(PENDING_REVIEW)
-  extractionStatus ExtractionStatus @default(UPLOADED)
-  documentDate DateTime?
-  issuerName  String?
-  issuerCuit  String?
-  externalNumber String?
-  currency    String                @default("ARS")
-  total       Decimal?
-  uploadedBy  String?
-  createdAt   DateTime              @default(now())
-  extraction  DocumentExtraction?
-  deliveryNote DeliveryNote?
-  messages    WhatsAppMessage[]
-  itemCandidates DocumentItemCandidate[]
+  id                 String                  @id @default(cuid())
+  companyId          String?
+  kind               DocumentKind            @default(UNKNOWN)
+  sourceType         String
+  fileName           String
+  mimeType           String
+  storagePath        String
+  sha256             String
+  status             DocumentStatus          @default(PENDING_REVIEW)
+  extractionStatus   ExtractionStatus        @default(UPLOADED)
+  documentDate       DateTime?
+  issuerName         String?
+  issuerCuit         String?
+  externalNumber     String?
+  currency           String                  @default("ARS")
+  total              Decimal?
+  uploadedBy         String?
+  createdAt          DateTime                @default(now())
+  extraction         DocumentExtraction?
+  deliveryNote       DeliveryNote?
+  messages           WhatsAppMessage[]
+  itemCandidates     DocumentItemCandidate[]
   customerCandidates CustomerCandidate[]
-  stockMovements StockMovement[]
+  stockMovements     StockMovement[]
 }
 
 model DocumentExtraction {
-  id            String    @id @default(cuid())
-  documentId    String    @unique
-  engine        String?
-  schemaVersion String    @default("v1")
-  rawText       String?
-  rawJson       String?
-  normalizedJson String?
-  extractedJson String?
-  confidence    Decimal   @default(0)
+  id              String    @id @default(cuid())
+  documentId      String    @unique
+  engine          String?
+  schemaVersion   String    @default("v1")
+  rawText         String?
+  rawJson         String?
+  normalizedJson  String?
+  extractedJson   String?
+  confidence      Decimal   @default(0)
   fieldConfidence String?
-  errorMessage  String?
-  reviewedBy    String?
-  reviewedAt    DateTime?
-  document      Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  errorMessage    String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  document        Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }
 
 model DocumentItemCandidate {
@@ -342,7 +346,7 @@ model DocumentItemCandidate {
   entityType       CatalogEntityType @default(PRODUCT)
   matchedProductId String?
   confidence       Decimal           @default(0)
-  decision         MatchDecision      @default(PENDING)
+  decision         MatchDecision     @default(PENDING)
   reviewNotes      String?
   createdAt        DateTime          @default(now())
   document         Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
@@ -362,7 +366,7 @@ model CustomerCandidate {
   address           String?
   matchedCustomerId String?
   confidence        Decimal       @default(0)
-  decision          MatchDecision  @default(PENDING)
+  decision          MatchDecision @default(PENDING)
   document          Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
   matchedCustomer   Customer?     @relation(fields: [matchedCustomerId], references: [id])
 
@@ -384,19 +388,19 @@ model InventoryStock {
 }
 
 model StockMovement {
-  id          String              @id @default(cuid())
-  companyId   String
-  productId   String
-  documentId  String?
-  quoteId     String?
-  invoiceId   String?
-  quantity    Decimal
-  unitCost    Decimal?
-  source      StockMovementSource
-  reason      String
-  createdAt   DateTime            @default(now())
-  product     Product             @relation(fields: [productId], references: [id])
-  document    Document?           @relation(fields: [documentId], references: [id])
+  id         String              @id @default(cuid())
+  companyId  String
+  productId  String
+  documentId String?
+  quoteId    String?
+  invoiceId  String?
+  quantity   Decimal
+  unitCost   Decimal?
+  source     StockMovementSource
+  reason     String
+  createdAt  DateTime            @default(now())
+  product    Product             @relation(fields: [productId], references: [id])
+  document   Document?           @relation(fields: [documentId], references: [id])
 
   @@index([companyId])
   @@index([productId])
@@ -404,24 +408,24 @@ model StockMovement {
 
 model Invoice {
   id               String        @id @default(cuid())
-  companyId         String
-  customerId        String
-  quoteId           String?
-  type              String
-  pointOfSale       Int?
-  number            Int?
-  status            InvoiceStatus @default(DRAFT)
-  issueDate         DateTime      @default(now())
-  cae               String?
-  caeDueDate        DateTime?
-  currency          String        @default("ARS")
-  subtotal          Decimal       @default(0)
-  taxTotal          Decimal       @default(0)
-  total             Decimal       @default(0)
-  arcaResponseJson  String?
-  customer          Customer      @relation(fields: [customerId], references: [id])
-  quote             Quote?        @relation(fields: [quoteId], references: [id])
-  items             InvoiceItem[]
+  companyId        String
+  customerId       String
+  quoteId          String?
+  type             String
+  pointOfSale      Int?
+  number           Int?
+  status           InvoiceStatus @default(DRAFT)
+  issueDate        DateTime      @default(now())
+  cae              String?
+  caeDueDate       DateTime?
+  currency         String        @default("ARS")
+  subtotal         Decimal       @default(0)
+  taxTotal         Decimal       @default(0)
+  total            Decimal       @default(0)
+  arcaResponseJson String?
+  customer         Customer      @relation(fields: [customerId], references: [id])
+  quote            Quote?        @relation(fields: [quoteId], references: [id])
+  items            InvoiceItem[]
 
   @@index([companyId, pointOfSale, type, number])
 }
@@ -440,38 +444,38 @@ model InvoiceItem {
 }
 
 model WhatsAppMessage {
-  id                String           @id @default(cuid())
-  direction          MessageDirection
-  fromNumber         String
-  toNumber           String
-  customerId         String?
-  messageType        String
-  body               String?
-  mediaDocumentId    String?
-  conversationId     String?
-  providerMessageId  String?          @unique
-  status             String           @default("received")
-  createdAt          DateTime         @default(now())
-  customer           Customer?        @relation(fields: [customerId], references: [id])
-  mediaDocument      Document?        @relation(fields: [mediaDocumentId], references: [id])
-  conversation       WhatsAppConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  id                String                @id @default(cuid())
+  direction         MessageDirection
+  fromNumber        String
+  toNumber          String
+  customerId        String?
+  messageType       String
+  body              String?
+  mediaDocumentId   String?
+  conversationId    String?
+  providerMessageId String?               @unique
+  status            String                @default("received")
+  createdAt         DateTime              @default(now())
+  customer          Customer?             @relation(fields: [customerId], references: [id])
+  mediaDocument     Document?             @relation(fields: [mediaDocumentId], references: [id])
+  conversation      WhatsAppConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
 
   @@index([conversationId, createdAt])
 }
 
 model WhatsAppConversation {
-  id          String   @id @default(cuid())
-  companyId   String
-  fromNumber  String
-  pendingJson String?
-  toNumber String?
-  displayName String?
-  messageCount Int @default(0)
-  lastMessageAt DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  createdAt   DateTime @default(now())
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  messages    WhatsAppMessage[]
+  id            String            @id @default(cuid())
+  companyId     String
+  fromNumber    String
+  pendingJson   String?
+  toNumber      String?
+  displayName   String?
+  messageCount  Int               @default(0)
+  lastMessageAt DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  createdAt     DateTime          @default(now())
+  company       Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  messages      WhatsAppMessage[]
 
   @@unique([companyId, fromNumber])
   @@index([companyId, updatedAt])
@@ -490,20 +494,20 @@ model AuditLog {
 }
 
 model DeliveryNote {
-  id          String             @id @default(cuid())
+  id          String              @id @default(cuid())
   companyId   String
   customerId  String
-  documentId  String?            @unique
+  documentId  String?             @unique
   number      Int
-  status      DeliveryNoteStatus @default(PENDING)
-  issueDate   DateTime           @default(now())
+  status      DeliveryNoteStatus  @default(PENDING)
+  issueDate   DateTime            @default(now())
   projectName String?
-  currency    String             @default("ARS")
+  currency    String              @default("ARS")
   total       Decimal?
   notes       String?
-  company     Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer    Customer           @relation(fields: [customerId], references: [id])
-  document    Document?          @relation(fields: [documentId], references: [id])
+  company     Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer    Customer            @relation(fields: [customerId], references: [id])
+  document    Document?           @relation(fields: [documentId], references: [id])
   items       DeliveryNoteItem[]
   quoteLinks  DeliveryNoteQuote[]
 
@@ -518,24 +522,24 @@ model DeliveryNoteItem {
   productId         String?
   description       String
   quantity          Decimal
-  convertedQuantity  Decimal      @default(0)
-  unit              String        @default("unidad")
+  convertedQuantity Decimal      @default(0)
+  unit              String       @default("unidad")
   unitPrice         Decimal?
   priceOrigin       String?
-  taxRate           Decimal       @default(21)
-  deliveryNote      DeliveryNote  @relation(fields: [deliveryNoteId], references: [id], onDelete: Cascade)
-  product           Product?      @relation(fields: [productId], references: [id])
+  taxRate           Decimal      @default(21)
+  deliveryNote      DeliveryNote @relation(fields: [deliveryNoteId], references: [id], onDelete: Cascade)
+  product           Product?     @relation(fields: [productId], references: [id])
 
   @@index([deliveryNoteId])
 }
 
 model DeliveryNoteQuote {
-  id              String       @id @default(cuid())
-  deliveryNoteId  String
-  quoteId         String
-  createdAt       DateTime     @default(now())
-  deliveryNote    DeliveryNote @relation(fields: [deliveryNoteId], references: [id], onDelete: Cascade)
-  quote           Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  deliveryNoteId String
+  quoteId        String
+  createdAt      DateTime     @default(now())
+  deliveryNote   DeliveryNote @relation(fields: [deliveryNoteId], references: [id], onDelete: Cascade)
+  quote          Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 
   @@unique([deliveryNoteId, quoteId])
   @@index([quoteId])
@@ -550,71 +554,189 @@ enum DeliveryNoteStatus {
 }
 
 model EngineeringKnowledgeDocument {
-  id String @id @default(cuid())
-  companyId String?
-  sourceDocumentId String?
-  fileName String
-  relativePath String?
-  extension String
-  mimeType String
-  sha256 String
-  sizeBytes Int
-  status String @default("DISCOVERED")
-  documentType String @default("OTHER")
-  projectType String @default("OTHER")
-  projectName String?
-  customerName String?
-  documentDate DateTime?
-  rawText String?
-  structuredJson String?
-  metadataJson String?
-  extractorVersion String @default("engineering-extractor-v1")
-  promptVersion String?
-  model String?
-  confidence Decimal @default(0)
-  errorMessage String?
-  verified Boolean @default(false)
-  reviewNotes String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  projects EngineeringProjectDocument[]
-  reviews EngineeringReview[]
-  vectorIndexes EngineeringVectorIndex[]
+  id                 String                       @id @default(cuid())
+  companyId          String?
+  sourceDocumentId   String?
+  fileName           String
+  relativePath       String?
+  extension          String
+  mimeType           String
+  sha256             String
+  sizeBytes          Int
+  status             String                       @default("DISCOVERED")
+  documentType       String                       @default("OTHER")
+  projectType        String                       @default("OTHER")
+  projectName        String?
+  customerName       String?
+  documentDate       DateTime?
+  rawText            String?
+  structuredJson     String?
+  metadataJson       String?
+  extractorVersion   String                       @default("engineering-extractor-v1")
+  promptVersion      String?
+  model              String?
+  confidence         Decimal                      @default(0)
+  errorMessage       String?
+  verified           Boolean                      @default(false)
+  reviewNotes        String?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  company            Company?                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projects           EngineeringProjectDocument[]
+  reviews            EngineeringReview[]
+  vectorIndexes      EngineeringVectorIndex[]
   structuralSections StructuralSection[]
+  sourceId           String?
+  source             EngineeringSource?           @relation("SourceDocuments", fields: [sourceId], references: [id], onDelete: SetNull)
+
   @@unique([companyId, sha256])
   @@index([companyId, status])
   @@index([companyId, projectType])
   @@index([companyId, documentType])
+  @@index([sourceId])
+}
+
+model EngineeringSource {
+  id                 String                         @id @default(cuid())
+  companyId          String?
+  title              String
+  publisher          String
+  jurisdiction       String
+  sourceType         String
+  sourceUrl          String
+  finalUrl           String?
+  officialDomain     String
+  localFilePath      String?
+  documentId         String?
+  publicationDate    DateTime?
+  edition            String?
+  revision           String?
+  effectiveDate      DateTime?
+  retrievedAt        DateTime?
+  lastCheckedAt      DateTime?
+  contentHash        String?
+  fileHash           String?
+  mimeType           String?
+  language           String                         @default("es")
+  licenseStatus      String                         @default("UNKNOWN")
+  downloadStatus     String                         @default("NOT_ATTEMPTED")
+  verificationStatus String                         @default("UNKNOWN")
+  supersededById     String?
+  notes              String?
+  metadataJson       String                         @default("{}")
+  createdAt          DateTime                       @default(now())
+  updatedAt          DateTime                       @updatedAt
+  company            Company?                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  documents          EngineeringKnowledgeDocument[] @relation("SourceDocuments")
+  supersededBy       EngineeringSource?             @relation("EngineeringSourceSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes         EngineeringSource[]            @relation("EngineeringSourceSupersession")
+  benchmarks         EngineeringBenchmark[]
+
+  @@index([companyId, sourceType])
+  @@index([jurisdiction, verificationStatus])
+  @@index([officialDomain])
+  @@index([documentId])
+  @@index([fileHash])
+}
+
+model EngineeringBenchmark {
+  id                   String                      @id @default(cuid())
+  companyId            String?
+  title                String
+  sourceId             String
+  benchmarkType        String
+  jurisdiction         String
+  standardCode         String?
+  standardEdition      String?
+  problemStatement     String
+  inputJson            String
+  expectedOutputJson   String
+  tolerancesJson       String                      @default("{}")
+  calculationStepsJson String                      @default("[]")
+  pageReferencesJson   String                      @default("[]")
+  status               String                      @default("NEEDS_REVIEW")
+  verified             Boolean                     @default(false)
+  verificationNotes    String?
+  implementedTool      String?
+  testFile             String?
+  extractionVersion    String?
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  company              Company?                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  source               EngineeringSource           @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  validations          EngineeringToolValidation[]
+
+  @@index([companyId, benchmarkType])
+  @@index([sourceId])
+  @@index([verified])
+}
+
+model EngineeringToolValidation {
+  id            String               @id @default(cuid())
+  companyId     String?
+  toolName      String
+  toolVersion   String
+  benchmarkId   String
+  resultJson    String
+  absoluteError Float?
+  relativeError Float?
+  passed        Boolean
+  scope         String               @default("PRELIMINARY")
+  validatedAt   DateTime             @default(now())
+  notes         String?
+  company       Company?             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  benchmark     EngineeringBenchmark @relation(fields: [benchmarkId], references: [id], onDelete: Cascade)
+
+  @@unique([toolName, toolVersion, benchmarkId])
+  @@index([companyId, toolName])
+  @@index([benchmarkId])
+}
+
+model EngineeringCurationJob {
+  id             String    @id @default(cuid())
+  companyId      String?
+  type           String
+  status         String    @default("QUEUED")
+  progress       Int       @default(0)
+  statisticsJson String    @default("{}")
+  errorsJson     String    @default("[]")
+  createdAt      DateTime  @default(now())
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  company        Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status])
+  @@index([type, createdAt])
 }
 
 model StructuralSection {
-  id String @id @default(cuid())
-  companyId String
-  designation String
-  type String
-  material String?
-  width Float?
-  height Float?
-  diameter Float?
-  thickness Float?
-  area Float?
-  massPerMeter Float?
-  ix Float?
-  iy Float?
-  rx Float?
-  ry Float?
-  yieldStrength Float?
+  id               String                        @id @default(cuid())
+  companyId        String
+  designation      String
+  type             String
+  material         String?
+  width            Float?
+  height           Float?
+  diameter         Float?
+  thickness        Float?
+  area             Float?
+  massPerMeter     Float?
+  ix               Float?
+  iy               Float?
+  rx               Float?
+  ry               Float?
+  yieldStrength    Float?
   commercialLength Float?
-  source String
+  source           String
   sourceDocumentId String?
-  verified Boolean @default(false)
-  verifiedAt DateTime?
-  notes String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  sourceDocument EngineeringKnowledgeDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  verified         Boolean                       @default(false)
+  verifiedAt       DateTime?
+  notes            String?
+  createdAt        DateTime                      @default(now())
+  updatedAt        DateTime                      @updatedAt
+  company          Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sourceDocument   EngineeringKnowledgeDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+
   @@unique([companyId, designation, source])
   @@index([companyId, type])
   @@index([companyId, verified])
@@ -622,266 +744,281 @@ model StructuralSection {
 }
 
 model EngineeringProject {
-  id String @id @default(cuid())
-  companyId String
-  name String
-  projectType String @default("OTHER")
-  customerName String?
-  projectDate DateTime?
-  status String @default("SUGGESTED")
-  description String?
+  id            String                       @id @default(cuid())
+  companyId     String
+  name          String
+  projectType   String                       @default("OTHER")
+  customerName  String?
+  projectDate   DateTime?
+  status        String                       @default("SUGGESTED")
+  description   String?
   technicalJson String?
-  notes String?
-  verified Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  documents EngineeringProjectDocument[]
-  reviews EngineeringReview[]
+  notes         String?
+  verified      Boolean                      @default(false)
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+  company       Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  documents     EngineeringProjectDocument[]
+  reviews       EngineeringReview[]
   conversations EngineeringConversation[]
+
   @@index([companyId, projectType])
   @@index([companyId, status])
 }
 
 model EngineeringProjectDocument {
-  id String @id @default(cuid())
-  projectId String
+  id          String                       @id @default(cuid())
+  projectId   String
   knowledgeId String
-  project EngineeringProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  knowledge EngineeringKnowledgeDocument @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+  project     EngineeringProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  knowledge   EngineeringKnowledgeDocument @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+
   @@unique([projectId, knowledgeId])
   @@index([knowledgeId])
 }
 
 model EngineeringCalculation {
-  id String @id @default(cuid())
-  companyId String
-  title String
-  formula String?
+  id         String   @id @default(cuid())
+  companyId  String
+  title      String
+  formula    String?
   inputsJson String
   resultJson String
-  source String @default("CALCULATED")
-  createdAt DateTime @default(now())
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  source     String   @default("CALCULATED")
+  createdAt  DateTime @default(now())
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
   @@index([companyId, createdAt])
 }
 
 model EngineeringReview {
-  id String @id @default(cuid())
-  companyId String?
-  knowledgeId String?
-  projectId String?
-  originalJson String?
+  id            String                        @id @default(cuid())
+  companyId     String?
+  knowledgeId   String?
+  projectId     String?
+  originalJson  String?
   correctedJson String?
-  status String @default("VERIFIED")
-  note String?
-  reviewerName String?
-  createdAt DateTime @default(now())
-  knowledge EngineeringKnowledgeDocument? @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
-  project EngineeringProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status        String                        @default("VERIFIED")
+  note          String?
+  reviewerName  String?
+  reviewerUserId String?
+  fieldName     String?
+  createdAt     DateTime                      @default(now())
+  knowledge     EngineeringKnowledgeDocument? @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+  project       EngineeringProject?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
   @@index([companyId, status])
   @@index([knowledgeId])
   @@index([projectId])
 }
 
 model EngineeringIngestionRun {
-  id String @id @default(cuid())
-  companyId String?
-  rootPath String
-  status String @default("RUNNING")
-  foundCount Int @default(0)
-  newCount Int @default(0)
-  unchangedCount Int @default(0)
-  modifiedCount Int @default(0)
-  processedCount Int @default(0)
-  pendingCount Int @default(0)
-  failedCount Int @default(0)
-  lastError String?
-  startedAt DateTime @default(now())
-  finishedAt DateTime?
-  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id             String    @id @default(cuid())
+  companyId      String?
+  rootPath       String
+  status         String    @default("RUNNING")
+  foundCount     Int       @default(0)
+  newCount       Int       @default(0)
+  unchangedCount Int       @default(0)
+  modifiedCount  Int       @default(0)
+  processedCount Int       @default(0)
+  pendingCount   Int       @default(0)
+  failedCount    Int       @default(0)
+  lastError      String?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  company        Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
   @@index([companyId, startedAt])
 }
 
 model EngineeringVectorIndex {
-  id String @id @default(cuid())
-  knowledgeId String
+  id            String                       @id @default(cuid())
+  knowledgeId   String
   vectorStoreId String
-  openaiFileId String?
-  localHash String
-  status String @default("PENDING")
-  indexedAt DateTime?
-  errorMessage String?
-  knowledge EngineeringKnowledgeDocument @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+  openaiFileId  String?
+  localHash     String
+  status        String                       @default("PENDING")
+  indexedAt     DateTime?
+  errorMessage  String?
+  knowledge     EngineeringKnowledgeDocument @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+
   @@unique([knowledgeId, vectorStoreId])
   @@index([vectorStoreId, status])
 }
 
 model EngineeringConversation {
-  id String @id @default(cuid())
-  companyId String
-  userId String?
-  title String @default("Nuevo caso de Ingeniería")
-  status String @default("OPEN")
-  projectId String?
-  stateJson String @default("{}")
-  summaryJson String @default("{}")
+  id                 String                @id @default(cuid())
+  companyId          String
+  userId             String?
+  title              String                @default("Nuevo caso de Ingeniería")
+  status             String                @default("OPEN")
+  projectId          String?
+  stateJson          String                @default("{}")
+  summaryJson        String                @default("{}")
   previousResponseId String?
-  model String?
-  currentIntent String?
-  intentConfidence Float?
-  lastProvider String?
+  model              String?
+  currentIntent      String?
+  intentConfidence   Float?
+  lastProvider       String?
   lastRequestedModel String?
-  lastActualModel String?
-  lastLatencyMs Int?
-  lastErrorJson String?
-  lastFallbackUsed Boolean @default(false)
-  promptVersion String?
-  archivedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  project EngineeringProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  messages EngineeringMessage[]
-  engineeringCase EngineeringCase?
-  toolCalls EngineeringToolCall[]
+  lastActualModel    String?
+  lastLatencyMs      Int?
+  lastErrorJson      String?
+  lastFallbackUsed   Boolean               @default(false)
+  promptVersion      String?
+  archivedAt         DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  company            Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project            EngineeringProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  messages           EngineeringMessage[]
+  engineeringCase    EngineeringCase?
+  toolCalls          EngineeringToolCall[]
+
   @@index([companyId, updatedAt])
   @@index([companyId, status])
 }
 
 model EngineeringMessage {
-  id String @id @default(cuid())
-  conversationId String
-  role String
-  content String
-  model String?
-  responseId String?
-  provider String?
-  requestedModel String?
-  actualModel String?
-  fallbackUsed Boolean @default(false)
-  latencyMs Int?
-  errorJson String?
-  intent String?
-  intentConfidence Float?
-  tokenUsageJson String?
-  estimatedCost Decimal?
+  id                   String                  @id @default(cuid())
+  conversationId       String
+  role                 String
+  content              String
+  model                String?
+  responseId           String?
+  provider             String?
+  requestedModel       String?
+  actualModel          String?
+  fallbackUsed         Boolean                 @default(false)
+  latencyMs            Int?
+  errorJson            String?
+  intent               String?
+  intentConfidence     Float?
+  tokenUsageJson       String?
+  estimatedCost        Decimal?
   structuredResultJson String?
-  createdAt DateTime @default(now())
-  conversation EngineeringConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt            DateTime                @default(now())
+  conversation         EngineeringConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
   @@index([conversationId, createdAt])
 }
 
 model EngineeringToolCall {
-  id String @id @default(cuid())
+  id             String                  @id @default(cuid())
   conversationId String
-  messageId String?
-  name String
-  argumentsJson String
-  resultJson String?
-  status String @default("COMPLETED")
-  durationMs Int?
-  createdAt DateTime @default(now())
-  conversation EngineeringConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String?
+  name           String
+  argumentsJson  String
+  resultJson     String?
+  status         String                  @default("COMPLETED")
+  durationMs     Int?
+  createdAt      DateTime                @default(now())
+  conversation   EngineeringConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
   @@index([conversationId, createdAt])
 }
 
 model EngineeringCase {
-  id String @id @default(cuid())
-  companyId String
-  conversationId String @unique
-  name String
-  projectType String @default("OTHER")
-  customerName String?
-  location String?
-  status String @default("DRAFT")
-  dataJson String @default("{}")
-  assumptionsJson String @default("[]")
-  calculationsJson String @default("[]")
-  sourcesJson String @default("[]")
-  regulationsJson String @default("[]")
-  bomJson String @default("[]")
-  costsJson String @default("{}")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  conversation EngineeringConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  id               String                  @id @default(cuid())
+  companyId        String
+  conversationId   String                  @unique
+  name             String
+  projectType      String                  @default("OTHER")
+  customerName     String?
+  location         String?
+  status           String                  @default("DRAFT")
+  dataJson         String                  @default("{}")
+  assumptionsJson  String                  @default("[]")
+  calculationsJson String                  @default("[]")
+  sourcesJson      String                  @default("[]")
+  regulationsJson  String                  @default("[]")
+  bomJson          String                  @default("[]")
+  costsJson        String                  @default("{}")
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  company          Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation     EngineeringConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
   @@index([companyId, status])
   @@index([companyId, projectType])
 }
 
 model EngineeringRegulation {
-  id String @id @default(cuid())
-  companyId String?
-  code String
-  title String
-  jurisdiction String @default("AR")
-  revision String?
+  id              String    @id @default(cuid())
+  companyId       String?
+  code            String
+  title           String
+  jurisdiction    String    @default("AR")
+  revision        String?
   publicationDate DateTime?
-  effectiveDate DateTime?
-  status String @default("UNKNOWN")
-  sourceUrl String?
-  sourceDomain String?
+  effectiveDate   DateTime?
+  status          String    @default("UNKNOWN")
+  sourceUrl       String?
+  sourceDomain    String?
   localDocumentId String?
-  contentHash String?
-  retrievedAt DateTime?
-  verifiedAt DateTime?
-  verifiedBy String?
-  notes String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contentHash     String?
+  retrievedAt     DateTime?
+  verifiedAt      DateTime?
+  verifiedBy      String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  company         Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
   @@unique([companyId, code, revision])
   @@index([companyId, status])
 }
 
 model EngineeringDrawingTemplate {
-  id String @id @default(cuid())
-  companyId String?
-  code String
-  name String
-  version String?
-  sheetSize String?
+  id                 String                       @id @default(cuid())
+  companyId          String?
+  code               String
+  name               String
+  version            String?
+  sheetSize          String?
   titleBlockPosition String?
-  layoutJson String @default("{}")
-  sampleCount Int @default(0)
-  confidence Decimal @default(0)
-  isDefault Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  drawings EngineeringDrawingDocument[]
+  layoutJson         String                       @default("{}")
+  sampleCount        Int                          @default(0)
+  confidence         Decimal                      @default(0)
+  isDefault          Boolean                      @default(false)
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  company            Company?                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  drawings           EngineeringDrawingDocument[]
+
   @@unique([companyId, code])
   @@index([companyId, isDefault])
 }
 
 model EngineeringDrawingDocument {
-  id String @id @default(cuid())
-  companyId String
-  templateId String?
-  fileName String
-  relativePath String
-  sourcePath String
-  sha256 String
-  mimeType String @default("application/pdf")
-  byteSize Int
-  pageCount Int @default(0)
-  status String @default("DISCOVERED")
-  extractedText String?
-  extractionJson String @default("{}")
-  thumbnailPath String?
-  drawingNumber String?
-  projectName String?
-  customerName String?
-  projectType String?
-  drawingTitle String?
-  revision String?
-  drawingDate DateTime?
-  sheetSize String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  template EngineeringDrawingTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  id             String                      @id @default(cuid())
+  companyId      String
+  templateId     String?
+  fileName       String
+  relativePath   String
+  sourcePath     String
+  sha256         String
+  mimeType       String                      @default("application/pdf")
+  byteSize       Int
+  pageCount      Int                         @default(0)
+  status         String                      @default("DISCOVERED")
+  extractedText  String?
+  extractionJson String                      @default("{}")
+  thumbnailPath  String?
+  drawingNumber  String?
+  projectName    String?
+  customerName   String?
+  projectType    String?
+  drawingTitle   String?
+  revision       String?
+  drawingDate    DateTime?
+  sheetSize      String?
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+  company        Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  template       EngineeringDrawingTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
   @@unique([companyId, sha256])
   @@index([companyId, status])
   @@index([companyId, projectType])
@@ -901,17 +1038,17 @@ model AssistantChat {
 }
 
 model AssistantMessage {
-  id         String        @id @default(cuid())
-  chatId     String
-  role       String
-  content    String
-  mode       String?
+  id          String        @id @default(cuid())
+  chatId      String
+  role        String
+  content     String
+  mode        String?
   sourcesJson String?
-  actionType String?
-  quoteId    String?
-  documentId String?
-  createdAt  DateTime      @default(now())
-  chat       AssistantChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  actionType  String?
+  quoteId     String?
+  documentId  String?
+  createdAt   DateTime      @default(now())
+  chat        AssistantChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   @@index([chatId, createdAt])
   @@index([quoteId])

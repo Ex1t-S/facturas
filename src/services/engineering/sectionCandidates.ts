@@ -18,6 +18,7 @@ export type SectionCandidate = {
   currentPrice?: number;
   currency?: string;
   priceObservedAt?: string;
+  propertyMissing?: string[];
 };
 
 function metadataValue(metadata: Record<string, unknown>, keys: string[]) {
@@ -60,7 +61,7 @@ export async function searchEngineeringSectionCandidates(companyId: string, quer
     include: { stocks: true, supplierPrices: { orderBy: { observedAt: 'desc' }, take: 1 } },
     take: Math.max(take * 4, 24)
   })]);
-  const catalog = catalogRows.filter((row) => row.area && row.ix && row.iy).map((row) => ({
+  const catalog = catalogRows.map((row) => ({
     id: row.id,
     designation: row.designation,
     material: row.material || undefined,
@@ -70,7 +71,8 @@ export async function searchEngineeringSectionCandidates(companyId: string, quer
     iyMm4: row.iy || undefined,
     source: 'STRUCTURAL_CATALOG' as const,
     sourceTitle: row.source,
-    verified: row.verified
+    verified: row.verified,
+    propertyMissing: ['area', 'massPerMeter', 'ix', 'iy', 'rx', 'ry'].filter((property) => row[property as keyof typeof row] === null || row[property as keyof typeof row] === undefined)
   } satisfies SectionCandidate));
   const inventory = products.map((product) => {
     const metadata = parseMetadata(product.metadataJson);

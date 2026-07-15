@@ -1,0 +1,100 @@
+{
+  "manifestCount": 12,
+  "results": [
+    {
+      "id": "inti-cirsoc-portal",
+      "title": "Portal oficial de reglamentos INTI-CIRSOC",
+      "status": "REGISTERED",
+      "downloadStatus": "NOT_ATTEMPTED"
+    },
+    {
+      "id": "cirsoc-301-2005",
+      "title": "Reglamento CIRSOC 301-2005: Estructuras de acero para edificios",
+      "status": "SYNCED_OFFLINE",
+      "downloadStatus": "DOWNLOADED",
+      "fileHash": "9a12427050cd5da8515769d75c2059dbf884402e7c11b01457ad9c33bbd73e9c",
+      "localFilePath": "uploads/engineering-sources/cirsoc-301-2005.pdf"
+    },
+    {
+      "id": "cirsoc-301-comments-2005",
+      "title": "Comentarios CIRSOC 301-2005",
+      "status": "SYNCED_OFFLINE",
+      "downloadStatus": "DOWNLOADED",
+      "fileHash": "7e65dab15ef3db33aea79209069d6f17604271205346da0260172d5f2568d0f8",
+      "localFilePath": "uploads/engineering-sources/cirsoc-301-comments-2005.pdf"
+    },
+    {
+      "id": "cirsoc-302-2005",
+      "title": "Reglamento CIRSOC 302-2005: elementos estructurales de tubos de acero",
+      "status": "SYNCED_OFFLINE",
+      "downloadStatus": "DOWNLOADED",
+      "fileHash": "aee86859c9e35c8e1ae968a00057054d0a0fa478f75a74419e84ddfcf30733d2",
+      "localFilePath": "uploads/engineering-sources/cirsoc-302-2005.pdf"
+    },
+    {
+      "id": "cirsoc-302-comments-2005",
+      "title": "Comentarios CIRSOC 302-2005",
+      "status": "SYNCED_OFFLINE",
+      "downloadStatus": "DOWNLOADED",
+      "fileHash": "9898aaa9728d418ea998a4785fdf457f92ada0a4581f362a4130684b2b7bc9cf",
+      "localFilePath": "uploads/engineering-sources/cirsoc-302-comments-2005.pdf"
+    },
+    {
+      "id": "cirsoc-301-examples-part-i",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "status": "SYNCED_OFFLINE",
+      "downloadStatus": "DOWNLOADED",
+      "fileHash": "900fc67aa0c9873ba89719d20978f3a6108c2acdd347d5932f993a29ff55b467",
+      "localFilePath": "uploads/engineering-sources/cirsoc-301-examples-part-i.pdf"
+    },
+    {
+      "id": "cirsoc-301-examples-part-ii",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte II",
+      "status": "SYNCED_OFFLINE",
+      "downloadStatus": "DOWNLOADED",
+      "fileHash": "308e943d6c7aa0e8efee11b29bf9b75c1391a79997555e22ea4d5b29b756334f",
+      "localFilePath": "uploads/engineering-sources/cirsoc-301-examples-part-ii.pdf"
+    },
+    {
+      "id": "cirsoc-302-examples",
+      "title": "Ejemplos de aplicación CIRSOC 302-2005",
+      "status": "SYNCED_OFFLINE",
+      "downloadStatus": "DOWNLOADED",
+      "fileHash": "2a110626ebb9fd8a1f3aea0b8da37e7d035197d9881b542a8c30c8626bc62565",
+      "localFilePath": "uploads/engineering-sources/cirsoc-302-examples.pdf"
+    },
+    {
+      "id": "cirsoc-301-302-tables-2005",
+      "title": "Tablas de perfiles laminados y tubos estructurales CIRSOC 301/302-2005",
+      "status": "SYNCED_OFFLINE",
+      "downloadStatus": "DOWNLOADED",
+      "fileHash": "cd5627d7011c38716f15ca2e0d374fec45004c9466873ee973dbe9fa49ee06a7",
+      "localFilePath": "uploads/engineering-sources/cirsoc-301-302-tables-2005.pdf"
+    },
+    {
+      "id": "cirsoc-101-25",
+      "title": "Reglamento CIRSOC 101-25",
+      "status": "SYNCED_OFFLINE",
+      "downloadStatus": "DOWNLOADED",
+      "fileHash": "ab1578742dc0c47fc080574d9af39059818686bfa5a44906a06aba419eaf03ec",
+      "localFilePath": "uploads/engineering-sources/cirsoc-101-25.pdf"
+    },
+    {
+      "id": "aisc-first-semester-v16",
+      "title": "AISC Steel Construction Manual Design Examples V16.0 (companion)",
+      "status": "RESTRICTED",
+      "downloadStatus": "ACCESS_RESTRICTED",
+      "reason": "HTTP 403"
+    },
+    {
+      "id": "jrc-eurocode-3-1-5",
+      "title": "Commentary and worked examples to EN 1993-1-5",
+      "status": "SYNCED_OFFLINE",
+      "downloadStatus": "DOWNLOADED",
+      "fileHash": "2c9f63cbdaad67b8f5e74932e5cf0790a8fc5169d2efc300785f41ff192b02ab",
+      "localFilePath": "uploads/engineering-sources/jrc-eurocode-3-1-5.pdf"
+    }
+  ],
+  "mode": "OFFLINE_NO_DATABASE",
+  "generatedAt": "2026-07-15T12:56:25.037Z"
+}

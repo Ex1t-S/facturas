@@ -1,0 +1,186 @@
+{
+  "mode": "OFFLINE_NO_DATABASE",
+  "generatedAt": "2026-07-15T13:14:10.925Z",
+  "candidates": [
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°1",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        13
+      ],
+      "excerpt": "EJEMPLO N°1 Barra sometida a tracción. Unión abulonada a chapa de nudo. Aplicación Capítulos B, D y J. Enunciado: Dimensionar: un perfil de sección ángulo simple sometido a tracción, la chapa de nudo y la unión abulonada . La unión se plantea con una sola hilera de tres bulones. La longitud del tensor es de 4,00 m. La fuerza de tracción requerida es Tu=180 kN. El acero del perfil y la chapa de nudo tiene Fy=235 MPa. Fu= 370MPa. Los bulones son tipo ASTM A325. Tu=180KN 260 220 270 76,2 76,2 t=6.35mm 6.35 21.4 Dimensiones en mm Figura Ej. 1-1 1) Dimensionamiento del perfil • Para el estado límite de fluencia en la sección bruta (Sección D.1.(a)), la mínima área bruta Ag es la que satisface: Tu=φt. Pn Con Pn = Fy . Ag . (10-1) (D.1-1) .F 10 . T A y t u g φ = despejando Ag necesaria cm 8,51 235 . 0,9 10 . 180 A 2 g = = (Ej.1-1) • Para el estado límite de rotura en la sección neta (Sección D.1.(b)), la mínima área neta efectiva Ae necesaria resulta con igual razonamiento anterior desde la Ec.(D.1-2) .F 10 T A u t u e φ ⋅ = cm 6,49 370 . 0,75 10 . 180 A 2 e = = (Ej.1-2) Se adopta como criterio de proyecto (sección B.3) 0,85 L x 1 U = − = El área neta An mínima necesaria según Sección B.3 (2)(a) (la fuerza de tracción se trasmite sólo por un ala del ángulo y sólo por bulones) U A A e n = de Ec. (B.3-1) de ecuación (Ej.1-2) y con el valor adoptado para U Ejemplos de Aplicación. CIRSOC 301-EL Ej. 1 - 1 -- 14 of 153 -- 2 cm 7,64 0,85 6,49 A 2 n = = (Ej.1-3) De acuerdo a Sección B.7, la esbeltez máxima de un elemento traccionado es 300. Luego el radio de giro mínimo del perfil será: 300 r L k mín = ⋅ k=1 L=400 cm cm 1,34 300 400 r mín = = Se adopta un perfil ángulo de 76.2x6.35 mm (3”x1/4”) con Ag = 9,27 cm2 Area del perfil → mayor Ag= 8,51 cm2 de (Ej.1-1) ===Î (VERIFICA) rmin = 1,50 cm radio de giro mínimo > rmin =1,34 cm ===Î (VERIFICA) tf = 6,35 mm espesor del ala del ángulo x = 2,14 cm distancia del centro de gravedad a la cara externa del ala Se predimensiona la unión abulonada con una fila de 3 bulones A325 de diámetro 5/8” (15,87 mm). Se adoptan agujeros normales. De tabla J.3-3 la dimensión nominal del agujero dnom 11/16” (17,5 mm). 76,2 35 75 75 35 40 36,2 Figura Ej. 1-2 Según Sección B2, el diámetro de cálculo (dcal) es 2mm más que el diámetro nominal (dnom) del agujero, por lo tanto: dnom=17,5 mm dcal=17,5+2 =19,5 mm ≅ 20 mm = 2",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°2",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        17
+      ],
+      "excerpt": "EJEMPLO N°2 Barra sometida a tracción. Unión soldada a chapa de nudo. Aplicación Capítulos B, D y J. Enunciado: Dimensionar: una barra formada por dos perfiles ángulos sometida a tracción, la chapa de nudo y la unión soldada. La fuerza de tracción requerida es Tu=220 kN. El acero del ángulo y de la chapa de nudo tiene Fy=235 MPa y Fu=370 MPa. Electrodo con Fexx=480 MPa La barra es una diagonal de una viga reticulada. NUDO A 50,8 Sec 1-1 2130 1400 15 49° Dimensiones en mm 1 1 Figura Ej. 2-1 1) Dimensionamiento del perfil • Para el estado límite de fluencia en la sección bruta (Sección D.1.(a)), la mínima área bruta Ag es la que satisface Tu= φt . Pn con Pn= Fy . Ag . (10-1) (D.1-1) despejando Ag necesaria .F 10 . T A y t u g φ = cm 40 , 10 235 . 9 , 0 10 . 220 A 2 g = = (Ej. 2-1) • Para el estado límite de rotura en la sección neta (Sección D.1(b)), la mínima área neta efectiva necesaria resulta con igual razonamiento anterior desde la Ec. (D.1-2) Ejemplos de Aplicación. CIRSOC 301-EL Ej. 2 - 1 -- 18 of 153 -- 6 F 10 T A u t u e ⋅ φ ⋅ = cm 7,93 370 . 0,75 10 . 220 A 2 e = = (Ej. 2-2) Se adopta como criterio de proyecto U = 0,8 (Sección B.3). El área bruta Ag por B.3(2)(b) resulta de Ec. (B.3-2) cm 9,91 0,8 7,93 U A A 2 e g = = = (Ej.2-3) De (Ej. 2-1) y (Ej. 2-3) resulta para los 2 perfiles ángulo: Ag =10,4 cm2 . Para cada perfil, la sección bruta necesaria cm 5,2 2 10,4 A 2 g1 = = . Por lo tanto, se adoptan dos perfiles ángulo de 50.8x6.35 mm (2”x1/4”) con Ag1 = 6,05 cm2 Área del perfil > 5,2 cm2 (VERIFICA) rmin = 0,99 cm radio de giro mínimo tf = 0,635 cm espesor del ala del ángulo x = 1,50 cm distancia del centro de gravedad a la cara externa del ala Se verifica la esbeltez con el perfil adoptado (Sección B.7.) 300 215 99 , 0 213 1 r L k mín < = ⋅ = ⋅ (VERIFICA) No es necesario colocar forros intermedios. 2) Dimensionamiento de la unión soldada Longitud de filete necesaria: a) Por área neta efectiva del cordón Se adoptó U=0,8 con lo que el estado límite determinante es la fluencia en sección bruta. Con los perfiles adoptados Ag= 6,05 . 2 = 12,10 cm2. Siendo de Ec.(Ej. 2-1) Agnecesaria=10,40 cm2 y con Ae = Ag . U (Sec. B.3(2)(b)) El Umínimo será 66 , 0 10 , 12 93 , 7 A A U g e = = = La mínima longitud L del filete resulta de L x 1− = U cm 5 , 4 66 , 0 1 5 , 1 U 1 x L = − = − = (Ej. 2-4) b) Por resistencia de unión soldada Se di",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°3",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        21
+      ],
+      "excerpt": "EJEMPLO N°3 Unión soldada sometida a corte y torsión. Aplicación Capítulo J Enunciado: Dimensionar la unión soldada de la ménsula de la figura siguiente sometida a corte y torsión. La fuerza requerida aplicada es Pu=260 kN para ambas ménsulas, a una distancia de 40 cm del borde de la columna de sección cajón. Electrodo con FEXX = 480 MPa. Las dimensiones de la columna y ménsula son: 300 170 400 14.29 15.9 300 400 200 250 P n dimensiones en mm P u1 = 260 kN/2= 130 kN Figura Ej. 3-1 Se utilizará soldadura de filete (Sección J.2.2). El factor de resistencia y la resistencia nominal se obtienen de la tabla J.2-5: φ = 0,60 y Fw = 0,60 . FEXX Para FEXX = 480 MPa , Fw = 0,60 . 480 = 288 MPa Para la determinación de esfuerzos y cálculo de la unión se utilizará el análisis elástico lineal (ver Sección J.1.1) Se supone el lado de la soldadura unitario (dw=1 cm) Se predimensiona la soldadura en todo el perímetro. Aw= dw . ΣLi = 1 . (25+20+25) = 70 cm2 El centro de gravedad (xG) de la soldadura se obtiene por Varignon, y es igual a: A cm 9,78 70 0,5 . 1 . 20 13,5 . 2) . 1 . (25 x G = + = Figura Ej. 3-2 Ejemplos de Aplicación. CIRSOC 301-EL Ej. 3 - 1 -- 22 of 153 -- 10 Se calcula el momento de inercia polar: IP = IX + IY 4 2 3 X cm 6179 2 . 10,5 . 1 . 25 12 1 . 20 I = + = 4 3 3 2 Y cm 5018 2 . 3 1 . ) 16,22 (8,78 0,5) - (9,78 . 1 . 20 I = + + = IP = 6179 + 5018 = 11197 cm4 El momento y el corte requerido con respecto al centro de gravedad de la soldadura son MUG = 130 . (40+25+1-9,78) = 7309 kN cm =73,09 kN.m Vug = 130 kN Las tensiones en el punto más solicitado (A de la Fig. Ej. 3-2) son: MPa 71,8 10 . 11197 11 . 7309 10 . I y M f P A UG XM = = = MPa 105,88 10 11197 16,22 7309 10 I x M f P A UG YM = ⋅ ⋅ = ⋅ = MPa 18,57 10 . 70 130 10 . A u P f w YV = = = La tensión combinada actuante en el punto más solicitado del cordón resulta: ( ) MPa 143,68 8 , 71 ,57) 18 (105,88 ) f ( f f f 2 2 2 XM 2 YV YM = + + = + + = (Ej. 3-1) La resistencia de diseño para un cordón de lado dw =1 cm y longitud L unitaria, será de acuerdo a la Sección J.2.4. Rd = φ . FW . AW . 0,1 = φ . FW . 1 . eg. 0,1 ,siendo eg el espesor de garganta efectivo de la soldadura. eg = dw . 0,707=1 . 0,707 = 0,707 cm Por lo tanto Rd = φ . FW . AW .0,1 = 0,60 . 288 . (0,707 . 1). 0,1 = 12,22 kN para dw=1 cm (Ej. 3-2) El lado (dw) de la soldadura necesario se obtiene comparando (Ej.3-1) y (Ej. 3-2",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°4",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        23
+      ],
+      "excerpt": "EJEMPLO N°4 Barra sometida a tracción con empalme. Unión abulonada con unión tipo deslizamiento crítico. Aplicación Capítulos B, D y J. Enunciado: Dimensionar un perfil doble te (IPB) sometido a tracción; ejecutar un empalme a 3 m del apoyo, dimensionando los cubrejuntas y la unión abulonada . La unión se plantea sólo con cubrejuntas de ala con dos hileras de bulones. La longitud del tensor es de 9.00 m. La fuerza de tracción requerida es Tu=500 kN, la fuerza de tracción en servicio T=345 kN. El acero del perfil y de la chapa del cubrejunta tiene Fy=235 MPa y Fu=370 MPa. Los bulones son de calidad ISO 8.8. 300 600 x T u T u Dimensiones en cm Figura Ej. 4-1 1) Dimensionamiento del perfil Se supone que las uniones extremas no determinan las dimensiones del tensor. • Para el estado límite de fluencia en la sección bruta (Sección D.1.(a)), la mínima área bruta se obtiene de la Ecuación (D.1-1). .F 10 . T A y t u g φ = cm 23,64 235 . 0,9 10 . 500 A 2 g = = (Ej. 4-1) • Por estado límite de rotura de la sección neta, la mínima área neta efectiva Ae necesaria se obtiene de la Ecuación (D. 1-2): .F 10 . T A y t u e φ = cm 18,02 370 . 0,75 10 . 500 A 2 e = = (Ej. 4-2) Se adopta como criterio de proyecto (sección B.3) 0,85 L x 1 U = − = El área neta An mínima necesaria según Sección B.3.(2)(a) (la fuerza de tracción se trasmite sólo por las alas y por bulones.) Ejemplos de Aplicación. CIRSOC 301-EL Ej. 4 - 1 -- 24 of 153 -- 12 U A A e n = de Ec. (B.3-1) de (Ej. 4-2) cm 21,20 0,85 18,02 A 2 n = = (Ej.4-3) De acuerdo a Sección B.7, la esbeltez máxima de un elemento traccionado es 300. Luego el radio de giro mínimo del perfil será (con k=1 y L=900cm) cm 3,0 300 900 r y = = Se adopta un perfil IPB 120 con Ag = 34 cm2 Area del perfil → > Ag= 23,64 de (Ej. 4-1) VERIFICA fluencia en sección bruta rmin = 3,06 cm radio de giro mínimo del perfil tf = 11,0 mm espesor del ala del perfil 120 120 t = 11 mm s = 6,5 mm Fig. Ej. 4-2 Se predimensiona la unión abulonada con dos filas de 5 bulones de diámetro 14mm, calidad 8.8. Se adoptan agujeros normales. De Tabla J.3.3 → diámetro nominal = 16 mm. Según Sección B.2, el diámetro de cálculo(dcal) es 2mm mayor que diámetro nominal (dnom) del agujero, por lo tanto: dnom=16 mm dcal=16+2=18 mm El área neta del perfil An = Ag – dcal . tf . N° = 34,0 – 1,8 . 1,1 . 4 = 26,08 cm2 ≥ 21,20 cm2 de (Ej. 4-3) VERIFICA rotura en s",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°5",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        29
+      ],
+      "excerpt": "EJEMPLO N°5 Empalme de viga laminada sujeto a flexión y corte. Unión abulonada con unión tipo aplastamiento. Aplicación Capítulos A, B, D, F, J y H. Enunciado Dimensionar cubrejuntas y uniones abulonadas del empalme en la viga formada por un perfil IPE500 sometida a flexión y corte. El empalme se plantea con cubrejuntas de ala y de alma. La luz de la viga es de 16,00 m, y la sección de empalme se ubica a 4 m del apoyo. El acero del perfil laminado y de la chapa de los cubrejuntas tiene Fy=235 MPa y Fu=370 MPa. Los bulones son del tipo ISO 8.8. Las acciones sobre la viga son: D=2 kN/m y L=5 kN/m 1) Determinación de solicitaciones requeridas en la sección de empalme x = 4 m 12 m E 16 m q u V M Vx Mx Figura Ej. 5-1 Se utilizan las ecuaciones de la estática (Sección C.1.1(1)). De las combinaciones de acciones de la Sección A.4.2 corresponde analizar la (A.4-1) y (A.4-2). La carga uniformemente repartida en la viga resulta Combinación (A.4-1) qu= 1,4.D= 1,4 .2 = 2,8 kN/m Combinación (A.4-2) qu= 1,2.D + 1,6.L = 1,2 .2 + 1,6 . 5 = 10,4 kN/m Son mayores efectos los produce la combinación (A.4-2) Ru = 10,4 . 16 . 0.50 = 83,2 kN Mu= 10,4 . 162 / 8 = 332,8 kN.m. MEu = 83,2 . 4 – 10,4 . 42 . 0,5 = 249,6 kN.m VEu = 83,2 – 4 . 10,4 = 41,6 kN Los datos de la sección del perfil IPE500 son: Ejemplos de Aplicación. CIRSOC 301-EL Ej. 5 - 1 -- 30 of 153 -- 18 d=500 tw =10,2 Y X bf=200 tf=16 Dimensiones en mm Figura Ej. 5-2 Ag = 115,52 cm2 Area del perfil Ix = 48199 cm4 Momento de inercia alrededor del eje x-x Sx= 1927,9 cm3 Momento resistente alrededor del eje x-x Zx = 2194 cm3 Módulo resistente plástico rx = 20,4 cm radio de giro alrededor del eje x-x Iy = 2141,7 cm4 Momento de inercia alrededor del eje y-y ry = 4,3 cm radio de giro alrededor del eje y-y De acuerdo al segundo párrafo de la Sección J.7., se dimensionará el cubrejunta de alma para el corte total (VEu) y para el momento Mw y el cubrejunta de ala para el momento Mf siendo Mw la parte de momento MEu que toma el alma del perfil I y Mf la parte de momento MEu que toman las alas del Perfil I. Además se verifica que MEu = 249,6 > 0,5 . Mu = 166,4 kN.m; y VEU = 41,6 kN ≈ 0,50 . Vu = 41,6 kN. Mf = MEu . (If / Ix) If= momento de inercia de las alas 4 3 2 3 f 2 f f f cm 37495 12 1,6 . 20 2 6 , 1 2 50 . 1,6 . 20 . 2 12 t . b 2 t 2 d . t . b . 2 I =         +       − =         +      ",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°6",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        37
+      ],
+      "excerpt": "EJEMPLO N°6 Viga laminada flexada con platabanda de refuerzo soldada. Aplicación Capítulos B, F y J Enunciado: Dimensionar las platabandas a agregar a un perfil laminado para la viga de la Figura Ej. 6-1 y sus uniones soldadas. Perfil PNI 300. Acero del perfil y platabanda con Fy= 235 MPa, Fu= 370 MPa. Electrodo con FEXX = 480 MPa. El ala comprimida del perfil está lateralmente arriostrada en toda su longitud (entrepiso rígido). IPN 300 Ix= 9800 cm4 Sx= 653 cm3 Zx= 762 cm3 bf= 12,5 cm (ancho ala) tf= 1,62 cm (espesor en mitad del ala) hw= 24,1 cm (altura alma) tw= 1,08 cm (espesor alma). xo=178 1000 cm q = 22 kN/m u V M Vu Mu1= 161 257,7 Mu= 275 xo= 178 x1 x1 Mu1= 161 257,7 Mu= 275 kNm Vu= 110 kN Figura Ej. 6-1 1) Resistencia de diseño a flexión del perfil (Sección F.1) • Clasificación de la sección del perfil (Sección B.5.1) Ala →de Tabla B.5-1 (*) Caso 1 08 , 11 235 170 F 170 y p = = = λ Relación ancho espesor del ala p f f 85 , 3 62 , 1 2 5 , 12 t 2 b λ < = = = λ Ejemplos de Aplicación. CIRSOC 301-EL Ej. 6 - 1 -- 38 of 153 -- 26 Alma → de la Tabla B.5-1 (*) Caso 9 6 , 109 235 1680 F 1680 y p = = = λ Relación ancho espesor del alma p w w 32 , 22 08 , 1 1 , 24 t h λ < = = = λ SECCION COMPACTA • Resistencia nominal a flexión Por ser una viga compacta lateralmente arriostrada en toda su longitud → único estado límite aplicable es plastificación. Mn = Mp (F.1.1) Mdp = φ.Mn = φ.Mp = φ. Zx . Fy. (10-3) Mdp = 0,9 . 762 . 235 . 10-3 = 161,16 kNm < Mu = 275 kNm. Es necesario agregar platabanda. 2) Determinación de las dimensiones de las platabandas Con viga lateralmente arriostrada en todo su longitud y sección compacta (se verificará platabanda) el momento nominal es Mp. Momento nominal necesario = Mnn= Mu/φ = 275/0,9 = 305,6 kNm Mnn = Mp = Zxn . Fy .(10-3) (F.1-1) 3 3 3 y nn xn cm 50 , 1300 10 235 6 , 305 10 F M Z = ⋅ = ⋅ = Debe ser Zxn = Zx(perfil) + Zp(platabanda) Zp = Zxn – Zx = 1300,50 – 762 = 538,5 cm3 De Figura Ej.6-2 p t p b p t d t p d + 2 Figura Ej. 6-2 Ejemplos de Aplicación Reglamento Argentino de Estructuras de Acero para Edificios. Estados Límites. Ej. 6 -2 -- 39 of 153 -- 27 3 p p p p cm 5 , 538 2 t d t b 2 Z =        + ⋅ ⋅ ⋅ = (Ej. 6-1) se fija tp=1,905 (3/4”) de (Ej. 6-1) resulta bp=8,86 cm ≅ 9 cm Se verifica relación ancho – espesor de platabanda. Tabla B.5-1 (*), Caso 10. 6 , 32 235 500 F 500 y p = = = λ",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°7",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        43
+      ],
+      "excerpt": "EJEMPLO N°7 Unión soldada sometida a corte y flexión. Aplicación Capítulos C y J. Enunciado Verificar la unión del perfil ángulo 101,6x101,6x9.5mm soldado al ala del PNI200. El perfil ángulo está solicitado a una carga Pu = 55 kN ubicada a una distancia e =50 mm del borde externo del ala del PNI (ver Figura Ej.7-1). Los perfiles tienen acero de Fy = 235 MPa y Fu= 370 MPa. El tipo de soldadura es de filete con electrodo de tensión FEXX=480 MPa. 1,13 9.5 e PU \"L\" 101.6x101.6x9.5 PNI200 7,5 100 7,5 100 B B A A VISTA A-A VISTA B-B PLANTA Figura Ej. 7-1 De acuerdo a la Sección C.1. se determinan las solicitaciones requeridas para la unión soldada. El momento Mu = Pu . e = 55 . 5 . 10-2 = 2,75 kN.m. y el corte Vu = Pu = 55 kN. De acuerdo a la Figura Ej.7-1 el espesor del ala del PNI es tp =1,13 cm y el espesor del ala del ángulo es ta =0,95 cm. Por lo tanto, de acuerdo a tabla J.2-4 el lado mínimo de la soldadura de filete es dmin =5 mm. El lado máximo es de acuerdo a Sección J.2.2(b): dmax= 9,5 – 2 = 7,5 mm Se supone un lado unitario d = 1cm. De acuerdo a Sección J.2.2(a) el área efectiva de la soldadura (Aw ) es igual a la longitud efectiva (Ls) del filete por el espesor efectivo de garganta (eg). Entonces : Aw = eg . Ls , con eg = 0,707 . d = 0,707 . 1 = 0,707 cm, y Ls = 10 cm. Aw = 0,707 . 10 . 2 = 14,4 cm2 . El momento resistente elástico de la soldadura (Sw) es : 3 2 W cm 57 , 23 2 . 6 ) 10 .( 707 , 0 S = = Ejemplos de Aplicación. CIRSOC 301-EL Ej. 7-1 -- 44 of 153 -- 32 De acuerdo a Sección J.1.1., utilizando el análisis elástico lineal se determinan las tensiones en la soldadura: MPa. 35 , 58 14 , 14 10 . 55 . 5 , 1 A 10 . V . 5 , 1 f 1 w 1 u V = = = MPa. 67 , 116 57 , 23 10 . 75 , 2 S M f 3 w u M = = = La tensión combinada resulta . cm 1 d de cordón un para MPa 45 , 130 67 , 116 35 , 58 f f f 2 2 2 M 2 V = = + = + = De acuerdo a Sección J.2.4. la resistencia de diseño de la soldadura es: Rd = φ . FW . AW . 0,1 (Ej.7-1) El tipo de soldadura utilizada es (Sección J.2) filete con fuerza de corte en el área efectiva. El factor de resistencia (φ) y la resistencia nominal(Fw) se obtiene de la Tabla J.2-5: φ = 0,60 y FW = 0,60 . FEXX Para FEXX = 480 MPa, FW= 0,60 . 480 = 288 MPa La resistencia de diseño para 1 cm2 resulta: Rd = 0,60 . 288 . 0,1 = 17,3 kN/cm2 El lado de filete necesario (dnec) es: cm 75 , 0 10 . 3 , 17 45 , 130 10 . R f 1 1 d = =",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°8",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        45
+      ],
+      "excerpt": "EJEMPLO N°8 Unión abulonada sometida a corte y flexión. Aplicación Capítulos C y J. Enunciado Verificar la unión de una placa vertical de 300x180x15,9 mm abulonada a la columna armada de 350x180x12.7 mm. La placa tiene soldado un perfil PNI180 que está solicitado a una carga Pu = 75 kN ubicada a una distancia e =50 cm del borde externo del ala de la columna (ver Figura Ej.8-1). Los perfiles y la chapa tienen acero de Fy = 235 MPa y Fu= 370 MPa. El tipo de bulones son bulones milimétricos 8.8 ISO, rosca gruesa y excluida del plano de corte y agujeros normales. La disposición y diámetro de bulones se indica en la Figura Ej.8-2. La unión es de tipo aplastamiento. 350 VISTA LATERAL 180 PLANTA 300 180 e = 500 180 VISTA FRONTAL 82 12,7 PU 15,9 300 Figura Ej. 8-1 300 cantidad: 6 diámetro: 16 mm Bulones: ISO 8.8 UNION ABULONADA 110 40 110 180 40 DETALLE 100 40 40 Eje de gravedad Figura Ej.8-2 Ejemplos de Aplicación. CIRSOC 301-EL Ej. 8-1 -- 46 of 153 -- 34 De acuerdo a la Sección C.1., se determinan las solicitaciones requeridas para la unión abulonada. El momento Mu = Pu . e = 75 . 50 . 10-2 = 37,5 kN.m. y el corte Vu = Pu = 75 kN. De acuerdo a la Figura Ej.8-2 se verifican las distancias mínimas y máximas al borde (se supone bordes cortados mecánicamente) y las separaciones máximas y mínimas entre bulones (ver Secciones J.3.3, J.3.4. y J.3.5). Se determinan las distancias máximas y mínimas (Sección J.3.3., J.3.4 y J.3.5) sMIN= 3.d = 3 . 1,6 = 4,8 cm = 48 mm sMAX = 24 . 12,7 = 304,8 mm ó < 300 mm dbmin = 1,75 . d = 1,75 . 1,6 = 28 mm dbmax = 12 . 12,7 = 152,4 mm ó < 150 mm. Se verifican a continuación s1 = 100 mm > 48 mm VERIFICA s2 = 110 mm < 300 mm VERIFICA db = 40 mm > 28 mm VERIFICA db = 40 mm < 150 mm VERIFICA De acuerdo a Sección J.1.1., utilizando el análisis elástico lineal se determinan las solicitaciones requeridas en los bulones. La fuerza de corte por bulón es: Pv = Vu / 6 = 75 / 6 = 12,5 kN El momento tracciona los bulones superiores y comprime la chapa. Se puede tomar, según la figura, la fuerza en cada bulón traccionado: kN 3 , 89 100 . 5 , 37 TMi = = 21 . 2 21 10 15 11 T C Figura Ej.8-3 Se verificará el bulón más solicitado a tracción y corte en unión de tipo APLASTAMIENTO. • Resistencia a tracción (Sección J.3.7.) La resistencia de diseño a tracción de un bulón sometido a corte y tracción combinados es Rd = φ . Ft . Ab",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°9",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        49
+      ],
+      "excerpt": "EJEMPLO N°9 Cálculo de solicitaciones requeridas en columnas de pórtico no arriostrado (de nudos desplazables). Cálculo de los factores de longitud efectiva k de columnas de pórtico no arriostrado (de nudos desplazables). Aplicación de capítulos A, C y Comentarios Capítulo C. Enunciado A) Determinar las solicitaciones requeridas en las columnas del pórtico desplazable de la Figura Ej.9-1, sometido a las acciones de peso propio(D), sobrecarga de cubierta (Lr) y viento (W) sobre la cubierta y las paredes laterales (Figuras Ej.9-2a,Ej.9-2b,Ej.9-2c y Ej.9-2d). Estado: Peso Propio (D) Estado: Sobrecarga (L ) L = 1,8 KN/m Estado: viento WI.D. Estado: viento WD.I. r ( ) ( ) De acuerdo al capítulo A (sección A.4.2), la resistencia requerida surge de la combinación crítica de las siguientes combinaciones de acciones: Ejemplos de Aplicación. CIRSOC 301-EL Ej. 9-1 -- 50 of 153 -- 38 1,4 D (A.4-1) 1,2 D + 1,6 Lr (A.4-3) 1,2 D ± 1,3 W + 0,5 Lr (A.4-4) 0,9 D - 1,3 W (A.4-6) Las combinaciones A.4-2 y A.4.5 no son aplicables pues no actúan las acciones L y E . De acuerdo a la sección C.1 se aplica el análisis global elástico y se resuelve el pórtico hiperestático para los cuatro estados de carga nominales solicitantes: (1) Peso Propio D (2) Sobrecarga de cubierta Lr (3) Viento W en sentido (I.D.: izquierda-derecha) Æ (4) Viento W en sentido (D.I.: derecha-izquierda)  Los momentos de inercia de las columnas C1, C3 y las vigas V1 y V2 se plantean de forma relativa para la resolución del pórtico desplazable: (ver Figura Ej.9-3) Ic1 = 1,5 I , Ic3 = I, Iv1 = Iv2 = I 1 1 1 1,5 Figura Ej.9-3 Relación de I Se obtienen los siguientes diagramas de momento(M), corte(V) y normal (N) para los estados de carga nominales (ver Figura Ej.9-4). - 2,8 - 14,5 15,5 - 6,2 - 1,2 6,6 14,8 16,7 1,9 21 20,9 16,6 1,9 0,8 7,1 8,9 9 7,2 0,8 16,6 42,1 16,9 7,2 18,1 7,1 34,4 Figura Ej.9-4(a) Ejemplos de Aplicación Reglamento Argentino de Estructuras de Acero para Edificios. Estados Límites. Ej. 9-2 -- 51 of 153 -- 39 41,5 97,9 15,8 14,6 19,6 16,2 9,4 10,5 11,6 13,2 13,4 15,3 37,1 17,3 24,1 11,6 43,4 3,9 23,2 16,6 22,7 19,6 10 17,4 153,5 46,3 38,9 9 1,3 12 39,6 41,5 Figura Ej.9-4(b) Se realizan las combinaciones de acciones para obtener cada resistencia requerida para cada elemento. Siendo el análisis de primer orden existe proporcionalidad entre cargas y resistencias requeridas.",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°10",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        59
+      ],
+      "excerpt": "EJEMPLO N°10 Columna sometida a compresión centrada Aplicación Capítulos B, E y Apéndice B. Enunciado Dimensionar la columna C2 del",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°11",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        65
+      ],
+      "excerpt": "EJEMPLO N°11 Columna armada del Grupo IV (con celosías) sometida a: A) Compresión axil, B) Flexocompresión Aplicación Capítulos B, E y Apéndice E A) Enunciado: Verificar una columna armada sometida a una compresión axil Pu=600 kN. La sección está formada por dos perfiles PNU160 unidos por celosías planas soldadas (diagonales de perfiles ángulos 25,4x25,4x3.2). El acero del perfil PNU y de los perfiles ángulos tiene Fy=235 MPa y Fu=370 MPa. La altura de la columna es de 600 cm y se encuentra biarticulada con extremos indesplazables para el pandeo alrededor del eje x-x (kx =1) y empotrada-libre para el pandeo alrededor del eje y-y (ky =2). (ver Figura Ej.11-1) La columna tiene la siguiente configuración: celosia x x y y PNU160 Vínculos Globales k =1 x k =2 y x x y y y' y' Figura Ej.11-1 Los datos del PNU 160 son: Ag1 = 24 cm2 Area del perfil Ix = 925 cm4 Momento de inercia alrededor de x-x rx = 6,21 cm radio de giro alrededor de x-x ex = 1,84 cm distancia del centro de gravedad del perfil PNU al borde del alma Iy = 85,3 cm4 Momento de inercia alrededor de y’-y’ ry = 1,89 cm radio de giro alrededor de y’-y’. Los datos del perfil ángulo son: Ag = 1,5 cm2 Area del perfil rmin = 0,47 cm radio de giro alrededor del eje mínimo. Ejemplos de Aplicación. CIRSOC 301-EL Ej. 11-1 -- 66 of 153 -- 54 1) Verificación de los cordones Por ser α < 60 ° según E.4.3, Grupo IV (5), no son aplicables especificaciones de E.4. Se aplica Apéndice E, Sección A-E.4. 1.a.- Verificación alrededor del eje x-x (material) (Sección A-E.4.2(a)) La esbeltez alrededor del eje x-x (λx) resulta: B.7 Sección 200 62 , 96 21 , 6 600 . 1 r L . k x x x x VERIFICA < = = = λ De acuerdo a Sección E.2., la resistencia de diseño a compresión para pandeo flexional resulta φc .Pn , dónde: φc=0.85 Pn =Fcr . Ag . (10-1) (E.2-1) Se calculan las relaciones ancho-espesor de alma y ala para determinar el tipo de sección ala del esbeltez 19 , 6 5 , 10 65 t b f = = = λ De acuerdo a tabla B.5-1 (*), para el caso 4 6,19 16,31 235 250 F 250 y r > = = = λ Por lo tanto al ser λf < λr , el ala no es esbelta. ( ) alma del esbeltez 15,73 5 , 7 5 , 10 . 4 160 t h w = − = = λ De acuerdo a tabla B.5-1 (*), para el caso 12 (almas comprimidas) 15,73 43,38 235 665 F 665 y r > = = = λ Por lo tanto al ser λw < λr , el alma no es esbelta y la sección NO ES ESBELTA. Por lo tanto, el coeficiente Q=1. Se determina el fac",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°12",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        75
+      ],
+      "excerpt": "EJEMPLO N°12 Columna armada del Grupo V (con presillas) sometida a Compresión axil. Aplicación Capítulos E, F, H y Apéndice E. Enunciado Verificar una columna armada sometida a una compresión axil Pu=800 kN. La sección está formada por cuatro perfiles ángulos 88,9x88,9x9.5 (3 1/2”x3/8”) unidos por presillas planas soldadas (planchuelas). El acero del perfil ángulo y de la planchuela tiene Fy=235 MPa y Fu=370 MPa. La altura de la columna es de 800 cm y se encuentra biarticulada con extremos indesplazables para el pandeo alrededor de ambos ejes x-x (kx =1) y eje y-y (ky =1). (ver Figura Ej.12-1) La columna tiene la siguiente configuración: presilla y x y Vínculos Globales x y y k =1 x y k =1 x \"L\"88.9x88.9x9.5 mm x Vínculos Globales Figura Ej.12-1 Los datos del Perfil ángulo 88,9x88,9x9.5 son: Ag1 = 16,02 cm2 Area del perfil Ix = 119,4 cm4 Momento de inercia alrededor de x’-x’ = y’-y’ rx = 2,73 cm radio de giro alrededor de x’-x’. ex = 2,57 cm distancia del centro de gravedad del perfil al borde externo del ala Iz = 48,44 cm4 Momento de inercia alrededor del eje de menor inercia rz = 1,74 cm radio de giro alrededor del eje de menor inercia 1) Verificación de los cordones Según E.4.1 las columnas armadas del Grupo V no están incluidas en el Capítulo E. Se aplica Apéndice E, Sección A-E.4. Ejemplos de Aplicación. CIRSOC 301-EL Ej. 12-1 -- 76 of 153 -- 64 El momento de inercia alrededor del eje libre y-y (igual a x-x) resulta de acuerdo al teorema de Steiner. Iy = ( 119,4 + 16,02 . (20 – 2,57)2 ) . 4 = 19 945 cm4 y el radio de giro ry= 17,64 cm - Verificación alrededor del eje y-y (eje libre) Los cordones estarán solicitados a flexocompresión. Se obtienen primero las resistencias requeridas y luego se determinan las resistencias de diseño a compresión y flexión para la verificación combinada. De acuerdo a la Sección A-E.4.2.2.(a) la esbeltez modificada de la columna armada es igual a: r L . k 2 1 2 0 m θ λ +       = λ El término λ1 es la relación entre la separación de las presillas y el radio de giro mínimo de la barra r a i 1 = λ Siendo ri= radio de giro mínimo del perfil ángulo = 1,74 cm a = 70,8 cm θ = valor que tiene en cuenta la rigidez de la presilla Si se cumple 1 tomará se , a I . 10 h I . n 1 p = θ ≥ siendo: n = planos de presillas = 2 Ip = momento de inercia de una presilla en su plano I1 = momento de inercia del cordón con respecto al",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°13",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        85
+      ],
+      "excerpt": "EJEMPLO N°13 Columna armada del Grupo II (con forros intermedios) sometida a compresión axil y a compresión y tracción axil. Aplicación Capítulos A, B, C, D y E. Enunciado Dimensionar los cordones superiores e inferiores de una viga reticulada que forma parte de la estructura de una cubierta. Las acciones nominales son Peso propio (D = 0,4 KN/m2), Sobrecarga de techo (Lr = 0,3 kN/m2) y Viento (succión W = 0,6 kN/m2). La Sección de los cordones está formada por dos perfiles ángulos unidos por forros discontinuos soldados. El acero del perfil y de los forros tiene Fy=235 MPa y Fu=370 MPa. La luz de la viga es de 12 m y la altura entre ejes de cordones superior e inferior es de 0,80 m. (ver Figura Ej.13-1). En la Figura Ej.13-2 se observa los arriostramientos que tienen el cordón superior e inferior. Figura Ej.13-1 80 1200 150 150 x x y y 80 Dimensiones en cm. forros chapa de nudo 500 300 300 300 300 VM VM PLANTA Arriostramiento cordón superior VISTA Arriostramiento cordón inferior correa VM Tornapuntas Tornapuntas c/300 cm. Dimensiones en cm. Figura Ej.13-2 Los estados de carga que solicitan a la viga son D, Lr y W. Las acciones nominales sobre la viga, para cada estado son: Ejemplos de Aplicación. CIRSOC 301-EL Ej. 13-1 -- 86 of 153 -- 74 D = 0,4 . 5 m = 2 kN/m Lr = 0,3 . 5 m = 1,5 kN/m W = 0,6 . 5 m = 3 kN/m (succión) Las combinaciones más desfavorables son: (Sección A.4.2) Comb. 1) 1,2 D + 1,6 Lr (A.4-3) Comb. 2) 0,9 D - 1,3 W (A.4-6) Comb. 1) qu = 1,2 . 2 + 1,6 . 1,5 = 4,8 kN/m Comb. 2) qu = 0,9 . 2 – 1,3 . 3,0 = - 2,1 kN/m Las acciones son transmitidas por las correas a los nudos superiores de la viga reticulada. Resultan en los nudos. Comb. 1 Pu = 7,2 kN Comb. 2 Pu = 3,15 N De acuerdo a Sección C.1, aplicando el análisis global elástico, se obtiene: Combinación Mom. Flexor viga Cs (kN) Ci (kN) 1 86,40 kN.m. - 108 + 101,2 2 37,80 kN.m. + 47,2 - 44,3 siendo Cs el esfuerzo máximo en el cordón superior y Ci el esfuerzo máximo del cordón inferior A). Dimensionamiento a compresión del Cordón superior Las longitudes de pandeo se determinan de acuerdo a la Sección C.2.3. (ver Figura Ej.13-1 y 2) - alrededor del eje x Lpx =kx . L = 1 . 150 = 150 cm - alrededor del eje y: Lpy = ky . L, ky está en función de la carga normal, aplicando la Figura C.2-1. ky = 0,75 + 0,25 (P2 / P1) Del análisis estructural se obtiene que P1= Nu = Cs = 108 kN y P2",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°14",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        12
+      ],
+      "excerpt": "EJEMPLO N°14 .......................................................................................................................... 79 Dimensionamiento a flexión y corte de vigas con secciones compactas, no compactas y esbeltas. Aplicación Capítulos A, B, F, K y Apéndices F y G.",
+      "extractionError": ""
+    },
+    {
+      "sourceId": "cirsoc-301-examples-part-i",
+      "sourceTitle": "Ejemplos de aplicación CIRSOC 301-2005 Parte I",
+      "title": "Ejemplos de aplicación CIRSOC 301-2005 Parte I — EJEMPLO N°15",
+      "status": "NEEDS_REVIEW",
+      "verified": false,
+      "pageReferences": [
+        12
+      ],
+      "excerpt": "EJEMPLO N°15........................................................................................................................... 97 Viga sometida a flexión y corte utilizando rigidizadores con acción del campo a tracción. Aplicación Capítulos A, B, F, K y J, y Apéndice G.",
+      "extractionError": ""
+    }
+  ]
+}
