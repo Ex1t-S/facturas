@@ -171,7 +171,9 @@ function outboundWhatsAppNumber(value: string) {
 }
 
 function pendingDraftContentUrl(baseUrl: string, pending?: PendingDeliveryDraft) {
-  return pending?.token ? baseUrl + '/api/whatsapp/drafts/' + pending.token + '/content' : '';
+  return pending?.token && pending.previewStoragePath && pending.previewFileName
+    ? baseUrl + '/api/whatsapp/drafts/' + pending.token + '/content'
+    : '';
 }
 
 function isPublicDocumentUrl(url: string) {
@@ -298,7 +300,8 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const pendingDraft = assistantResponse.pendingDeliveryDraft;
-    const pendingBuffer = !assistantResponse.previewDocument && pendingDraft
+    const pendingPreviewAvailable = Boolean(pendingDraft?.previewStoragePath && pendingDraft.previewFileName);
+    const pendingBuffer = !assistantResponse.previewDocument && pendingDraft && pendingPreviewAvailable
       ? await storedBuffer(pendingDraft.previewStoragePath)
       : null;
     const finalBuffer = !assistantResponse.previewDocument && !pendingDraft && storedDocument
@@ -309,7 +312,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
           ...assistantResponse.previewDocument,
           documentId: undefined as string | undefined
         }
-      : pendingDraft && pendingBuffer
+      : pendingDraft && pendingPreviewAvailable && pendingBuffer
       ? {
           buffer: pendingBuffer,
           mimeType: pendingDraft.previewMimeType || 'application/pdf',
