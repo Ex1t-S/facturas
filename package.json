@@ -40,6 +40,7 @@
     "engineering:drawings:process": "tsx scripts/engineeringDrawingsProcess.ts",
     "engineering:golden:validate": "tsx scripts/engineeringGoldenValidate.ts",
     "test:whatsapp:e2e": "tsx scripts/whatsappControlledE2e.ts",
+    "test:whatsapp:conversations": "tsx scripts/whatsappConversationSimulation.ts",
     "engineering:review": "tsx scripts/engineeringReviewWizard.ts",
     "engineering:review:direct": "tsx scripts/engineeringReviewWizard.ts --direct",
     "engineering:finalization:status": "tsx scripts/engineeringFinalizationStatus.ts",
