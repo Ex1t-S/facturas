@@ -605,8 +605,9 @@ async function createDeliveryNotePreviewDraft(companyId: string, message: string
   return {
     mode: config.OPENAI_API_KEY ? 'openai' : 'local',
     answer: [
-      'Te mande el PDF del remito para ' + customerName + '.',
-      'Si esta bien, respondeme "guardalo". Nombre sugerido: ' + previewFileName,
+      'Preparé el remito para ' + customerName + '.',
+      'Te envío el PDF para revisar.',
+      '¿Lo guardo así? Nombre sugerido: ' + previewFileName,
       'Si queres cambiar el nombre, respondeme "guardalo como ...".'
     ].join('\n'),
     sources: [],
@@ -1119,7 +1120,7 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
       if (missing.length) {
       const answer =
         effectiveIntent === 'delivery_note' && payload.customerName && missing.length === 1 && missing[0] === 'items o descripcion'
-          ? 'Perfecto, lo armamos para ' + payload.customerName + '. Decime que tenemos que agregar al remito: trabajos, materiales, cantidades o descripcion.'
+          ? 'Perfecto. Estoy armando un remito para ' + payload.customerName + '. Mandame los trabajos realizados.'
           : 'Para crear el ' + (effectiveIntent === 'quote' ? 'presupuesto' : 'remito') + ' necesito estos datos: ' + missing.join(', ') + '. Pasamelos en un mensaje y lo guardo como borrador editable.';
       const collecting: PendingDeliveryDraft | undefined = effectiveIntent === 'delivery_note' && payload.customerName && missing.length === 1
         ? {
