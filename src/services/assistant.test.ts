@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectDraftIntent, parseFollowUpDeliveryNoteForTest, sanitizeDocumentInstructions, structuredDeliveryItemsFromMessage, validateGeneratedBusinessDocument } from './assistant.js';
+import { detectDraftIntent, parseFollowUpDeliveryNoteForTest, requestsPreview, sanitizeDocumentInstructions, structuredDeliveryItemsFromMessage, validateGeneratedBusinessDocument } from './assistant.js';
 
 describe('detectDraftIntent', () => {
   it('detects quote draft requests', () => {
@@ -51,5 +51,11 @@ describe('structured commercial delivery-note data', () => {
   it('removes chat-only instructions deterministically', () => {
     expect(sanitizeDocumentInstructions('Prepará el PDF para revisarlo antes de guardarlo')).toBe('');
     expect(() => validateGeneratedBusinessDocument({ customerName: 'Cooperativa Adolfo Alsina', items: [{ description: 'Haceme un remito' }] })).toThrow();
+  });
+});
+
+describe('PDF requests from WhatsApp transcriptions', () => {
+  it.each(['Dame el PDF.', 'Pasame el PDF ya limpio.', 'Quiero que me pases el PDF final.', 'Preparámelo.'])('recognizes %s as a preview request', (message) => {
+    expect(requestsPreview(message)).toBe(true);
   });
 });

@@ -477,13 +477,6 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
           if (config.WHATSAPP_ALLOWED_FROM && message.from !== config.WHATSAPP_ALLOWED_FROM) continue;
           const duplicate = await prisma.whatsAppMessage.findUnique({ where: { providerMessageId: message.id }, select: { id: true } });
           if (duplicate) continue;
-          if (message.audio) {
-            try {
-              await sendWhatsAppText({ to: outboundWhatsAppNumber(message.from), body: 'Recibí el audio. Lo estoy transcribiendo y preparando el PDF para que lo revises.' });
-            } catch (error) {
-              app.log.warn({ error: errorText(error), to: message.from }, 'whatsapp progress message failed');
-            }
-          }
           const inbound = await processIncomingMessage({ message, phoneNumber });
           if (!company || !inbound.body?.trim()) continue;
 

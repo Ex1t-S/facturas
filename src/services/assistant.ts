@@ -155,7 +155,7 @@ function suggestedDocumentFileName(type: PendingDeliveryDraft['type'], payload: 
   return safeFileName(base + '-' + customer + extra + '.pdf');
 }
 
-const conversationalInstruction = /\b(haceme|armame|generame|preparame|prepar[aá]melo|prepar[aá](?:\s+el)?\s+pdf|mandamelo|envialo|guardalo(?:\s+como)?|para\s+revisarlo|antes\s+de\s+guardarlo|confirmalo|haceme\s+un\s+(?:remito|presupuesto))\b/gi;
+const conversationalInstruction = /\b(haceme|armame|generame|preparame|prepar[aá]melo|prepar[aá](?:\s+el)?\s+pdf|(?:dame|pasame|mandame|enviame|quiero\s+que\s+me\s+pases)\s+(?:el\s+)?pdf(?:\s+final)?|mandamelo|envialo|guardalo(?:\s+como)?|para\s+revisarlo|antes\s+de\s+guardarlo|confirmalo|haceme\s+un\s+(?:remito|presupuesto))\b/gi;
 
 /** Second line of defense: document descriptions never contain chat control language. */
 export function sanitizeDocumentInstructions(value: string) {
@@ -216,8 +216,8 @@ function confirmsPendingDraft(message: string) {
   return /\b(guardar|guardalo|confirmar|confirmalo|crear|crealo|generar|generalo|dale|ok|listo|confirmado)\b/.test(normalized);
 }
 
-function requestsPreview(message: string) {
-  return /\b(listo|terminamos|preparamelo|preparalo|prepara(?:me)?(?:\s+el)?\s+pdf|haceme\s+el\s+pdf|mostrame\s+como\s+quedo|mandame\s+el\s+borrador|quiero\s+revisarlo)\b/i.test(normalizeText(message));
+export function requestsPreview(message: string) {
+  return /\b(listo|terminamos|preparamelo|preparalo|prepara(?:me)?(?:\s+el)?\s+pdf|haceme\s+el\s+pdf|(?:dame|pasame|mandame|enviame|quiero\s+que\s+me\s+pases)\s+(?:el\s+)?pdf(?:\s+final)?|mostrame\s+como\s+quedo|mandame\s+el\s+borrador|quiero\s+revisarlo)\b/i.test(normalizeText(message));
 }
 
 function requestsDraftStatus(message: string) {

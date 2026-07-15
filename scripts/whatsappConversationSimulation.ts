@@ -32,7 +32,7 @@ async function main() {
     if (first.draft?.status !== 'COLLECTING_INFORMATION') throw new Error('El primer teléfono no abrió un borrador.');
     const firstAudio1 = await answerAssistant({ companyId: company.id, message: 'Cambiamos dos rodamientos de la noria.', pendingDeliveryDraft: first.draft });
     const firstAudio2 = await answerAssistant({ companyId: company.id, message: 'También soldamos el soporte inferior.', pendingDeliveryDraft: firstAudio1.pendingDeliveryDraft });
-    const firstPreview = await answerAssistant({ companyId: company.id, message: 'Preparámelo.', pendingDeliveryDraft: firstAudio2.pendingDeliveryDraft });
+    const firstPreview = await answerAssistant({ companyId: company.id, message: 'Pasame el PDF ya limpio.', pendingDeliveryDraft: firstAudio2.pendingDeliveryDraft });
     if (!firstPreview.previewDocument || firstPreview.pendingDeliveryDraft?.rendererUsed !== 'FMH_TEMPLATE') throw new Error('No se generó el PDF FMH del primer teléfono.');
     const firstPdf = path.join(outputDir, '01-remito-rodamientos-y-soporte.pdf');
     await fs.writeFile(firstPdf, firstPreview.previewDocument.buffer);
@@ -41,7 +41,7 @@ async function main() {
     second.draft = beginSecond.pendingDeliveryDraft;
     if (second.draft?.status !== 'COLLECTING_INFORMATION') throw new Error('El segundo teléfono no abrió un borrador.');
     const secondAudio = await answerAssistant({ companyId: company.id, message: 'Realizamos una revisión general de la cinta.', pendingDeliveryDraft: second.draft });
-    const secondPreview = await answerAssistant({ companyId: company.id, message: 'Preparámelo.', pendingDeliveryDraft: secondAudio.pendingDeliveryDraft });
+    const secondPreview = await answerAssistant({ companyId: company.id, message: 'Quiero que me pases el PDF final.', pendingDeliveryDraft: secondAudio.pendingDeliveryDraft });
     if (!secondPreview.previewDocument || secondPreview.pendingDeliveryDraft?.rendererUsed !== 'FMH_TEMPLATE') throw new Error('No se generó el PDF FMH del segundo teléfono.');
     const secondPdf = path.join(outputDir, '02-remito-revision-de-cinta.pdf');
     await fs.writeFile(secondPdf, secondPreview.previewDocument.buffer);
