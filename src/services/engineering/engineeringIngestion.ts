@@ -35,6 +35,13 @@ async function extractText(filePath: string) {
   return '';
 }
 
+/** PostgreSQL rejects embedded NUL bytes even though some PDF text extractors
+ * emit them for damaged fonts or control glyphs. Keep the useful text and
+ * discard only characters that cannot be persisted. */
+export function sanitizeEngineeringExtractedText(value: string) {
+  return value.replace(/\u0000/g, '');
+}
+
 function classify(filePath: string, text: string) {
   const value = `${path.basename(filePath)} ${text.slice(0, 5000)}`.toLowerCase();
   const projectType = knownProjectTypes.find(([term]) => value.includes(term))?.[1] ?? 'OTHER';
@@ -78,7 +85,7 @@ export async function ingestEngineeringKnowledge(input: { rootPath: string; comp
         if (existing) await prisma.engineeringKnowledgeDocument.update({ where: { id: existing.id }, data }); else await prisma.engineeringKnowledgeDocument.create({ data: { ...data, companyId: scopeCompanyId } });
         counts.pending++; continue;
       }
-      const text = await extractText(filePath);
+      const text = sanitizeEngineeringExtractedText(await extractText(filePath));
       const extracted = structured(filePath, text);
       const status = ['.jpg', '.jpeg', '.png'].includes(extension) || !text.trim() ? 'NEEDS_VISION' : 'EXTRACTED';
       const data = { fileName: path.basename(filePath), relativePath, extension, mimeType, sha256, sizeBytes: stat.size, status, documentType: extracted.documentType, projectType: extracted.projectType, rawText: text || null, structuredJson: JSON.stringify(extracted), metadataJson: JSON.stringify({ originalPath: filePath }), confidence: extracted.extractionConfidence, errorMessage: null };

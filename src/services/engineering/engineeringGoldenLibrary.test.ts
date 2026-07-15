@@ -3,6 +3,7 @@ import { assertMethodContext, sourcePriority, validatePublicSourceUrl } from './
 import { parseCirsocRectangularSections, parseStructuralCatalogCsv } from './structuralCatalogImporter.js';
 import { extractBenchmarkSlices } from './engineeringCuration.js';
 import { entityReviewPatch, isBenchmarkReady, mergeDrawingCorrection, updatedSessionCounters } from './engineeringReview.js';
+import { sanitizeEngineeringExtractedText } from './engineeringIngestion.js';
 
 describe('engineering golden library controls', () => {
   it('accepts only HTTPS URLs on the declared official domain', () => {
@@ -54,5 +55,9 @@ describe('engineering golden library controls', () => {
 
   it('merges drawing corrections without losing extracted fields', () => {
     expect(mergeDrawingCorrection({ diameter: 10, customer: 'FMH' }, 'diameter', 12)).toEqual({ diameter: 12, customer: 'FMH' });
+  });
+
+  it('removes PDF NUL bytes before persisting extracted text in PostgreSQL', () => {
+    expect(sanitizeEngineeringExtractedText('EN 1993\u0000-1-5')).toBe('EN 1993-1-5');
   });
 });
