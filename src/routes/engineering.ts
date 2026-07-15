@@ -127,7 +127,10 @@ export const engineeringRoutes: FastifyPluginAsync = async (app) => {
     return { reviewed: false, reason: 'Los conflictos se resuelven revisando el benchmark o la herramienta de origen.' };
   });
   app.post('/engineering/review/validate', async (request) => runEngineeringGoldenValidation(companyQuery.parse(request.body).companyId));
-  app.get('/engineering/finalization/status', async (request) => engineeringFinalizationStatus(companyQuery.parse(request.query).companyId));
+  app.get('/engineering/finalization/status', async (request) => {
+    const query = z.object({ companyId: z.string().min(1).optional() }).parse(request.query);
+    return engineeringFinalizationStatus(query.companyId);
+  });
   app.post('/engineering/drawing', async (request) => { const spec = drawingSchema.parse(request.body) as EngineeringDrawingSpec; return { spec, svg: renderPreliminaryEngineeringSvg(spec) }; });
   app.post('/engineering/drawing/pdf', async (request, reply) => { const spec = drawingSchema.parse(request.body) as EngineeringDrawingSpec; return reply.type('application/pdf').send(await renderPreliminaryEngineeringPdf(spec)); });
   app.get('/engineering/drawings', async (request) => { const query = z.object({ companyId: z.string(), q: z.string().optional(), projectType: z.string().optional(), customerName: z.string().optional(), take: z.coerce.number().int().min(1).max(300).default(100) }).parse(request.query); return listEngineeringDrawings(query); });
