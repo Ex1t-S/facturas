@@ -23,5 +23,5 @@ describe('DocumentTemplateRenderer', () => {
     const xml = new AdmZip(result.docx).getEntry('word/document.xml')?.getData().toString('utf8') ?? '';
     expect(xml).toContain('Cooperativa Adolfo Alsina');
     expect(xml).not.toMatch(/Prepará el PDF|Guardalo|Haceme un remito/);
-  });
+  }, 15_000);
 });

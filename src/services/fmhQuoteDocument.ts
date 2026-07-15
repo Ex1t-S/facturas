@@ -3,6 +3,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import AdmZip from 'adm-zip';
 import type { Quote, QuoteItem, Customer } from '../generated/postgres-client/index.js';
 import { config } from '../config.js';
@@ -161,13 +162,17 @@ export async function writeFmhQuoteDocx(quote: QuoteWithDetails) {
 
 async function findSoffice() {
   const candidates = [
-    'soffice',
     'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
-    'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe'
+    'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
+    'soffice'
   ];
   for (const candidate of candidates) {
     try {
-      await execFileAsync(candidate, ['--version'], { timeout: 5000 });
+      if (candidate !== 'soffice') {
+        await fs.access(candidate);
+        return candidate;
+      }
+      await execFileAsync(candidate, ['--version'], { timeout: 3000 });
       return candidate;
     } catch {
       // Try next candidate.
@@ -180,7 +185,14 @@ export async function convertDocxToPdf(docxPath: string) {
   const soffice = await findSoffice();
   if (!soffice) return null;
   const outDir = path.dirname(docxPath);
-  await execFileAsync(soffice, ['--headless', '--convert-to', 'pdf', '--outdir', outDir, docxPath], { timeout: 30000 });
+  // A disposable profile prevents Windows/Render processes from locking the user's
+  // interactive LibreOffice profile and silently skipping the conversion.
+  const profileDir = path.join(outDir, `.libreoffice-profile-${crypto.randomUUID()}`);
+  await fs.mkdir(profileDir, { recursive: true });
+  await execFileAsync(soffice, [
+    `-env:UserInstallation=${pathToFileURL(profileDir).href}`,
+    '--headless', '--nologo', '--nofirststartwizard', '--convert-to', 'pdf', '--outdir', outDir, docxPath
+  ], { timeout: 30000 });
   const pdfPath = docxPath.replace(/\.docx$/i, '.pdf');
   try {
     await fs.access(pdfPath);
