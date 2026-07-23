@@ -12,6 +12,18 @@ import {
   uploadWhatsAppMedia,
   verifyMetaSignature
 } from '../services/whatsapp.js';
+import { allowedWhatsAppNumbers } from '../security.js';
+
+const whatsappOperatorAllowlist = allowedWhatsAppNumbers(config.WHATSAPP_ALLOWED_FROM);
+
+function maskedWhatsAppNumber(value: string) {
+  const digits = value.replace(/\D/g, '');
+  return digits.length <= 4 ? '***' : `***${digits.slice(-4)}`;
+}
+
+function isAllowedWhatsAppOperator(value: string) {
+  return whatsappOperatorAllowlist.has(value.replace(/\D/g, ''));
+}
 
 const metaWebhookSchema = z.object({
   entry: z.array(
@@ -40,7 +52,7 @@ const metaWebhookSchema = z.object({
   )
 });
 
-function buildWhatsAppHistory(
+export function buildWhatsAppHistory(
   messages: Array<{ direction: 'INBOUND' | 'OUTBOUND'; body: string | null; mediaDocument?: { fileName: string } | null }>
 ) {
   return messages
@@ -51,14 +63,14 @@ function buildWhatsAppHistory(
     .filter((message) => message.content.trim().length > 0);
 }
 
-async function resolveInboundHistory(fromNumber: string) {
+async function resolveInboundHistory(conversationId: string) {
   const recent = await prisma.whatsAppMessage.findMany({
-    where: { fromNumber },
+    where: { conversationId },
     include: { mediaDocument: true },
-    orderBy: { createdAt: 'asc' },
-    take: 12
+    orderBy: { createdAt: 'desc' },
+    take: 20
   });
-  return buildWhatsAppHistory(recent);
+  return buildWhatsAppHistory(recent.reverse());
 }
 
 function whatsappConfigStatus() {
@@ -73,7 +85,11 @@ function whatsappConfigStatus() {
     appId: config.WHATSAPP_APP_ID || '',
     wabaId: config.WHATSAPP_WABA_ID || '',
     audioConfigured: Boolean(config.OPENAI_API_KEY),
-    canReceive: config.WHATSAPP_VERIFY_TOKEN !== 'change-me' && Boolean(config.WHATSAPP_ACCESS_TOKEN && config.WHATSAPP_PHONE_NUMBER_ID),
+    operatorAllowlistConfigured: whatsappOperatorAllowlist.size > 0,
+    canReceive: config.WHATSAPP_VERIFY_TOKEN !== 'change-me'
+      && config.WHATSAPP_APP_SECRET !== 'change-me'
+      && whatsappOperatorAllowlist.size > 0
+      && Boolean(config.WHATSAPP_ACCESS_TOKEN && config.WHATSAPP_PHONE_NUMBER_ID),
     canSend: Boolean(config.WHATSAPP_ACCESS_TOKEN && config.WHATSAPP_PHONE_NUMBER_ID)
   };
 }
@@ -193,26 +209,31 @@ async function findPendingDraftByToken(token: string) {
   });
   for (const conversation of conversations) {
     const pending = parsePending(conversation.pendingJson);
-    if (pending?.token === token) return pending;
+    if (pending?.token !== token) continue;
+    if (!pending.expiresAt || new Date(pending.expiresAt).getTime() <= Date.now()) return null;
+    return pending;
   }
   return null;
 }
 
 export const whatsappRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/api/whatsapp/messages', async () => {
+  app.get('/api/whatsapp/messages', async (request) => {
+    const query = z.object({ companyId: z.string() }).parse(request.query);
     return prisma.whatsAppMessage.findMany({
-      include: { mediaDocument: true, customer: true },
+      where: { conversation: { companyId: query.companyId } },
+      include: {
+        mediaDocument: { select: { id: true, fileName: true, mimeType: true, kind: true, extractionStatus: true } },
+        customer: true
+      },
       orderBy: { createdAt: 'desc' },
       take: 50
     });
   });
 
   app.get('/api/whatsapp/conversations', async (request) => {
-    const query = z.object({ companyId: z.string().optional() }).parse(request.query);
-    const company = query.companyId ?? (await prisma.company.findFirst())?.id;
-    if (!company) return [];
+    const query = z.object({ companyId: z.string() }).parse(request.query);
     return prisma.whatsAppConversation.findMany({
-      where: { companyId: company },
+      where: { companyId: query.companyId },
       include: { messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
       orderBy: { lastMessageAt: 'desc' },
       take: 100
@@ -221,9 +242,15 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/api/whatsapp/conversations/:id/messages', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
-    const conversation = await prisma.whatsAppConversation.findUnique({
-      where: { id: params.id },
-      include: { messages: { include: { mediaDocument: true }, orderBy: { createdAt: 'asc' } } }
+    const query = z.object({ companyId: z.string() }).parse(request.query);
+    const conversation = await prisma.whatsAppConversation.findFirst({
+      where: { id: params.id, companyId: query.companyId },
+      include: {
+        messages: {
+          include: { mediaDocument: { select: { id: true, fileName: true, mimeType: true, kind: true, extractionStatus: true } } },
+          orderBy: { createdAt: 'asc' }
+        }
+      }
     });
     if (!conversation) return reply.code(404).send({ error: 'Conversation not found' });
     return conversation;
@@ -237,6 +264,8 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     if (!pending) return reply.code(404).send({ error: 'Draft not found' });
     const buffer = await readStoredDocumentFile(pending.previewStoragePath);
     return reply
+      .header('Cache-Control', 'no-store, private')
+      .header('X-Content-Type-Options', 'nosniff')
       .header('Content-Type', pending.previewMimeType || 'application/pdf')
       .header('Content-Disposition', 'inline; filename="' + encodeURIComponent(pending.previewFileName || pending.suggestedFileName || 'borrador.pdf') + '"')
       .send(buffer);
@@ -257,15 +286,16 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
           fromNumber: input.phoneNumber,
           toNumber: outboundTo,
           messageType,
-          body: body + '\n\n[Error de envio WhatsApp: ' + errorText(error).slice(0, 900) + ']',
+          body: body + '\n\n[El envío por WhatsApp falló. Reintentá desde la bandeja.]',
           status: 'failed',
           conversationId: input.conversation.id
         }
       });
+      app.log.error({ err: error, conversationId: input.conversation.id }, 'whatsapp outbound failed');
     }
 
-    app.log.info({ conversationId: input.conversation.id, fromNumber: input.fromNumber }, 'whatsapp assistant reply started');
-    const history = await resolveInboundHistory(input.fromNumber);
+    app.log.info({ conversationId: input.conversation.id, fromNumber: maskedWhatsAppNumber(input.fromNumber) }, 'whatsapp assistant reply started');
+    const history = await resolveInboundHistory(input.conversation.id);
     app.log.info({ conversationId: input.conversation.id, history: history.length }, 'whatsapp assistant history loaded');
     const assistantResponse = await answerAssistant({
       companyId: input.company.id,
@@ -284,7 +314,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       ? pendingDraftContentUrl(publicBaseUrl, assistantResponse.pendingDeliveryDraft)
       : null;
     const finalDocumentUrl = assistantResponse.action?.documentId
-      ? publicBaseUrl + '/api/documents/' + assistantResponse.action.documentId + '/content'
+      ? publicBaseUrl + '/api/documents/' + assistantResponse.action.documentId + '/content?companyId=' + encodeURIComponent(input.company.id)
       : '';
     const documentUrl = draftUrl || finalDocumentUrl;
     const storedDocument = assistantResponse.action?.documentId
@@ -411,9 +441,13 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/api/whatsapp/messages/:id/reprocess', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
-    const company = await prisma.company.findFirst();
+    const body = z.object({ companyId: z.string() }).parse(request.body);
+    const company = await prisma.company.findUnique({ where: { id: body.companyId } });
     if (!company) return reply.code(409).send({ error: 'No company configured' });
-    const inbound = await prisma.whatsAppMessage.findUnique({ where: { id: params.id }, include: { conversation: true } });
+    const inbound = await prisma.whatsAppMessage.findFirst({
+      where: { id: params.id, conversation: { companyId: body.companyId } },
+      include: { conversation: true }
+    });
     if (!inbound || inbound.direction !== 'INBOUND') return reply.code(404).send({ error: 'Inbound WhatsApp message not found' });
     if (!inbound.body?.trim()) return reply.code(409).send({ error: 'Inbound WhatsApp message has no body' });
     const conversation =
@@ -434,6 +468,9 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get('/webhooks/whatsapp', async (request, reply) => {
+    if (config.WHATSAPP_VERIFY_TOKEN === 'change-me') {
+      return reply.code(503).send({ error: 'WhatsApp webhook is not configured' });
+    }
     const query = z
       .object({
         'hub.mode': z.string(),
@@ -449,14 +486,24 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post('/webhooks/whatsapp', async (request, reply) => {
+    if (config.WHATSAPP_APP_SECRET === 'change-me' || !config.WHATSAPP_APP_SECRET.trim()) {
+      return reply.code(503).send({ error: 'WhatsApp webhook signature is not configured' });
+    }
     const parsedBody = request.body as Record<string, unknown> & { __rawBody?: Buffer };
     const rawBody = parsedBody?.__rawBody ?? Buffer.from(JSON.stringify(request.body ?? {}));
     const signature = request.headers['x-hub-signature-256'];
-    if (config.WHATSAPP_APP_SECRET !== 'change-me' && !verifyMetaSignature(rawBody, Array.isArray(signature) ? signature[0] : signature)) {
+    if (!verifyMetaSignature(rawBody, Array.isArray(signature) ? signature[0] : signature)) {
       return reply.code(401).send({ error: 'Invalid signature' });
     }
 
     const payload = metaWebhookSchema.parse(request.body);
+    const wrongPhoneNumber = payload.entry.some((entry) =>
+      entry.changes.some((change) =>
+        Boolean(config.WHATSAPP_PHONE_NUMBER_ID)
+        && change.value.metadata?.phone_number_id !== config.WHATSAPP_PHONE_NUMBER_ID
+      )
+    );
+    if (wrongPhoneNumber) return reply.code(403).send({ error: 'Unexpected WhatsApp phone number id' });
 
     void (async () => {
     const company = await prisma.company.findFirst();
@@ -465,7 +512,10 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       for (const change of entry.changes) {
         const phoneNumber = change.value.metadata?.display_phone_number ?? change.value.metadata?.phone_number_id ?? '';
         for (const message of change.value.messages ?? []) {
-          if (config.WHATSAPP_ALLOWED_FROM && message.from !== config.WHATSAPP_ALLOWED_FROM) continue;
+          if (!isAllowedWhatsAppOperator(message.from)) {
+            app.log.warn({ fromNumber: maskedWhatsAppNumber(message.from) }, 'ignored whatsapp message from non-operator number');
+            continue;
+          }
           const duplicate = await prisma.whatsAppMessage.findUnique({ where: { providerMessageId: message.id }, select: { id: true } });
           if (duplicate) continue;
           const inbound = await processIncomingMessage({ message, phoneNumber });

@@ -10,6 +10,7 @@ import { extractDocumentFromFile } from '../services/documentExtraction.js';
 import { buildPreview, isImageMime, isPdfMime } from '../services/documentPreview.js';
 import { readStoredDocumentFile, resolveStoredDocumentPath, writeDocumentFile } from '../services/documentStorage.js';
 import { importHistoricalDocuments, scanHistoricalDocuments } from '../services/historicalImport.js';
+import { runSerializableTransaction } from '../services/transaction.js';
 
 const normalizedDocumentSchema = z.object({
   document: z
@@ -46,6 +47,13 @@ const normalizedDocumentSchema = z.object({
     .default([]),
   totals: z.object({ total: z.number().optional() }).optional()
 });
+const uploadMimeTypes = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png',
+  'image/webp'
+]);
 
 function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('es-AR');
@@ -125,8 +133,12 @@ function safeCustomerName(document: { issuerName?: string | null; fileName?: str
 
 export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.post('/documents', async (request, reply) => {
+    const query = z.object({ companyId: z.string() }).parse(request.query);
     const data = await request.file();
     if (!data) return reply.code(400).send({ error: 'File is required' });
+    if (!uploadMimeTypes.has(data.mimetype.toLowerCase())) {
+      return reply.code(415).send({ error: 'Solo se admiten PDF, DOCX, JPEG, PNG o WEBP.' });
+    }
 
     const buffer = await data.toBuffer();
     const { sha256, storagePath } = await writeDocumentFile({
@@ -138,6 +150,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
     const document = await prisma.document.create({
       data: {
+        companyId: query.companyId,
         sourceType: 'upload',
         fileName: data.filename,
         mimeType: data.mimetype,
@@ -161,7 +174,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const body = z
       .object({
         rootPath: z.string().optional(),
-        companyId: z.string().optional(),
+        companyId: z.string(),
         limit: z.number().int().positive().max(2000).default(250),
         dryRun: z.boolean().default(false)
       })
@@ -170,7 +183,9 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const rootPath = body.rootPath ?? config.HISTORICAL_DOCUMENT_ROOT;
     const resolved = path.resolve(rootPath);
     const allowedRoot = path.resolve(config.HISTORICAL_DOCUMENT_ROOT);
-    if (!resolved.toLowerCase().startsWith(allowedRoot.toLowerCase())) {
+    const normalizedResolved = resolved.toLowerCase();
+    const normalizedAllowed = allowedRoot.toLowerCase();
+    if (normalizedResolved !== normalizedAllowed && !normalizedResolved.startsWith(`${normalizedAllowed}${path.sep}`)) {
       throw new Error('Historical import path must be inside HISTORICAL_DOCUMENT_ROOT');
     }
 
@@ -182,7 +197,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/documents', async (request) => {
     const query = z
       .object({
-        companyId: z.string().optional(),
+        companyId: z.string(),
         q: z.string().trim().optional(),
         kind: z.enum(['QUOTE', 'INVOICE', 'PURCHASE_INVOICE', 'DELIVERY_NOTE', 'UNKNOWN']).optional(),
         status: z.enum(['PENDING_REVIEW', 'REVIEWED', 'REJECTED']).optional(),
@@ -230,18 +245,21 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     return documents
       .filter((document) => (query.year ? Number(documentYear(document)) === query.year : true))
       .filter((document) => (query.month ? documentMonth(document) === query.month : true))
-      .map((document) => ({
-        ...document,
-        inferredDate: inferDocumentDate(document),
-        displayCustomer: safeCustomerName(document),
-        displayName: shortDocumentName(document.fileName)
-      }));
+      .map((document) => {
+        const { storagePath: _storagePath, ...publicDocument } = document;
+        return {
+          ...publicDocument,
+          inferredDate: inferDocumentDate(document),
+          displayCustomer: safeCustomerName(document),
+          displayName: shortDocumentName(document.fileName)
+        };
+      });
   });
 
   app.get('/documents/tree', async (request) => {
     const query = z
       .object({
-        companyId: z.string().optional(),
+        companyId: z.string(),
         q: z.string().trim().optional(),
         customer: z.string().trim().optional(),
         year: z.coerce.number().int().optional(),
@@ -354,13 +372,16 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/documents/:id/content', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
-    const document = await prisma.document.findUnique({ where: { id: params.id } });
+    const query = z.object({ companyId: z.string() }).parse(request.query);
+    const document = await prisma.document.findFirst({ where: { id: params.id, OR: [{ companyId: query.companyId }, { companyId: null }] } });
     if (!document) return reply.code(404).send({ error: 'Document not found' });
 
     const buffer = await readStoredDocumentFile(document.storagePath);
     const disposition = isPdfMime(document.mimeType, document.fileName) || isImageMime(document.mimeType, document.fileName) ? 'inline' : 'attachment';
 
     return reply
+      .header('Cache-Control', 'no-store, private')
+      .header('X-Content-Type-Options', 'nosniff')
       .header('Content-Type', document.mimeType)
       .header('Content-Disposition', `${disposition}; filename="${encodeURIComponent(document.fileName)}"`)
       .send(buffer);
@@ -368,12 +389,15 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/documents/:id/download', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
-    const document = await prisma.document.findUnique({ where: { id: params.id } });
+    const query = z.object({ companyId: z.string() }).parse(request.query);
+    const document = await prisma.document.findFirst({ where: { id: params.id, OR: [{ companyId: query.companyId }, { companyId: null }] } });
     if (!document) return reply.code(404).send({ error: 'Document not found' });
 
     const buffer = await readStoredDocumentFile(document.storagePath);
 
     return reply
+      .header('Cache-Control', 'no-store, private')
+      .header('X-Content-Type-Options', 'nosniff')
       .header('Content-Type', document.mimeType)
       .header('Content-Disposition', `attachment; filename="${encodeURIComponent(document.fileName)}"`)
       .send(buffer);
@@ -381,15 +405,17 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/documents/:id/preview', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
-    const document = await prisma.document.findUnique({ where: { id: params.id } });
+    const query = z.object({ companyId: z.string() }).parse(request.query);
+    const document = await prisma.document.findFirst({ where: { id: params.id, OR: [{ companyId: query.companyId }, { companyId: null }] } });
     if (!document) return reply.code(404).send({ error: 'Document not found' });
 
-    return buildPreview(document);
+    return buildPreview(document, query.companyId);
   });
 
   app.post('/documents/:id/extract', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
-    const document = await prisma.document.findUnique({ where: { id: params.id } });
+    const body = z.object({ companyId: z.string() }).parse(request.body);
+    const document = await prisma.document.findFirst({ where: { id: params.id, OR: [{ companyId: body.companyId }, { companyId: null }] } });
     if (!document) return reply.code(404).send({ error: 'Document not found' });
 
     const filePath = resolveStoredDocumentPath(document.storagePath);
@@ -430,7 +456,8 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/documents/:id/restore-file', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
-    const document = await prisma.document.findUnique({ where: { id: params.id } });
+    const query = z.object({ companyId: z.string() }).parse(request.query);
+    const document = await prisma.document.findFirst({ where: { id: params.id, OR: [{ companyId: query.companyId }, { companyId: null }] } });
     if (!document) return reply.code(404).send({ error: 'Document not found' });
 
     const data = await request.file();
@@ -460,11 +487,13 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/documents/:id/review', async (request) => {
     const params = z.object({ id: z.string() }).parse(request.params);
-    const body = z.object({ extractedJson: normalizedDocumentSchema, reviewedBy: z.string().optional() }).parse(request.body);
+    const body = z.object({ companyId: z.string(), extractedJson: normalizedDocumentSchema, reviewedBy: z.string().optional() }).parse(request.body);
     const normalized = body.extractedJson;
+    const document = await prisma.document.findFirst({ where: { id: params.id, OR: [{ companyId: body.companyId }, { companyId: null }] }, select: { id: true } });
+    if (!document) throw Object.assign(new Error('Document not found'), { statusCode: 404 });
 
     return prisma.document.update({
-      where: { id: params.id },
+      where: { id: document.id },
       data: {
         status: 'REVIEWED',
         kind: normalized.document?.kind ?? 'UNKNOWN',
@@ -490,7 +519,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.post('/documents/:id/match', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
     const body = z.object({ companyId: z.string() }).parse(request.body);
-    const document = await prisma.document.findUnique({ where: { id: params.id }, include: { extraction: true } });
+    const document = await prisma.document.findFirst({ where: { id: params.id, OR: [{ companyId: body.companyId }, { companyId: null }] }, include: { extraction: true } });
     if (!document) return reply.code(404).send({ error: 'Document not found' });
 
     const normalized = normalizedDocumentSchema.parse(
@@ -573,7 +602,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       })
       .parse(request.body ?? {});
 
-    const document = await prisma.document.findUnique({ where: { id: params.id }, include: { extraction: true } });
+    const document = await prisma.document.findFirst({ where: { id: params.id, OR: [{ companyId: body.companyId }, { companyId: null }] }, include: { extraction: true } });
     if (!document) return reply.code(404).send({ error: 'Document not found' });
 
     const extracted = normalizedDocumentSchema
@@ -620,26 +649,26 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       };
     });
     const totals = calculateQuoteTotals(items);
-    const last = await prisma.quote.findFirst({ where: { companyId: body.companyId }, orderBy: { number: 'desc' } });
-    const number = (last?.number ?? 0) + 1;
-
-    const quote = await prisma.quote.create({
-      data: {
-        companyId: body.companyId,
-        customerId,
-        number,
-        status: 'DRAFT',
-        currency: extracted.document?.currency ?? document.currency,
-        notes: `Borrador generado desde ${document.kind} ${document.fileName}. Revisar precios, margen e IVA antes de enviar.`,
-        subtotal: totals.subtotal,
-        taxTotal: totals.taxTotal,
-        total: totals.total,
-        items: {
-          create: items.map((item, index) => ({ ...item, total: totals.lines[index]?.total ?? 0 }))
-        }
-      },
-      include: { customer: true, items: true }
-    });
+    const quote = await runSerializableTransaction(async (tx) => {
+      const last = await tx.quote.findFirst({ where: { companyId: body.companyId }, orderBy: { number: 'desc' } });
+      return tx.quote.create({
+        data: {
+          companyId: body.companyId,
+          customerId,
+          number: (last?.number ?? 0) + 1,
+          status: 'DRAFT',
+          currency: extracted.document?.currency ?? document.currency,
+          notes: `Borrador generado desde ${document.kind} ${document.fileName}. Revisar precios, margen e IVA antes de enviar.`,
+          subtotal: totals.subtotal,
+          taxTotal: totals.taxTotal,
+          total: totals.total,
+          items: {
+            create: items.map((item, index) => ({ ...item, total: totals.lines[index]?.total ?? 0 }))
+          }
+        },
+        include: { customer: true, items: true }
+      });
+    }, { retryUniqueConflict: true });
 
     await prisma.document.update({ where: { id: document.id }, data: { companyId: body.companyId, extractionStatus: 'NEEDS_REVIEW' } });
     return reply.code(201).send(quote);
@@ -647,8 +676,9 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/documents/:id/review', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
-    const document = await prisma.document.findUnique({
-      where: { id: params.id },
+    const query = z.object({ companyId: z.string() }).parse(request.query);
+    const document = await prisma.document.findFirst({
+      where: { id: params.id, OR: [{ companyId: query.companyId }, { companyId: null }] },
       include: { extraction: true, customerCandidates: true, itemCandidates: { include: { matchedProduct: true } } }
     });
     if (!document) return reply.code(404).send({ error: 'Document not found' });

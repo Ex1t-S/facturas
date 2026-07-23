@@ -4,7 +4,7 @@ import { classifyEngineeringIntent, extractEngineeringFacts, normalizeEngineerin
 import { parseConversationState, updateConversationState } from './conversationState.js';
 import { normalizeEngineeringToolArguments, requiredToolForEngineeringIntent, runEngineeringOrchestrator } from './engineeringConversation.js';
 import { parseOptionalBoolean } from './queryParsing.js';
-import { engineeringToolDefinitions } from './engineeringTools.js';
+import { engineeringToolDefinitions, mergeEngineeringDrawingReferences } from './engineeringTools.js';
 import { engineeringHistoryItem, extractEngineeringResponseText } from './engineeringRuntime.js';
 
 describe('engineering conversational flow', () => {
@@ -43,6 +43,22 @@ describe('engineering conversational flow', () => {
     expect(buildDeterministicEngineeringResult({ state, message: 'Pasame cómo cortar una chapa de 1,5 x 3 metros.' }).answer).toContain('chapa');
   });
 
+  it('treats a requested cutting plan as a takeoff instead of a structural drawing', () => {
+    const message = 'Pasame un plano para cortar 20 patas de 150x150 y 4,75 mm en una chapa de 1,5 x 3 metros.';
+    let state = updateConversationState(parseConversationState(), message);
+    const result = buildDeterministicEngineeringResult({ state, message });
+
+    expect(state.currentIntent).toBe('MATERIAL_TAKEOFF');
+    expect(state.missingData).toHaveLength(0);
+    expect(result.answer).toContain('9 piezas por fila');
+    expect(result.answer).toContain('9 + 9 + 2');
+    expect(result.answer).toContain('Una chapa alcanza');
+    expect(result.answer).toContain('¿son placas');
+
+    state = updateConversationState(state, 'Que datos necesitas');
+    expect(state.currentIntent).toBe('MATERIAL_TAKEOFF');
+  });
+
   it('compares two explicit hollow sections using their geometry', () => {
     let state = parseConversationState();
     state = updateConversationState(state, 'Compará un tubo 150x150x4,75 contra uno 150x150x6,35.');
@@ -52,7 +68,7 @@ describe('engineering conversational flow', () => {
     expect(result.calculations.length).toBeGreaterThan(0);
   });
 
-  it('exposes an explicit OpenAI failure and keeps a useful deterministic fallback', async () => {
+  it.runIf(!process.env.OPENAI_API_KEY?.trim())('exposes an explicit OpenAI failure and keeps a useful deterministic fallback', async () => {
     const result = await runEngineeringOrchestrator({ companyId: 'test-company', message: 'Tengo un silo de 200 toneladas y 20 patas. ¿Qué carga toma cada una?' });
     expect(result.execution.provider).toBe('openai');
     expect(result.execution.success).toBe(false);
@@ -73,6 +89,20 @@ describe('engineering conversational flow', () => {
   it('exposes OpenAI-compatible tool schemas when parameters are optional', () => {
     expect(engineeringToolDefinitions.length).toBeGreaterThan(10);
     expect(engineeringToolDefinitions.every((tool) => tool.strict === false)).toBe(true);
+  });
+
+  it('merges historical drawings without exposing server file paths', () => {
+    const references = mergeEngineeringDrawingReferences(
+      [{ id: 'legacy', title: 'Plano escaneado', sourcePath: 'C:\\secret\\plano.pdf', thumbnailPath: 'private.png', extractedText: '' }],
+      [{ id: 'knowledge', title: 'Plano silo Vitabull', excerpt: 'Diámetro y elevación del silo.' }]
+    );
+
+    expect(references).toHaveLength(2);
+    expect(references[0]).not.toHaveProperty('sourcePath');
+    expect(references[0]).not.toHaveProperty('thumbnailPath');
+    expect(references[0]).toMatchObject({ source: 'DRAWING_LIBRARY', availableForReference: false });
+    expect(references[1]).not.toHaveProperty('sourcePath');
+    expect(references[1]).toMatchObject({ source: 'ENGINEERING_KNOWLEDGE', availableForReference: true });
   });
 
   it('extracts text from the raw Responses API output shape', () => {

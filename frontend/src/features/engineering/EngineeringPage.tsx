@@ -11,7 +11,6 @@ import {
   FolderKanban,
   Library,
   Menu,
-  MoreHorizontal,
   Plus,
   RefreshCw,
   Search,
@@ -25,6 +24,16 @@ import { api, dateFmt, postJson } from '../../api';
 
 type AnyRecord = Record<string, any>;
 type EngineeringTab = 'assistant' | 'cases' | 'drawings' | 'library' | 'review' | 'import';
+
+function jsonArray(value: unknown): unknown[] {
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 const tabItems: Array<{ id: EngineeringTab; label: string; icon: typeof Sparkles }> = [
   { id: 'assistant', label: 'Asistente', icon: Sparkles },
@@ -46,7 +55,6 @@ const engineeringLabels: Record<string, string> = {
   HISTORICAL: 'Histórico',
   UNVERIFIED: 'Sin verificar',
   IRRELEVANT_FOR_ENGINEERING: 'No técnico',
-  HISTORICAL: 'Histórico',
   NEEDS_REVIEW: 'Requiere revisión',
   NEEDS_VISION: 'Requiere revisión',
   EXTRACTED: 'Procesado',
@@ -92,9 +100,9 @@ function EngineeringHeader({ tab, setTab }: { tab: EngineeringTab; setTab: (tab:
       <div>
         <div className="eyebrow"><Wrench size={14} /> Ingeniería FMH</div>
         <h1>Ingeniería</h1>
-        <p>Asistente técnico, cálculos y antecedentes FMH</p>
+        <p>Cálculos preliminares, planos orientativos y antecedentes técnicos de FMH</p>
       </div>
-      {tab === 'assistant' && <div className="engineeringHeaderHint"><span className="statusPulse" /> Asistente listo</div>}
+      {tab === 'assistant' && <div className="engineeringHeaderHint"><span className="statusPulse" /> Herramientas técnicas disponibles</div>}
     </div>
     <nav className="engineeringNav" aria-label="Secciones de Ingeniería">
       {tabItems.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined}><Icon size={16} />{label}</button>)}
@@ -106,7 +114,7 @@ export function EngineeringPage({ companyId }: { companyId: string }) {
   const [tab, setTab] = useState<EngineeringTab>('assistant');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [focusConversationId, setFocusConversationId] = useState('');
+  const [focusConversationId, setFocusConversationId] = useState(() => new URLSearchParams(location.search).get('engineeringConversation') || '');
   const changeTab = (next: EngineeringTab) => { setTab(next); setMobileNavOpen(false); };
   return <div className="engineeringPage">
     <EngineeringHeader tab={tab} setTab={changeTab} />
@@ -126,19 +134,17 @@ function AssistantView({ companyId, focusConversationId, onRefresh }: { companyI
   const [conversations, setConversations] = useState<AnyRecord[]>([]);
   const [conversation, setConversation] = useState<AnyRecord | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState(0);
+  const [drawingBusy, setDrawingBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [error, setError] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const steps = ['Buscando antecedentes FMH', 'Calculando cargas', 'Analizando planos similares', 'Preparando respuesta'];
-
   async function loadConversations() {
     if (!companyId) return;
     setConversations(await api<AnyRecord[]>(`/api/engineering/conversations?companyId=${companyId}`));
   }
   useEffect(() => { loadConversations().catch(() => undefined); }, [companyId]);
-  useEffect(() => { if (focusConversationId) openConversation(focusConversationId).catch(() => undefined); }, [focusConversationId]);
-  useEffect(() => { if (!loading) return; const timer = window.setInterval(() => setLoadingStep((step) => (step + 1) % steps.length), 1200); return () => window.clearInterval(timer); }, [loading]);
+  useEffect(() => { if (focusConversationId && companyId) openConversation(focusConversationId).catch(() => undefined); }, [focusConversationId, companyId]);
   async function newConversation() {
     const created = await postJson<AnyRecord>('/api/engineering/conversations', { companyId });
     setConversations((current) => [created, ...current.filter((item) => item.id !== created.id)]);
@@ -155,26 +161,86 @@ function AssistantView({ companyId, focusConversationId, onRefresh }: { companyI
   async function ask(event: React.FormEvent) {
     event.preventDefault();
     if (!message.trim() || !companyId || loading) return;
+    setError('');
     const active = conversation || (await postJson<AnyRecord>('/api/engineering/conversations', { companyId }));
     if (!conversation) { setConversation({ ...active, messages: [] }); setConversations((current) => [active, ...current]); }
-    setLoading(true); setLoadingStep(0);
+    setLoading(true);
     try {
       const response = await postJson<AnyRecord>(`/api/engineering/conversations/${active.id}/messages`, { companyId, message: message.trim() });
       setConversation((current) => current ? { ...current, messages: [...(current.messages || []), response.userMessage, response.assistantMessage], state: response.state } : current);
       setMessage('');
       await loadConversations();
       onRefresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'No se pudo completar la consulta técnica.');
     } finally { setLoading(false); }
   }
   async function saveCase() { if (conversation) { await postJson(`/api/engineering/conversations/${conversation.id}/save-case`, { companyId }); onRefresh(); } }
   async function downloadDrawing() {
-    const state = conversation?.state || {};
-    const inputs = state.knownInputs || [];
-    const value = (key: string) => inputs.find((item: AnyRecord) => item.key === key && item.status !== 'SUPERSEDED')?.value;
-    const type = state.projectType === 'HOPPER' ? 'HOPPER' : state.projectType === 'WAREHOUSE' ? 'WAREHOUSE' : 'SILO';
-    const response = await postJson<AnyRecord>('/api/engineering/drawing', { drawingType: type, diameter: Number(value('diameter')) || undefined, bodyHeight: Number(value('bodyHeight')) || undefined, coneHeight: Number(value('coneHeight')) || undefined, width: Number(value('width')) || undefined, length: Number(value('length')) || undefined, height: Number(value('height')) || undefined, freeHeight: Number(value('freeHeight')) || undefined, capacityT: Number(value('capacity')) || undefined, supportCount: Number(value('supportCount')) || undefined, notes: ['Generado desde el caso conversacional FMH'] });
-    const url = URL.createObjectURL(new Blob([response.svg], { type: 'image/svg+xml' }));
-    const link = document.createElement('a'); link.href = url; link.download = 'esquema-preliminar-fmh.svg'; link.click(); URL.revokeObjectURL(url);
+    setDrawingBusy(true);
+    try {
+      const state = conversation?.state || {};
+      const inputs = state.knownInputs || [];
+      const value = (key: string) => inputs.find((item: AnyRecord) => item.key === key && item.status !== 'SUPERSEDED')?.value;
+      const supportedTypes: Record<string, 'SILO' | 'HOPPER' | 'WAREHOUSE' | 'SUPPORT_STRUCTURE'> = {
+        SILO: 'SILO',
+        HOPPER: 'HOPPER',
+        WAREHOUSE: 'WAREHOUSE',
+        SUPPORT_STRUCTURE: 'SUPPORT_STRUCTURE',
+        STEEL_STRUCTURE: 'SUPPORT_STRUCTURE'
+      };
+      const type = supportedTypes[state.projectType];
+      if (!type) throw new Error('Primero indicá si el plano es para un silo, una tolva, un galpón o una estructura soporte.');
+      const suppliedValues = {
+        diameter: Number(value('diameter')) || undefined,
+        bodyHeight: Number(value('bodyHeight')) || undefined,
+        coneHeight: Number(value('coneHeight')) || undefined,
+        width: Number(value('width')) || undefined,
+        length: Number(value('length')) || undefined,
+        height: Number(value('height')) || undefined,
+        freeHeight: Number(value('freeHeight')) || undefined,
+        lowerOpening: Number(value('lowerOpening')) || undefined,
+        roofSlope: Number(value('roofSlope')) || undefined,
+        capacityT: Number(value('capacity')) || undefined,
+        supportCount: Number(value('supportCount')) || undefined
+      };
+      const drawingValues = type === 'SILO'
+        ? {
+            ...suppliedValues,
+            diameter: suppliedValues.diameter || 8,
+            bodyHeight: suppliedValues.bodyHeight || 7,
+            coneHeight: suppliedValues.coneHeight || 2,
+            freeHeight: suppliedValues.freeHeight || 4,
+            supportCount: suppliedValues.supportCount || 6
+          }
+        : suppliedValues;
+      const relevantKeys = type === 'SILO'
+        ? ['diameter', 'bodyHeight', 'coneHeight', 'freeHeight', 'capacityT', 'supportCount']
+        : type === 'HOPPER'
+          ? ['width', 'bodyHeight', 'lowerOpening']
+          : ['width', 'length', 'height'];
+      const missing = relevantKeys.filter((key) => suppliedValues[key as keyof typeof suppliedValues] === undefined).map(labelFor);
+      const response = await postJson<AnyRecord>('/api/engineering/drawing', {
+        drawingType: type,
+        ...drawingValues,
+        projectName: conversation?.title,
+        notes: [
+          'Generado desde la conversación técnica FMH.',
+          ...(missing.length ? [`Valores ilustrativos usados donde faltan datos: ${missing.join(', ')}.`] : []),
+          'Revisar cargas de grano, viento, estructura, uniones y fundaciones antes de fabricar.'
+        ]
+      });
+      const url = URL.createObjectURL(new Blob([response.svg], { type: 'image/svg+xml' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `plano-orientativo-fmh-${drawingValues.capacityT || 'sin-capacidad'}t-no-fabricacion.svg`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDrawingBusy(false);
+    }
   }
   const messages = conversation?.messages || [];
   const filteredConversations = conversations.filter((item) => !search.trim() || String(item.title || '').toLowerCase().includes(search.toLowerCase()));
@@ -182,32 +248,71 @@ function AssistantView({ companyId, focusConversationId, onRefresh }: { companyI
     <button className="mobileConversationToggle" type="button" onClick={() => setSidebarOpen(true)}><Menu size={16} /> Conversaciones</button>
     {sidebarOpen && <button className="drawerBackdrop" aria-label="Cerrar conversaciones" onClick={() => setSidebarOpen(false)} />}
     <aside className={`conversationSidebar ${sidebarOpen ? 'open' : ''}`}>
-      <div className="conversationSidebarHead"><div><span className="eyebrow">Workspace</span><h2>Conversaciones</h2></div><button className="iconButton closeDrawer" onClick={() => setSidebarOpen(false)} aria-label="Cerrar conversaciones"><X size={17} /></button></div>
+      <div className="conversationSidebarHead"><h2>Conversaciones</h2><button className="iconButton closeDrawer" onClick={() => setSidebarOpen(false)} aria-label="Cerrar conversaciones"><X size={17} /></button></div>
       <button className="primaryButton newConversation" type="button" onClick={newConversation}><Plus size={16} /> Nueva conversación</button>
       <label className="engineeringSearch"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar conversación" aria-label="Buscar conversación" /></label>
-      <div className="conversationList">{filteredConversations.map((item) => <button type="button" key={item.id} className={conversation?.id === item.id ? 'selected' : ''} onClick={() => openConversation(item.id)}><span className="conversationIcon"><MessageIcon /></span><span className="conversationCopy"><strong>{item.title || 'Nueva conversación'}</strong><small>{item.lastMessage?.content || 'Sin mensajes todavía'}</small></span><time>{item.updatedAt ? dateFmt.format(new Date(item.updatedAt)) : ''}</time></button>)}{!filteredConversations.length && <div className="conversationEmpty">No hay conversaciones que coincidan.</div>}</div>
-      <div className="sidebarFoot"><span className="statusPulse" /> Memoria técnica FMH activa</div>
+      <div className="conversationList">{filteredConversations.map((item) => <button type="button" key={item.id} className={conversation?.id === item.id ? 'selected' : ''} onClick={() => openConversation(item.id)}><span className="conversationIcon"><MessageIcon /></span><span className="conversationCopy"><strong>{item.title || 'Nueva conversación'}</strong><small>{item.lastMessage?.content || item.messages?.[0]?.content || 'Sin mensajes todavía'}</small></span><time>{item.updatedAt ? dateFmt.format(new Date(item.updatedAt)) : ''}</time></button>)}{!filteredConversations.length && <div className="conversationEmpty">No hay conversaciones que coincidan.</div>}</div>
+      <div className="sidebarFoot"><span className="statusPulse" /> Asistente disponible</div>
     </aside>
     <div className="conversationPanel">
-      <header className="conversationHeader"><div><span className="conversationKicker"><Sparkles size={13} /> Asistente de Ingeniería</span><h2>{conversation?.title || 'Nueva consulta técnica'}</h2>{conversation && <span className="mutedText">{conversation.model || 'Modelo técnico FMH'}</span>}</div><div className="conversationActions">{conversation && <><button type="button" onClick={saveCase}><FolderKanban size={15} /> Guardar caso</button><button type="button" className="iconButton" aria-label="Más acciones"><MoreHorizontal size={17} /></button></>}</div></header>
-      <div className="messageScroll" aria-live="polite">{!messages.length && !loading && <EmptyState icon={Sparkles} title="Empezá una consulta de ingeniería" text="Analizá un proyecto, compará alternativas o buscá antecedentes técnicos de FMH." action={<div className="suggestionRow"><button type="button" onClick={() => setMessage('Necesito comparar 4 contra 6 patas para un silo aéreo de 200 t.')}>Comparar apoyos</button><button type="button" onClick={() => setMessage('Buscá antecedentes FMH para una tolva.')}>Buscar antecedentes</button></div>} />}{messages.map((item: AnyRecord, index: number) => <EngineeringMessage key={item.id || index} item={item} />)}{loading && <div className="processingMessage"><span className="assistantAvatar"><Sparkles size={15} /></span><div><strong>{steps[loadingStep]}</strong><span className="processingDots"><i /><i /><i /></span></div></div>}</div>
-      <form className="engineeringComposer" onSubmit={ask}><div className="composerField"><textarea ref={textareaRef} rows={1} value={message} onChange={(event) => { setMessage(event.target.value); event.currentTarget.style.height = 'auto'; event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 160)}px`; }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Escribí tu consulta de ingeniería…" aria-label="Consulta de ingeniería" /><span>Enter para enviar · Shift + Enter para una nueva línea</span></div><button className="sendButton" disabled={loading || !message.trim()} aria-label="Enviar consulta"><Send size={17} /></button></form>
+      <header className="conversationHeader"><div><h2>{conversation?.title || 'Asistente de Ingeniería'}</h2><span className="mutedText">Consultas técnicas, cálculos y planos orientativos</span></div><div className="conversationActions">{conversation && <><button type="button" onClick={() => saveCase().catch((caught) => setError(caught instanceof Error ? caught.message : 'No se pudo guardar el caso.'))}><FolderKanban size={15} /> Guardar</button><button type="button" disabled={drawingBusy} onClick={() => downloadDrawing().catch((caught) => setError(caught instanceof Error ? caught.message : 'No se pudo generar el plano.'))}><DraftingCompass size={15} /> {drawingBusy ? 'Generando…' : 'Generar plano'}</button></>}</div></header>
+      <div className="messageScroll" aria-live="polite">{error && <div className="formWarning" role="alert">{error}</div>}{!messages.length && !loading && <EmptyState icon={Wrench} title="¿Qué necesitás resolver?" text="Describí el equipo o la estructura con los datos que tengas. Si falta información, el asistente te va a guiar." action={<div className="suggestionRow"><button type="button" onClick={() => setMessage('Generá un plano orientativo para un silo aéreo de 200 t.')}>Plano de silo de 200 t</button><button type="button" onClick={() => setMessage('Necesito calcular materiales para una estructura soporte.')}>Calcular materiales</button><button type="button" onClick={() => setMessage('Buscá antecedentes FMH de silos similares.')}>Buscar antecedentes</button></div>} />}{messages.map((item: AnyRecord, index: number) => <EngineeringMessage key={item.id || index} item={item} onGenerateDrawing={() => downloadDrawing().catch((caught) => setError(caught instanceof Error ? caught.message : 'No se pudo generar el plano.'))} drawingBusy={drawingBusy} />)}{loading && <div className="processingMessage"><AssistantMark /><div><strong>Analizando…</strong><span className="processingDots"><i /><i /><i /></span></div></div>}</div>
+      <form className="engineeringComposer" onSubmit={ask}><div className="composerField"><textarea ref={textareaRef} rows={1} value={message} onChange={(event) => { setMessage(event.target.value); event.currentTarget.style.height = 'auto'; event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 180)}px`; }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Escribí tu consulta…" aria-label="Consulta de ingeniería" /></div><button className="sendButton" disabled={loading || !message.trim()} aria-label="Enviar consulta"><Send size={18} /></button></form>
     </div>
   </section>;
 }
 
 function MessageIcon() { return <BookOpen size={15} />; }
 
-function EngineeringMessage({ item }: { item: AnyRecord }) {
+function AssistantMark() {
+  return <span className="assistantAvatar" aria-hidden="true"><img src="/ui-assets/fmh-logo-green.png" alt="" /></span>;
+}
+
+function InlineMessageText({ text }: { text: string }) {
+  return <>{text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => part.startsWith('**') && part.endsWith('**') ? <strong key={`${part}-${index}`}>{part.slice(2, -2)}</strong> : <span key={`${part}-${index}`}>{part}</span>)}</>;
+}
+
+function AssistantResponse({ content }: { content: string }) {
+  const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return <div className="assistantResponse">{lines.map((line, index) => {
+    const bullet = line.match(/^[-•]\s+(.+)/);
+    return bullet
+      ? <div className="messageBullet" key={`${line}-${index}`}><span aria-hidden="true">•</span><p><InlineMessageText text={bullet[1]} /></p></div>
+      : <p key={`${line}-${index}`}><InlineMessageText text={line} /></p>;
+  })}</div>;
+}
+
+function EngineeringMessage({ item, onGenerateDrawing, drawingBusy }: { item: AnyRecord; onGenerateDrawing: () => Promise<void>; drawingBusy: boolean }) {
   const isUser = item.role === 'user';
-  const provider = item.provider || (() => { try { return JSON.parse(item.structuredResultJson || '{}').provider; } catch { return undefined; } })();
-  const fallback = item.fallbackUsed || provider === 'local';
-  return <article className={`engineeringMessage ${isUser ? 'user' : 'assistant'}`}>{!isUser && <span className="assistantAvatar"><Sparkles size={14} /></span>}<div className="messageBody"><span className="messageRole">{isUser ? 'Vos' : 'FMH · Asistente'}{!isUser && <small className={`assistantProvider ${fallback ? 'fallback' : ''}`}>{fallback ? 'Modo local temporal' : 'GPT-5.6 Sol'}</small>}</span><p>{item.content}</p>{!isUser && item.structuredResultJson && <TechnicalDetails result={item.structuredResultJson} />}</div></article>;
+  const parsed = (() => { try { return JSON.parse(item.structuredResultJson || '{}'); } catch { return {}; } })();
+  const canGenerateDrawing = !isUser && parsed.nextAction?.type === 'GENERATE_DRAWING';
+  return <article className={`engineeringMessage ${isUser ? 'user' : 'assistant'}`}>{!isUser && <AssistantMark />}<div className="messageBody"><span className="messageRole">{isUser ? 'Vos' : 'FMH'}</span>{isUser ? <p>{item.content}</p> : <AssistantResponse content={String(item.content || '')} />}{canGenerateDrawing && <div className="messageActions"><button className="primaryButton" type="button" disabled={drawingBusy} onClick={() => onGenerateDrawing()}><DraftingCompass size={15} /> {drawingBusy ? 'Generando plano…' : 'Generar plano orientativo'}</button></div>}</div></article>;
 }
 
 function TechnicalDetails({ result }: { result: AnyRecord | string }) {
   const parsed = typeof result === 'string' ? (() => { try { return JSON.parse(result); } catch { return { answer: result }; } })() : result;
-  return <details className="technicalDetails"><summary><span>Ver análisis técnico</span><ChevronDown size={15} /></summary><div className="technicalContent"><div className="resultBadges"><StatusBadge value={parsed.level || 'ORIENTATION'} /><StatusBadge value={parsed.capability || 'PRELIMINARY_ASSISTED'} /></div>{parsed.missingData?.length > 0 && <TechnicalList title="Datos pendientes" items={parsed.missingData.map((item: AnyRecord) => `${labelFor(item.name)}: ${item.reason}`)} />}{parsed.assumptions?.length > 0 && <TechnicalList title="Hipótesis" items={parsed.assumptions} />}{parsed.calculations?.length > 0 && <div className="technicalSection"><h3><Calculator size={15} /> Cálculos realizados</h3><div className="calculationGrid">{parsed.calculations.map((item: AnyRecord) => <div className="calculationCard" key={item.title}><span>{item.title}</span><strong>{Number(item.result).toFixed(2)} {item.resultUnit}</strong><small>{item.formula}</small></div>)}</div></div>}{parsed.materials?.length > 0 && <TechnicalList title="Materiales preliminares" items={parsed.materials.map((item: AnyRecord) => `${item.description}: ${item.specification || 'Sección pendiente de confirmar'}`)} />}{parsed.sources?.length > 0 && <TechnicalProvenance sources={parsed.sources} />}{parsed.regulations?.length > 0 && <TechnicalList title="Normativa consultada" items={parsed.regulations.map((item: AnyRecord) => `${item.code} — ${labelFor(item.status)}`)} />}</div></details>;
+  const materialRows = (parsed.materials || []).map((item: AnyRecord) => {
+    const parts = [
+      item.specification || 'sección pendiente de confirmar',
+      item.quantity ? `${item.quantity} ${item.unit || 'un'}` : '',
+      item.totalLengthM ? `${Number(item.totalLengthM).toFixed(1)} m totales` : '',
+      item.estimatedWeightKg ? `${Number(item.estimatedWeightKg).toFixed(1)} kg estimados` : ''
+    ].filter(Boolean);
+    return `${item.description}: ${parts.join(' · ')}`;
+  });
+  const purchaseRows = (parsed.purchase || []).map((item: AnyRecord) => {
+    const parts = [
+      `${Number(item.need || 0).toFixed(1)} ${item.unit || ''} netos`,
+      item.buyQuantity ? `${item.buyQuantity} barras de ${item.commercialLength} m` : 'cantidad de compra pendiente',
+      item.waste != null ? `${Number(item.waste).toFixed(1)} m de sobrante` : '',
+      item.priceStatus === 'NO_PRICE' ? 'sin precio verificado' : ''
+    ].filter(Boolean);
+    return `${item.description}: ${parts.join(' · ')}`;
+  });
+  const cost = parsed.estimatedCost?.total
+    ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: parsed.estimatedCost.currency || 'ARS' }).format(parsed.estimatedCost.total)
+    : '';
+  return <details className="technicalDetails"><summary><span>Ver análisis técnico</span><ChevronDown size={15} /></summary><div className="technicalContent"><div className="resultBadges"><StatusBadge value={parsed.level || 'ORIENTATION'} /><StatusBadge value={parsed.capability || 'PRELIMINARY_ASSISTED'} /></div>{parsed.missingData?.length > 0 && <TechnicalList title="Datos pendientes" items={parsed.missingData.map((item: AnyRecord) => `${labelFor(item.name)}: ${item.reason}`)} />}{parsed.assumptions?.length > 0 && <TechnicalList title="Hipótesis" items={parsed.assumptions} />}{parsed.calculations?.length > 0 && <div className="technicalSection"><h3><Calculator size={15} /> Cálculos realizados</h3><div className="calculationGrid">{parsed.calculations.map((item: AnyRecord) => <div className="calculationCard" key={item.title}><span>{item.title}</span><strong>{Number(item.result).toFixed(2)} {item.resultUnit}</strong><small>{item.formula}</small></div>)}</div></div>}{materialRows.length > 0 && <TechnicalList title="Materiales preliminares" items={materialRows} />}{purchaseRows.length > 0 && <TechnicalList title="Compra y plan de cortes" items={purchaseRows} />}{cost && <TechnicalList title="Costo conocido" items={[`${cost} — sólo incluye líneas con precio vigente disponible.`]} />}{parsed.warnings?.length > 0 && <TechnicalList title="Advertencias" items={parsed.warnings} />}{parsed.sources?.length > 0 && <TechnicalProvenance sources={parsed.sources} />}{parsed.regulations?.length > 0 && <TechnicalList title="Normativa consultada" items={parsed.regulations.map((item: AnyRecord) => `${item.code} — ${labelFor(item.status)}`)} />}</div></details>;
 }
 
 function TechnicalProvenance({ sources }: { sources: AnyRecord[] }) {
@@ -217,7 +322,7 @@ function TechnicalProvenance({ sources }: { sources: AnyRecord[] }) {
     ['Catálogo estructural', sources.filter((item) => String(item.type || '').includes('CATALOG'))],
     ['Referencias internacionales', sources.filter((item) => String(item.type || '') === 'INTERNATIONAL_REFERENCE')]
   ] as const;
-  return <>{groups.filter(([, items]) => items.length).map(([title, items]) => <TechnicalList key={title} title={title} items={items.map((item) => `${item.title}${item.excerpt ? ` — ${String(item.excerpt).slice(0, 180)}` : ''}`)} />)}</>;
+  return <>{groups.filter(([, items]) => items.length).map(([title, items]) => <div className="technicalSection" key={title}><h3><FileText size={15} /> {title}</h3><ul>{items.map((item) => <li key={item.id || item.title}>{item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> : item.title}{item.excerpt ? ` — ${String(item.excerpt).slice(0, 180)}` : ''}</li>)}</ul></div>)}</>;
 }
 
 function TechnicalList({ title, items }: { title: string; items: string[] }) {
@@ -232,10 +337,10 @@ function MetricStrip({ metrics }: { metrics: Array<{ label: string; value: strin
   return <div className="metricStrip">{metrics.map(({ label, value, icon: Icon }) => <div className="metricItem" key={label}><span className="metricIcon"><Icon size={15} /></span><div><span>{label}</span><strong>{value}</strong></div></div>)}</div>;
 }
 
-function CasesView({ companyId, onOpenCase }: { companyId: string; refreshKey?: number; onOpenCase: (id: string) => void }) {
-  const [conversations, setConversations] = useState<AnyRecord[]>([]);
-  useEffect(() => { if (companyId) api<AnyRecord[]>(`/api/engineering/conversations?companyId=${companyId}`).then(setConversations).catch(() => undefined); }, [companyId]);
-  return <section className="engineeringSection"><SectionHeader eyebrow="Seguimiento" title="Casos de ingeniería" text="Tus consultas técnicas guardadas, listas para continuar." /><div className="caseGrid">{conversations.map((item) => <article className="caseCard" key={item.id}><div className="caseCardTop"><span className="caseIcon"><FolderKanban size={17} /></span><StatusBadge value={item.state?.status || 'PRELIMINARY_DESIGN'} /></div><h3>{item.title || 'Caso sin título'}</h3><p>{item.lastMessage?.content || 'Sin actividad registrada todavía.'}</p><footer><span>{item.updatedAt ? `Actualizado ${dateFmt.format(new Date(item.updatedAt))}` : 'Sin actividad'}</span><button type="button" onClick={() => onOpenCase(item.id)}>Abrir caso <span aria-hidden="true">→</span></button></footer></article>)}{!conversations.length && <EmptyState icon={FolderKanban} title="Todavía no hay casos guardados" text="Guardá una conversación para convertirla en un caso de ingeniería y continuar el análisis." />}</div></section>;
+function CasesView({ companyId, refreshKey, onOpenCase }: { companyId: string; refreshKey?: number; onOpenCase: (id: string) => void }) {
+  const [cases, setCases] = useState<AnyRecord[]>([]);
+  useEffect(() => { if (companyId) api<AnyRecord[]>(`/api/engineering/cases?companyId=${companyId}`).then(setCases).catch(() => setCases([])); }, [companyId, refreshKey]);
+  return <section className="engineeringSection"><SectionHeader eyebrow="Seguimiento" title="Casos de ingeniería" text="Tus consultas técnicas guardadas, listas para continuar." /><div className="caseGrid">{cases.map((item) => <article className="caseCard" key={item.id}><div className="caseCardTop"><span className="caseIcon"><FolderKanban size={17} /></span><StatusBadge value={item.status || 'DRAFT'} /></div><h3>{item.name || item.conversation?.title || 'Caso sin título'}</h3><p>{item.conversation?.messages?.[0]?.content || 'Sin actividad registrada todavía.'}</p><footer><span>{item.updatedAt ? `Actualizado ${dateFmt.format(new Date(item.updatedAt))}` : 'Sin actividad'}</span><button type="button" onClick={() => onOpenCase(item.conversationId)}>Abrir caso <span aria-hidden="true">→</span></button></footer></article>)}{!cases.length && <EmptyState icon={FolderKanban} title="Todavía no hay casos guardados" text="Guardá una conversación para convertirla en un caso de ingeniería y continuar el análisis." />}</div></section>;
 }
 
 function DrawingsView({ companyId }: { companyId: string }) {
@@ -254,11 +359,37 @@ function LibraryView({ companyId }: { companyId: string }) {
   const [knowledge, setKnowledge] = useState<AnyRecord>({ documents: [] });
   const [status, setStatus] = useState<AnyRecord | null>(null);
   const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | 'processed' | 'review'>('all');
   const [loading, setLoading] = useState(true);
   async function load() { setLoading(true); try { const [rows, current] = await Promise.all([api<AnyRecord>(`/api/engineering/knowledge?companyId=${companyId}&take=50`), api<AnyRecord>(`/api/engineering/ingestion/status?companyId=${companyId}`)]); setKnowledge(rows); setStatus(current); } finally { setLoading(false); } }
   useEffect(() => { if (companyId) load().catch(() => undefined); }, [companyId]);
-  const documents = (knowledge.documents || []).filter((doc: AnyRecord) => !query.trim() || `${doc.title} ${doc.sourcePath}`.toLowerCase().includes(query.toLowerCase()));
-  return <section className="engineeringSection"><SectionHeader eyebrow="Conocimiento interno" title="Biblioteca técnica FMH" text="Antecedentes, documentos procesados y fuentes para tus análisis." action={<button type="button" onClick={load}><RefreshCw size={16} /> Actualizar</button>} /><MetricStrip metrics={[{ label: 'Total', value: status?.totalFiles || 0, icon: Library }, { label: 'Procesados', value: status?.counts?.EXTRACTED || 0, icon: Check }, { label: 'Revisión', value: (status?.counts?.NEEDS_VISION || 0) + (status?.counts?.NEEDS_REVIEW || 0), icon: AlertTriangle }, { label: 'Fallidos', value: status?.counts?.FAILED || 0, icon: CircleHelp }]} /><div className="libraryToolbar"><label className="engineeringSearch wide"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar documentos, proyectos o clientes" aria-label="Buscar biblioteca" /></label><select aria-label="Filtrar documentos"><option>Todos los documentos</option><option>Procesados</option><option>Requieren revisión</option></select></div>{loading ? <div className="tableSkeleton"><span /><span /><span /><span /></div> : documents.length ? <div className="engineeringTableWrap"><table className="engineeringTable"><thead><tr><th>Documento</th><th>Tipo</th><th>Proyecto / cliente</th><th>Fecha</th><th>Estado</th><th /></tr></thead><tbody>{documents.map((doc: AnyRecord) => <tr key={doc.id}><td><div className="docName"><span className="fileIcon"><FileText size={16} /></span><span><strong>{doc.title || doc.fileName || 'Documento sin nombre'}</strong><small>{doc.sourcePath || 'Fuente interna FMH'}</small></span></div></td><td>{labelFor(doc.documentType || doc.type || 'OTHER')}</td><td>{doc.projectName || doc.customerName || '—'}</td><td>{doc.createdAt ? dateFmt.format(new Date(doc.createdAt)) : '—'}</td><td><StatusBadge value={doc.verified ? 'VERIFIED_INTERNAL' : doc.status || 'HISTORICAL_PROJECT'} /></td><td><button className="iconButton" aria-label={`Más acciones para ${doc.title || 'documento'}`}><MoreHorizontal size={17} /></button></td></tr>)}</tbody></table></div> : <EmptyState icon={Library} title="La biblioteca todavía está vacía" text="Actualizá la biblioteca para procesar documentos técnicos y antecedentes FMH." action={<button className="primaryButton" onClick={load}><RefreshCw size={15} /> Actualizar biblioteca</button>} />}</section>;
+  const documents = (knowledge.documents || []).filter((doc: AnyRecord) => {
+    const matchesQuery = !query.trim() || `${doc.title} ${doc.sourcePath} ${doc.projectName} ${doc.customerName}`.toLowerCase().includes(query.toLowerCase());
+    const documentStatus = String(doc.status || '');
+    const matchesFilter = filter === 'all'
+      || (filter === 'processed' && (doc.verified || ['EXTRACTED', 'INDEXED'].includes(documentStatus)))
+      || (filter === 'review' && ['NEEDS_REVIEW', 'NEEDS_VISION'].includes(documentStatus));
+    return matchesQuery && matchesFilter;
+  });
+  return (
+    <section className="engineeringSection">
+      <SectionHeader eyebrow="Conocimiento interno" title="Biblioteca técnica FMH" text="Antecedentes, documentos procesados y fuentes para tus análisis." action={<button type="button" onClick={load}><RefreshCw size={16} /> Actualizar</button>} />
+      <MetricStrip metrics={[{ label: 'Total', value: status?.totalFiles || 0, icon: Library }, { label: 'Procesados', value: status?.counts?.EXTRACTED || 0, icon: Check }, { label: 'Revisión', value: (status?.counts?.NEEDS_VISION || 0) + (status?.counts?.NEEDS_REVIEW || 0), icon: AlertTriangle }, { label: 'Fallidos', value: status?.counts?.FAILED || 0, icon: CircleHelp }]} />
+      <div className="libraryToolbar">
+        <label className="engineeringSearch wide"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar documentos, proyectos o clientes" aria-label="Buscar biblioteca" /></label>
+        <select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)} aria-label="Filtrar documentos">
+          <option value="all">Todos los documentos</option>
+          <option value="processed">Procesados</option>
+          <option value="review">Requieren revisión</option>
+        </select>
+      </div>
+      {loading
+        ? <div className="tableSkeleton"><span /><span /><span /><span /></div>
+        : documents.length
+          ? <div className="engineeringTableWrap"><table className="engineeringTable"><thead><tr><th>Documento</th><th>Tipo</th><th>Proyecto / cliente</th><th>Fecha</th><th>Estado</th></tr></thead><tbody>{documents.map((doc: AnyRecord) => <tr key={doc.id}><td><div className="docName"><span className="fileIcon"><FileText size={16} /></span><span><strong>{doc.title || doc.fileName || 'Documento sin nombre'}</strong><small>{doc.sourcePath || 'Fuente interna FMH'}</small></span></div></td><td>{labelFor(doc.documentType || doc.type || 'OTHER')}</td><td>{doc.projectName || doc.customerName || '—'}</td><td>{doc.createdAt ? dateFmt.format(new Date(doc.createdAt)) : '—'}</td><td><StatusBadge value={doc.verified ? 'VERIFIED_INTERNAL' : doc.status || 'HISTORICAL_PROJECT'} /></td></tr>)}</tbody></table></div>
+          : <EmptyState icon={Library} title="No hay documentos para este filtro" text="Cambiá la búsqueda o actualizá la biblioteca." action={<button className="primaryButton" onClick={load}><RefreshCw size={15} /> Actualizar biblioteca</button>} />}
+    </section>
+  );
 }
 
 function GoldenLibraryPanel({ companyId }: { companyId: string }) {
@@ -288,7 +419,7 @@ function ReviewView({ companyId }: { companyId: string }) {
   async function decide(decision: 'CONFIRMED' | 'SKIPPED' | 'REJECTED') { if (!item) return; setBusy(true); setMessage(''); try { const id = await ensureSession(); const golden = kind === 'PROJECT' && decision === 'CONFIRMED' ? window.confirm('¿Marcar este proyecto como antecedente FMH prioritario?') : false; await postJson(`/api/engineering/review/${kind}/${item.id}`, { sessionId: id, reviewer, decision, golden }); setMessage('Decisión guardada.'); await load(); } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); } finally { setBusy(false); } }
   function sourceUrl() { return item?.source?.sourceUrl || item?.sourceRecord?.sourceUrl; }
   const context = !item ? '' : kind === 'BENCHMARK' ? item.problemStatement : kind === 'CATALOG' ? `Área ${item.area ?? '—'} mm² · Peso ${item.massPerMeter ?? '—'} kg/m · Ix ${item.ix ?? '—'} · Iy ${item.iy ?? '—'} · rx ${item.rx ?? '—'} · ry ${item.ry ?? '—'}` : kind === 'PROJECT' ? `${item.customerName || 'Cliente pendiente'} · ${item.projectType} · ${item.documents?.length || 0} archivos` : kind === 'DRAWING' ? `${item.customerName || 'Cliente pendiente'} · ${item.projectType || 'Tipo pendiente'} · Plano ${item.drawingNumber || 'sin número'}` : `${item.documentType} · ${item.projectName || item.customerName || 'Proyecto pendiente'}`;
-  return <section className="engineeringSection reviewWizard"><SectionHeader eyebrow="Decisión humana" title="Revisión de Ingeniería" text="Una entidad por vez. Cada confirmación, omisión o rechazo se guarda inmediatamente." action={<button type="button" onClick={load}><RefreshCw size={16} /> Actualizar</button>} /><div className="reviewProgress"><span>Benchmarks <strong>{progress.benchmarks?.verified || 0}/{progress.benchmarks?.total || 0}</strong></span><span>Catálogo <strong>{progress.catalog?.confirmed || 0}/{progress.catalog?.total || 0}</strong></span><span>Proyectos <strong>{progress.projects?.confirmed || 0}</strong></span><span>Planos <strong>{progress.drawings?.reviewed || 0}/{progress.drawings?.total || 0}</strong></span></div><div className="reviewKindTabs">{(Object.keys(reviewKindLabels) as ReviewKind[]).map((value) => <button className={kind === value ? 'active' : ''} key={value} onClick={() => { setKind(value); setSessionId(''); }}>{reviewKindLabels[value]}</button>)}</div>{item ? <article className="reviewEntityCard"><div><span className="eyebrow">{reviewKindLabels[kind]} · siguiente pendiente</span><h3>{item.title || item.designation || item.name || item.drawingTitle || item.fileName}</h3><p>{context}</p>{kind === 'BENCHMARK' && <small>Fuente: {item.source?.title} · Página {JSON.parse(item.pageReferencesJson || '[]').join(', ') || 'pendiente'}</small>}{message && <p className="reviewMessage">{message}</p>}</div><div className="reviewActions"><button className="primaryButton" disabled={busy} onClick={() => decide('CONFIRMED')}><Check size={15} /> Confirmar</button><button disabled={busy} onClick={() => setMessage('Para correcciones estructuradas usá npm run engineering:review; evita editar JSON manualmente.')}><Wrench size={15} /> Corregir</button><button disabled={busy} onClick={() => decide('SKIPPED')}>Omitir</button><button disabled={busy} onClick={() => decide('REJECTED')}>Rechazar</button>{sourceUrl() && <a href={sourceUrl()} target="_blank" rel="noreferrer">Ver fuente</a>}</div></article> : <EmptyState icon={Check} title={`No hay ${reviewKindLabels[kind].toLowerCase()} pendientes`} text="El progreso queda guardado y podés continuar con otra categoría." />}</section>;
+  return <section className="engineeringSection reviewWizard"><SectionHeader eyebrow="Decisión humana" title="Revisión de Ingeniería" text="Una entidad por vez. Cada confirmación, omisión o rechazo se guarda inmediatamente." action={<button type="button" onClick={load}><RefreshCw size={16} /> Actualizar</button>} /><div className="reviewProgress"><span>Benchmarks <strong>{progress.benchmarks?.verified || 0}/{progress.benchmarks?.total || 0}</strong></span><span>Catálogo <strong>{progress.catalog?.confirmed || 0}/{progress.catalog?.total || 0}</strong></span><span>Proyectos <strong>{progress.projects?.confirmed || 0}</strong></span><span>Planos <strong>{progress.drawings?.reviewed || 0}/{progress.drawings?.total || 0}</strong></span></div><div className="reviewKindTabs">{(Object.keys(reviewKindLabels) as ReviewKind[]).map((value) => <button className={kind === value ? 'active' : ''} key={value} onClick={() => { setKind(value); setSessionId(''); }}>{reviewKindLabels[value]}</button>)}</div>{item ? <article className="reviewEntityCard"><div><span className="eyebrow">{reviewKindLabels[kind]} · siguiente pendiente</span><h3>{item.title || item.designation || item.name || item.drawingTitle || item.fileName}</h3><p>{context}</p>{kind === 'BENCHMARK' && <small>Fuente: {item.source?.title} · Página {jsonArray(item.pageReferencesJson).join(', ') || 'pendiente'}</small>}{message && <p className="reviewMessage">{message}</p>}</div><div className="reviewActions"><button className="primaryButton" disabled={busy} onClick={() => decide('CONFIRMED')}><Check size={15} /> Confirmar</button><button disabled={busy} onClick={() => setMessage('Para correcciones estructuradas usá npm run engineering:review; evita editar JSON manualmente.')}><Wrench size={15} /> Corregir</button><button disabled={busy} onClick={() => decide('SKIPPED')}>Omitir</button><button disabled={busy} onClick={() => decide('REJECTED')}>Rechazar</button>{sourceUrl() && <a href={sourceUrl()} target="_blank" rel="noreferrer">Ver fuente</a>}</div></article> : <EmptyState icon={Check} title={`No hay ${reviewKindLabels[kind].toLowerCase()} pendientes`} text="El progreso queda guardado y podés continuar con otra categoría." />}</section>;
 }
 
 function ImportView({ companyId }: { companyId: string }) {

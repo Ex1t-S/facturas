@@ -29,6 +29,21 @@ const engineeringToolDefinitionsBase = [
 // que realmente necesita antes de calcular.
 export const engineeringToolDefinitions = engineeringToolDefinitionsBase.map((tool) => ({ ...tool, strict: false }));
 
+export function mergeEngineeringDrawingReferences(drawingLibrary: Array<Record<string, any>>, knowledgeDocuments: Array<Record<string, any>>) {
+  return [
+    ...drawingLibrary.map(({ sourcePath: _sourcePath, thumbnailPath: _thumbnailPath, ...drawing }) => ({
+      ...drawing,
+      source: 'DRAWING_LIBRARY',
+      availableForReference: Boolean(drawing.extractedText?.trim())
+    })),
+    ...knowledgeDocuments.map(({ sourcePath: _sourcePath, ...drawing }) => ({
+      ...drawing,
+      source: 'ENGINEERING_KNOWLEDGE',
+      availableForReference: Boolean(drawing.excerpt?.trim())
+    }))
+  ];
+}
+
 function compareSections(forceKN: number, lengthMm: number, candidates: Array<{ designation: string; areaMm2: number; ixMm4: number; iyMm4: number; kgPerM?: number }>) {
   return candidates.map((candidate) => {
     const radiusX = Math.sqrt(candidate.ixMm4 / candidate.areaMm2);
@@ -45,7 +60,16 @@ export async function executeEngineeringTool(name: string, args: Record<string, 
     case 'search_relevant_fmh_precedents':
     case 'search_fmh_engineering_knowledge': return searchEngineeringKnowledge({ companyId, q: String(args.query), projectType: args.projectType ? String(args.projectType) : undefined, take: 8 });
     case 'search_official_engineering_regulations': { const { searchOfficialEngineeringRegulations } = await import('./regulations.js'); return searchOfficialEngineeringRegulations(companyId, String(args.query)); }
-    case 'search_relevant_fmh_drawings': return listEngineeringDrawings({ companyId, q: String(args.query), take: 12 });
+    case 'search_relevant_fmh_drawings': {
+      const query = String(args.query);
+      const [drawingLibrary, knowledge] = await Promise.all([
+        listEngineeringDrawings({ companyId, q: query, take: 12 }),
+        searchEngineeringKnowledge({ companyId, q: query, documentType: 'DRAWING', take: 12 })
+      ]);
+      return {
+        drawings: mergeEngineeringDrawingReferences(drawingLibrary, knowledge.documents)
+      };
+    }
     case 'get_inventory_sections': return searchEngineeringSectionCandidates(companyId, String(args.query), 24);
     case 'calculate_vertical_load': return calculateVerticalLoad({ storedMassT: Number(args.storedMassT), selfWeightKN: args.selfWeightKN === undefined ? undefined : Number(args.selfWeightKN), additionalLoadKN: args.additionalLoadKN === undefined ? undefined : Number(args.additionalLoadKN) });
     case 'calculate_load_per_support': return calculateNominalLoadPerSupport(Number(args.totalLoadKN), Number(args.supportCount));

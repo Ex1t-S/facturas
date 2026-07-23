@@ -210,6 +210,28 @@ td strong, td small { display: block; }
 .invoiceQuoteCard { display: grid; gap: 7px; border: 1px solid var(--line); border-radius: 9px; padding: 13px; background: var(--panel-2); }
 .invoiceQuoteCard span { color: var(--muted); }
 .invoiceQuoteCard b { font-size: 18px; }
+.deliveryMonthToolbar { display: grid; grid-template-columns: minmax(190px, 1.4fr) minmax(160px, 1fr) minmax(130px, .7fr) minmax(150px, .8fr); gap: 12px; align-items: end; margin-bottom: 16px; }
+.compactField { margin: 0; }
+.monthMetric { display: grid; gap: 3px; min-height: 66px; align-content: center; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.monthMetric span { color: var(--muted); font-size: 11px; }
+.monthMetric strong { color: var(--brand); font-size: 23px; }
+.customerCloseChips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
+.customerCloseChips button { display: inline-flex; align-items: center; gap: 8px; border-color: var(--line); background: var(--panel-2); color: var(--ink); }
+.customerCloseChips button span { display: inline-grid; min-width: 22px; height: 22px; place-items: center; border-radius: 999px; background: var(--brand); color: white; font-size: 11px; }
+.monthlyCloseReview { margin-top: 16px; border-color: color-mix(in srgb, var(--brand) 30%, var(--line)); }
+.priceInput { display: flex; align-items: center; min-width: 150px; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.priceInput span { padding: 0 8px; color: var(--muted); }
+.priceInput input { min-width: 0; border: 0; border-left: 1px solid var(--line); border-radius: 0; }
+.formWarning { margin: 12px 0; color: #9b4a11; font-size: 12px; font-weight: 650; }
+.monthlyCloseActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; margin-top: 16px; }
+@media (max-width: 820px) {
+  .deliveryMonthToolbar { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 520px) {
+  .deliveryMonthToolbar { grid-template-columns: 1fr; }
+  .monthlyCloseActions { display: grid; }
+  .monthlyCloseActions button { width: 100%; }
+}
 .assistantLayout {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
@@ -781,7 +803,7 @@ button:hover, a:hover { transform: translateY(-1px); border-color: var(--line-st
 @media (max-width: 720px) { .directoryHeader { align-items: flex-start; flex-direction: column; }.inlineSearch { width: 100%; }.whatsappOverview { grid-template-columns: 1fr; }.whatsappStat { min-height: 76px; } }
 
 /* Application-wide product pass */
-.shell > aside { display: flex; flex-direction: column; }
+.shell > aside { display: flex; flex-direction: column; overflow-y: auto; }
 .brand { display: flex; align-items: center; gap: 9px; position: relative; }
 .brand strong { display: block; }
 .brand > span { display: block; }

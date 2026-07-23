@@ -20,6 +20,12 @@ async function insertMany<T>(label: string, runner: (rows: T[]) => Promise<unkno
 }
 
 async function main() {
+  throw new Error(
+    'MIGRACIÓN BLOQUEADA: este script elimina el destino y no copia los modelos agregados después de su creación. '
+    + 'Prepará un backup, un baseline PostgreSQL reproducible y un migrador completo antes de volver a habilitarlo.'
+  );
+
+  /* istanbul ignore next -- código histórico conservado sólo como referencia para reescritura */
   console.log('Leyendo datos desde SQLite...');
 
   const [

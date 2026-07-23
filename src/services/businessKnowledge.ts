@@ -144,7 +144,7 @@ export async function searchBusinessKnowledge(input: {
       id: doc.id,
       title: doc.fileName,
       subtitle: `${doc.kind} / ${doc.extractionStatus}`,
-      url: `/api/documents/${doc.id}/content`
+      url: `/api/documents/${doc.id}/content?companyId=${encodeURIComponent(input.companyId)}`
     }))
   ];
 

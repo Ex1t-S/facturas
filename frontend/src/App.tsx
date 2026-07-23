@@ -1,24 +1,40 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, ArrowRight, Bot, CheckCircle2, ChevronDown, ChevronRight, Clock3, FileCheck2, FileText, Folder, FolderOpen, Home, Menu, PackageSearch, Plus, ReceiptText, Search, Send, Settings, Upload, Users, Wrench, X } from 'lucide-react';
+import { Archive, ArrowRight, Bot, Building2, CheckCircle2, ChevronDown, ChevronRight, CircleDot, ClipboardList, Clock3, FileCheck2, FileText, Folder, FolderOpen, Home, Menu, MessageSquareText, PackageSearch, Plus, ReceiptText, Search, Send, Settings, ShieldCheck, Upload, Users, Wrench, X } from 'lucide-react';
 import { api, dateFmt, money, postJson } from './api';
 import { EngineeringPage } from './features/engineering/EngineeringPage';
 
 type View = 'dashboard' | 'assistant' | 'engineering' | 'documents' | 'delivery-notes' | 'quotes' | 'invoices' | 'inventory' | 'customers' | 'whatsapp' | 'settings';
 type AnyRecord = Record<string, any>;
 
-const nav: Array<{ id: View; label: string; icon: typeof Home }> = [
-  { id: 'dashboard', label: 'Panel', icon: Home },
-  { id: 'assistant', label: 'Asistente', icon: Bot },
-  { id: 'engineering', label: 'Ingeniería FMH', icon: Wrench },
-  { id: 'documents', label: 'Documentos', icon: Archive },
-  { id: 'delivery-notes', label: 'Remitos', icon: FileCheck2 },
-  { id: 'quotes', label: 'Presupuestos', icon: ReceiptText },
-  { id: 'invoices', label: 'Facturas', icon: ReceiptText },
-  { id: 'inventory', label: 'Inventario', icon: PackageSearch },
-  { id: 'customers', label: 'Clientes', icon: Users },
-  { id: 'whatsapp', label: 'WhatsApp', icon: Send },
-  { id: 'settings', label: 'Ajustes', icon: Settings }
+const navGroups: Array<{ label: string; items: Array<{ id: View; label: string; icon: typeof Home }> }> = [
+  {
+    label: 'Operación',
+    items: [
+      { id: 'dashboard', label: 'Resumen', icon: Home },
+      { id: 'delivery-notes', label: 'Remitos', icon: ClipboardList },
+      { id: 'quotes', label: 'Presupuestos', icon: ReceiptText },
+      { id: 'invoices', label: 'Facturación', icon: FileCheck2 },
+      { id: 'documents', label: 'Documentos', icon: Archive }
+    ]
+  },
+  {
+    label: 'Gestión',
+    items: [
+      { id: 'customers', label: 'Clientes', icon: Users },
+      { id: 'inventory', label: 'Materiales y costos', icon: PackageSearch },
+      { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquareText }
+    ]
+  },
+  {
+    label: 'Herramientas',
+    items: [
+      { id: 'assistant', label: 'Asistente comercial', icon: Bot },
+      { id: 'engineering', label: 'Ingeniería FMH', icon: Wrench },
+      { id: 'settings', label: 'Configuración', icon: Settings }
+    ]
+  }
 ];
+const nav = navGroups.flatMap((group) => group.items);
 
 const documentKinds = [
   ['', 'Todos'],
@@ -108,20 +124,29 @@ function useHashView() {
 }
 
 function Badge({ value }: { value?: string }) {
-  const tone = String(value || '').toLowerCase().includes('pending') || String(value || '').toLowerCase().includes('needs') || String(value || '').toLowerCase().includes('uploaded') ? 'warn' : 'ok';
+  const normalized = String(value || '').toUpperCase();
+  const tone = normalized.includes('FAIL') || normalized.includes('REJECT') || normalized.includes('CANCEL')
+    ? 'danger'
+    : normalized.includes('PENDING') || normalized.includes('NEEDS') || normalized.includes('UPLOADED')
+      ? 'warn'
+      : normalized.includes('DRAFT') || normalized.includes('UNKNOWN')
+        ? 'neutral'
+        : 'ok';
   return <span className={`badge ${tone}`}>{labelFor(value)}</span>;
 }
 
 function Empty({ title, text }: { title: string; text: string }) {
-  return <div className="empty"><strong>{title}</strong><span>{text}</span></div>;
+  return <div className="empty"><span className="emptyGlyph"><CircleDot size={18} /></span><strong>{title}</strong><span>{text}</span></div>;
 }
 
 function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
-  return <label className="field"><span>{props.label}</span><input {...props} /></label>;
+  const { label, ...inputProps } = props;
+  return <label className="field"><span>{label}</span><input {...inputProps} /></label>;
 }
 
 function SelectField(props: React.SelectHTMLAttributes<HTMLSelectElement> & { label: string; children: React.ReactNode }) {
-  return <label className="field"><span>{props.label}</span><select {...props}>{props.children}</select></label>;
+  const { label, children, ...selectProps } = props;
+  return <label className="field"><span>{label}</span><select {...selectProps}>{children}</select></label>;
 }
 
 function Table({ headers, rows }: { headers: string[]; rows: React.ReactNode[] }) {
@@ -164,7 +189,7 @@ export function App() {
       await load();
       return result;
     } catch (error) {
-      setToast('No pudimos completar la acción. Revisá los datos e intentá nuevamente.');
+      setToast(error instanceof Error ? error.message : 'No pudimos completar la acción. Revisá los datos e intentá nuevamente.');
       throw error;
     } finally {
       setBusy(false);
@@ -186,7 +211,7 @@ export function App() {
     if (view === 'delivery-notes') next.deliveryNotes = await api<AnyRecord[]>(`/api/delivery-notes?companyId=${activeCompanyId}`);
     if (view === 'inventory') next.inventory = await api<AnyRecord>(`/api/inventory?companyId=${activeCompanyId}`);
     if (view === 'inventory') next.suppliers = await api<AnyRecord[]>(`/api/suppliers?companyId=${activeCompanyId}`);
-    if (view === 'whatsapp') next.whatsapp = await api<AnyRecord[]>('/api/whatsapp/messages');
+    if (view === 'whatsapp') next.whatsapp = await api<AnyRecord[]>(`/api/whatsapp/messages?companyId=${activeCompanyId}`);
     setData((current) => ({ ...current, ...next }));
   }
 
@@ -203,36 +228,42 @@ export function App() {
     if (view === 'invoices') return <Invoices data={data} companyId={companyId} notify={notify} />;
     if (view === 'inventory') return <Inventory data={data} companyId={companyId} notify={notify} />;
     if (view === 'customers') return <CustomersDirectory data={data} companyId={companyId} notify={notify} />;
-    if (view === 'whatsapp') return <WhatsAppInbox data={data} />;
-    if (view === 'settings') return <SettingsCenter notify={notify} />;
+    if (view === 'whatsapp') return <WhatsAppInbox data={data} companyId={companyId} notify={notify} />;
+    if (view === 'settings') return <SettingsCenter data={data} companyId={companyId} notify={notify} />;
     return <DashboardOverview data={data} setView={setView} />;
   }, [view, data, companyId]);
 
   return (
     <div className="shell">
       <button className="mobileSidebarBackdrop" aria-label="Cerrar navegación" onClick={() => setSidebarOpen(false)} />
-      <aside className={sidebarOpen ? 'open' : ''}>
+      <aside className={`appSidebar ${sidebarOpen ? 'open' : ''}`}>
         <button className="iconButton sidebarClose" onClick={() => setSidebarOpen(false)} aria-label="Cerrar navegación"><X size={17} /></button>
-        <div className="brand"><strong>FMH Gestión</strong><span>Presupuestos, remitos, inventario y ARCA</span></div>
-        <nav aria-label="Navegación principal">{nav.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'active' : ''} onClick={() => goTo(id)}><Icon size={17} />{label}</button>)}</nav>
-        <div className="sidebarBottom"><span className="sidebarStatus"><span /> Sistema operativo</span><button onClick={() => goTo('settings')}><Settings size={15} /> Ajustes</button></div>
+        <div className="brand">
+          <span className="brandLogo"><img src="/ui-assets/fmh-logo-green.png" alt="FMH" /></span>
+          <span className="brandCopy"><strong>Gestión</strong><small>Operaciones metalúrgicas</small></span>
+        </div>
+        <div className="sidebarWorkspace"><Building2 size={15} /><span><small>Empresa activa</small><strong>{companyName}</strong></span></div>
+        <nav className="appNav" aria-label="Navegación principal">
+          {navGroups.map((group) => <div className="navGroup" key={group.label}><span className="navGroupLabel">{group.label}</span>{group.items.map(({ id, label, icon: Icon }) => <button key={id} className={view === id ? 'active' : ''} onClick={() => goTo(id)} aria-current={view === id ? 'page' : undefined}><Icon size={16} /><span>{label}</span>{view === id && <span className="navActiveMarker" />}</button>)}</div>)}
+        </nav>
+        <div className="sidebarBottom"><span className="sidebarStatus"><span /> Servicio disponible</span><span className="sidebarSecurity"><ShieldCheck size={13} /> Acceso protegido</span></div>
       </aside>
       <main>
         <header className="topbar">
           <button className="mobileSidebarToggle" onClick={() => setSidebarOpen(true)} aria-label="Abrir navegación"><Menu size={18} /></button>
-          <div className="topbarContext"><span className="topbarSection">{nav.find((item) => item.id === view)?.label || 'Panel'}</span><div className="company"><span>Empresa activa</span><strong>{companyName}</strong></div></div>
-          <div className="topbarActions"><span className="topbarDate">{new Intl.DateTimeFormat('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date())}</span><button className="userMenu" onClick={() => goTo('settings')} aria-label="Abrir ajustes"><span>FM</span></button></div>
+          <div className="topbarContext"><span>FMH Gestión</span><ChevronRight size={14} /><strong>{nav.find((item) => item.id === view)?.label || 'Resumen'}</strong></div>
+          <div className="topbarActions"><span className="topbarDate">{new Intl.DateTimeFormat('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</span><button className="userMenu" onClick={() => goTo('settings')} aria-label="Abrir configuración"><span>FM</span></button></div>
         </header>
         {busy && <div className="globalProgress"><span />Procesando tu solicitud…</div>}
         {content}
       </main>
-      {toast && <div className="toast">{toast}</div>}
+      {toast && <div className="toast" role="status" aria-live="polite">{toast}</div>}
     </div>
   );
 }
 
 function Page({ title, text, action, eyebrow, children }: { title: string; text: string; eyebrow?: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return <><div className="pageHead"><div className="pageTitleBlock">{eyebrow && <span className="pageEyebrow">{eyebrow}</span>}<h1>{title}</h1><p>{text}</p></div>{action && <div className="pageActions">{action}</div>}</div>{children}</>;
+  return <div className="page"><div className="pageHead"><div className="pageTitleBlock">{eyebrow && <span className="pageEyebrow">{eyebrow}</span>}<h1>{title}</h1><p>{text}</p></div>{action && <div className="pageActions">{action}</div>}</div><div className="pageBody">{children}</div></div>;
 }
 
 function Dashboard({ data, setView }: { data: AnyRecord; setView: (view: View) => void }) {
@@ -269,7 +300,7 @@ function AssistantView({ companyId }: { companyId: string }) {
 
   async function loadMessages(chatId: string) {
     if (!chatId) return;
-    const chat = await api<AnyRecord>(`/api/assistant/chats/${chatId}/messages`);
+    const chat = await api<AnyRecord>(`/api/assistant/chats/${chatId}/messages?companyId=${encodeURIComponent(companyId)}`);
     setMessages(chat.messages || []);
   }
 
@@ -300,6 +331,7 @@ function AssistantView({ companyId }: { companyId: string }) {
     setLoading(true);
     try {
       const response = await postJson<{ assistantMessage: { role: 'assistant'; content: string; id?: string }; userMessage: { role: 'user'; content: string; id?: string } }>(`/api/assistant/chats/${chatId}/messages`, {
+        companyId,
         message
       });
       setMessages((current) => {
@@ -315,7 +347,7 @@ function AssistantView({ companyId }: { companyId: string }) {
   }
 
   return (
-    <Page title="Asistente IA" text="Consultas y acciones sobre documentos reales.">
+    <Page eyebrow="Operación asistida" title="Asistente comercial" text="Consultá información del negocio y prepará documentos desde un único lugar.">
       <section className="assistantLayout">
         <aside className="assistantHistory">
           <button type="button" className="newChatButton" onClick={() => createChat()}><Bot size={16} /> Nuevo chat</button>
@@ -332,14 +364,14 @@ function AssistantView({ companyId }: { companyId: string }) {
         </aside>
         <div className="assistantChatPanel">
            <div className="chat">
-             {!messages.length && !loading && <div className="assistantWelcome"><span className="assistantWelcomeIcon"><Bot size={22} /></span><strong>¿En qué te ayudo hoy?</strong><p>Consultá documentos, creá borradores o pedime que encuentre información dentro de tu operación.</p><div className="assistantSuggestions"><button type="button" onClick={() => setText('¿Qué documentos tengo pendientes de revisar?')}>Ver pendientes</button><button type="button" onClick={() => setText('Prepará un presupuesto para un cliente')}>Crear presupuesto</button><button type="button" onClick={() => setText('Buscá un documento por cliente')}>Buscar documento</button></div></div>}
+             {!messages.length && !loading && <div className="assistantWelcome"><span className="assistantWelcomeIcon"><ClipboardList size={22} /></span><span className="pageEyebrow">Centro operativo</span><strong>Iniciá una gestión</strong><p>Revisá pendientes, localizá documentación o prepará un borrador comercial con la información de FMH.</p><div className="assistantSuggestions"><button type="button" onClick={() => setText('¿Qué documentos tengo pendientes de revisar?')}>Revisar pendientes</button><button type="button" onClick={() => setText('Prepará un presupuesto para un cliente')}>Preparar presupuesto</button><button type="button" onClick={() => setText('Buscá un documento por cliente')}>Localizar documento</button></div></div>}
             {messages.map((message, index) => (
               <div className={`bubble ${message.role}`} key={message.id || index}>
                 <span>{message.role === 'assistant' ? 'Asistente' : 'Vos'}</span>
                 <p>{message.content}</p>
                 {message.documentId && (message.actionType === 'delivery_note_created' || message.actionType === 'quote_draft_created') && (
                   <div className="messageActions">
-                    <a href={`/api/documents/${message.documentId}/content`} target="_blank"><FileText size={16} /> Ver PDF</a>
+                    <a href={`/api/documents/${message.documentId}/content?companyId=${encodeURIComponent(companyId)}`} target="_blank"><FileText size={16} /> Ver PDF</a>
                   </div>
                 )}
               </div>
@@ -347,7 +379,7 @@ function AssistantView({ companyId }: { companyId: string }) {
              {loading && <div className="processingMessage"><span className="assistantAvatar"><Bot size={14} /></span><div><strong>Analizando tu solicitud</strong><span className="processingDots"><i /><i /><i /></span></div></div>}
           </div>
           <form className="chatComposer" onSubmit={(event) => { event.preventDefault(); ask(text); }}>
-            <textarea value={text} onChange={(event) => setText(event.target.value)} rows={3} placeholder="Escribi la consulta o pedido..." />
+            <textarea value={text} onChange={(event) => setText(event.target.value)} rows={3} placeholder="Escribí la consulta o el pedido…" aria-label="Consulta o pedido comercial" />
             <button disabled={loading || !text.trim()}><Send size={16} />Enviar</button>
           </form>
         </div>
@@ -431,17 +463,17 @@ function EngineeringWorkspaceView({ companyId }: { companyId: string }) {
 function DashboardOverview({ data, setView }: { data: AnyRecord; setView: (view: View) => void }) {
   const stats = data.dashboard?.stats || {};
   const recentDocuments = data.dashboard?.recentDocuments || [];
-  return <Page eyebrow="Resumen" title="Panel operativo" text="Una vista rápida de lo que necesita atención hoy." action={<button onClick={() => setView('documents')}><Upload size={16} /> Importar documentos</button>}>
+  return <Page eyebrow="Control operativo" title="Resumen del negocio" text="Actividad comercial, documentación y tareas que requieren seguimiento." action={<button className="primaryButton" onClick={() => setView('delivery-notes')}><ClipboardList size={16} /> Revisar remitos</button>}>
     <section className="dashboardMetrics">
-      <article><span className="metricLabel">Clientes</span><strong>{stats.customers || 0}</strong><small>registrados</small><Users size={18} /></article>
-      <article><span className="metricLabel">Productos</span><strong>{stats.products || 0}</strong><small>en catálogo</small><PackageSearch size={18} /></article>
-      <article><span className="metricLabel">Presupuestos</span><strong>{stats.quotes || 0}</strong><small>históricos y activos</small><ReceiptText size={18} /></article>
-      <article className={stats.documentsPending ? 'attention' : ''}><span className="metricLabel">Por revisar</span><strong>{stats.documentsPending || 0}</strong><small>documentos pendientes</small><FileCheck2 size={18} /></article>
+      <article><span className="metricIconBox"><Users size={17} /></span><div><span className="metricLabel">Clientes activos</span><strong>{stats.customers || 0}</strong><small>registros comerciales</small></div></article>
+      <article><span className="metricIconBox"><PackageSearch size={17} /></span><div><span className="metricLabel">Ítems de catálogo</span><strong>{stats.products || 0}</strong><small>materiales y trabajos</small></div></article>
+      <article><span className="metricIconBox"><ReceiptText size={17} /></span><div><span className="metricLabel">Presupuestos</span><strong>{stats.quotes || 0}</strong><small>históricos y vigentes</small></div></article>
+      <article className={stats.documentsPending ? 'attention' : ''}><span className="metricIconBox"><FileCheck2 size={17} /></span><div><span className="metricLabel">Pendientes de revisión</span><strong>{stats.documentsPending || 0}</strong><small>documentos por resolver</small></div></article>
     </section>
-    <section className="quickActions"><div><span className="pageEyebrow">Accesos rápidos</span><h2>¿Qué querés hacer?</h2></div><div className="quickActionGrid"><button onClick={() => setView('quotes')}><Plus size={17} /><span><strong>Nuevo presupuesto</strong><small>Crear una propuesta comercial</small></span><ArrowRight size={15} /></button><button onClick={() => setView('assistant')}><Bot size={17} /><span><strong>Consultar asistente</strong><small>Resolver una tarea con IA</small></span><ArrowRight size={15} /></button><button onClick={() => setView('customers')}><Users size={17} /><span><strong>Agregar cliente</strong><small>Guardar datos fiscales</small></span><ArrowRight size={15} /></button></div></section>
+    <section className="quickActions"><div><span className="pageEyebrow">Acciones frecuentes</span><h2>Operación diaria</h2></div><div className="quickActionGrid"><button onClick={() => setView('quotes')}><Plus size={16} /><span><strong>Nuevo presupuesto</strong><small>Preparar propuesta</small></span><ArrowRight size={14} /></button><button onClick={() => setView('assistant')}><ClipboardList size={16} /><span><strong>Generar remito</strong><small>Desde una instrucción</small></span><ArrowRight size={14} /></button><button onClick={() => setView('documents')}><Upload size={16} /><span><strong>Incorporar documentos</strong><small>Ordenar históricos</small></span><ArrowRight size={14} /></button></div></section>
     <section className="dashboardGrid">
-      <div className="card dashboardPanel"><div className="sectionRow"><div><span className="pageEyebrow">Actividad comercial</span><h2>Presupuestos recientes</h2></div><button className="textButton" onClick={() => setView('quotes')}>Ver todos <ArrowRight size={14} /></button></div><Table headers={['N°', 'Cliente', 'Estado', 'Total']} rows={(data.dashboard?.recentQuotes || []).map((q: AnyRecord) => <tr key={q.id}><td>#{q.number}</td><td><strong>{q.customer?.legalName || 'Cliente sin nombre'}</strong></td><td><Badge value={q.status} /></td><td>{money.format(Number(q.total || 0))}</td></tr>)} /></div>
-      <div className="card dashboardPanel"><div className="sectionRow"><div><span className="pageEyebrow">Centro de revisión</span><h2>Documentos recientes</h2></div><button className="textButton" onClick={() => setView('documents')}>Abrir documentos <ArrowRight size={14} /></button></div><div className="activityList">{recentDocuments.slice(0, 5).map((d: AnyRecord) => <div className="activityItem" key={d.id}><span className="activityIcon"><FileText size={15} /></span><div><strong>{d.fileName || 'Documento sin nombre'}</strong><small>{labelFor(d.kind)} · <Badge value={d.extractionStatus} /></small></div><Clock3 size={14} /></div>)}{!recentDocuments.length && <Empty title="Todavía no hay documentos" text="Importá un documento para verlo en este espacio." />}</div></div>
+      <div className="card dashboardPanel"><div className="panelHeader"><div><span className="pageEyebrow">Actividad comercial</span><h2>Presupuestos recientes</h2></div><button className="textButton" onClick={() => setView('quotes')}>Ver todos <ArrowRight size={14} /></button></div><Table headers={['Número', 'Cliente', 'Estado', 'Total']} rows={(data.dashboard?.recentQuotes || []).map((q: AnyRecord) => <tr key={q.id}><td className="mono">#{q.number}</td><td><strong>{q.customer?.legalName || 'Cliente sin nombre'}</strong></td><td><Badge value={q.status} /></td><td className="amount">{money.format(Number(q.total || 0))}</td></tr>)} /></div>
+      <div className="card dashboardPanel"><div className="panelHeader"><div><span className="pageEyebrow">Documentación</span><h2>Ingresos recientes</h2></div><button className="textButton" onClick={() => setView('documents')}>Abrir archivo <ArrowRight size={14} /></button></div><div className="activityList">{recentDocuments.slice(0, 5).map((d: AnyRecord) => <div className="activityItem" key={d.id}><span className="activityIcon"><FileText size={15} /></span><div><strong>{d.fileName || 'Documento sin nombre'}</strong><small>{labelFor(d.kind)}</small></div><Badge value={d.extractionStatus} /></div>)}{!recentDocuments.length && <Empty title="Sin documentos recientes" text="Los archivos incorporados aparecerán en este registro." />}</div></div>
     </section>
   </Page>;
 }
@@ -578,13 +610,22 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
     if (companyId) loadDocuments().catch(() => undefined);
   }, [companyId, selectedPath.kind, selectedPath.year, selectedPath.month]);
 
+  useEffect(() => {
+    if (!preview) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreview(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [preview]);
+
   function selectFolder(path: { kind?: string; year?: string; month?: number }) {
     setSelectedPath(path);
     setFilters((current) => ({ ...current, kind: path.kind || '' }));
   }
 
   async function openPreview(document: AnyRecord) {
-    const data = await api<AnyRecord>(`/api/documents/${document.id}/preview`);
+    const data = await api<AnyRecord>(`/api/documents/${document.id}/preview?companyId=${encodeURIComponent(companyId)}`);
     setPreview({ document, data });
   }
 
@@ -643,7 +684,7 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
       <td>{d.total ? money.format(Number(d.total)) : '-'}</td>
       <td className="actions">
         <button type="button" onClick={() => openPreview(d)}>Ver</button>
-        <button onClick={() => notify('Documento extraído.', () => postJson(`/api/documents/${d.id}/extract`, {})).then(() => loadDocuments())}>Extraer</button>
+        <button onClick={() => notify('Documento extraído.', () => postJson(`/api/documents/${d.id}/extract`, { companyId })).then(() => loadDocuments())}>Extraer</button>
         <button onClick={() => notify('Borrador creado.', () => postJson(`/api/documents/${d.id}/create-quote-draft`, { companyId })).then(() => loadDocuments())}>Presupuesto</button>
       </td>
     </tr>
@@ -682,11 +723,11 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
         </div>
       </section>
       {preview && (
-        <div className="previewOverlay" role="dialog" aria-modal="true">
+        <div className="previewOverlay" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
           <div className="previewPanel">
             <div className="previewHead">
-              <div><strong>{preview.document.displayName || preview.document.fileName}</strong><span>{preview.document.displayCustomer || preview.document.issuerName || preview.document.kind}</span></div>
-              <button type="button" onClick={() => setPreview(null)}>Cerrar</button>
+              <div><strong id="document-preview-title">{preview.document.displayName || preview.document.fileName}</strong><span>{preview.document.displayCustomer || preview.document.issuerName || preview.document.kind}</span></div>
+              <button type="button" autoFocus onClick={() => setPreview(null)}>Cerrar</button>
             </div>
             {preview.data.type === 'pdf' && <iframe title={preview.document.fileName} src={preview.data.url} />}
             {preview.data.type === 'image' && <img src={preview.data.url} alt={preview.document.fileName} />}
@@ -712,26 +753,202 @@ function DeliveryNotes({ data, companyId, notify }: { data: AnyRecord; companyId
   const notes = (data.deliveryNotes || []) as AnyRecord[];
   const [selected, setSelected] = useState<string[]>([]);
   const [preview, setPreview] = useState<AnyRecord | null>(null);
+  const [prices, setPrices] = useState<Record<string, string>>({});
+  const [status, setStatus] = useState('PENDING');
+  const monthKey = (value: string | Date) => {
+    const date = new Date(value);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  };
+  const availableMonths = useMemo(
+    () => [...new Set(notes.map((note) => monthKey(note.issueDate)))].sort().reverse(),
+    [notes]
+  );
+  const [billingMonth, setBillingMonth] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  });
+  useEffect(() => {
+    if (availableMonths.length && !availableMonths.includes(billingMonth)) setBillingMonth(availableMonths[0]!);
+  }, [availableMonths, billingMonth]);
+  const visibleNotes = notes.filter(
+    (note) => monthKey(note.issueDate) === billingMonth && (status === 'ALL' || note.status === status)
+  );
   const selectedNotes = notes.filter((note) => selected.includes(note.id));
   const customerId = selectedNotes[0]?.customerId;
   const sameCustomer = selectedNotes.every((note) => note.customerId === customerId);
-  async function prepareQuote() {
-    if (!customerId || !sameCustomer) return;
-    const result = await postJson<AnyRecord>('/api/delivery-notes/convert-to-quote/preview', { companyId, customerId, deliveryNoteIds: selected });
-    setPreview(result);
-  }
-  async function saveQuote() {
-    if (!preview || !customerId) return;
-    await notify('Presupuesto creado desde remitos.', () => postJson('/api/delivery-notes/convert-to-quote', { companyId, customerId, deliveryNoteIds: selected }));
+  const selectedCustomer = selectedNotes[0]?.customer?.legalName;
+  const pendingCount = notes.filter((note) => monthKey(note.issueDate) === billingMonth && note.status === 'PENDING').length;
+  const pendingCustomers = new Set(
+    notes.filter((note) => monthKey(note.issueDate) === billingMonth && note.status === 'PENDING').map((note) => note.customerId)
+  ).size;
+  const previewLines = (preview?.lines || []) as AnyRecord[];
+  const closeTotals = useMemo(() => {
+    return previewLines.reduce((total, line) => {
+      const unitPrice = Number(prices[line.itemId] || 0);
+      const net = Number(line.quantity || 0) * unitPrice;
+      const tax = net * (Number(line.taxRate || 0) / 100);
+      return { subtotal: total.subtotal + net, tax: total.tax + tax, total: total.total + net + tax };
+    }, { subtotal: 0, tax: 0, total: 0 });
+  }, [previewLines, prices]);
+  const allPricesReady = previewLines.length > 0 && previewLines.every((line: AnyRecord) => {
+    const value = Number(prices[line.itemId]);
+    return Number.isFinite(value) && value > 0;
+  });
+
+  function resetSelection() {
     setSelected([]);
     setPreview(null);
+    setPrices({});
   }
-  return <Page title="Remitos" text="Trabajo registrado pendiente de presupuestar o facturar.">
-    <div className="card"><div className="sectionHead"><div><h2>Remitos</h2><p className="muted">Seleccioná remitos pendientes del mismo cliente para preparar un presupuesto consolidado.</p></div><button className="primaryButton" disabled={!selected.length || !sameCustomer} onClick={prepareQuote}>Crear presupuesto</button></div>
-      <Table headers={['', 'Número', 'Cliente', 'Fecha', 'Descripción', 'Estado', 'PDF']} rows={notes.map((note) => <tr key={note.id}><td><input type="checkbox" checked={selected.includes(note.id)} disabled={note.status !== 'PENDING' || (selected.length > 0 && note.customerId !== customerId)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, note.id] : current.filter((id) => id !== note.id))} /></td><td>#{String(note.number).padStart(5, '0')}</td><td>{note.customer?.legalName}</td><td>{dateFmt.format(new Date(note.issueDate))}</td><td>{note.items?.map((item: AnyRecord) => item.description).join('; ')}</td><td><Badge value={note.status} /></td><td>{note.documentId && <a href={`/api/documents/${note.documentId}/content`} target="_blank">Ver PDF</a>}</td></tr>)} />
-    </div>
-    {preview && <div className="card"><div className="sectionHead"><div><h2>Revisión del presupuesto</h2><p className="muted">Incluye {preview.deliveryNotes?.length || selected.length} remito(s). Los remitos siguen pendientes hasta confirmar.</p></div><button className="primaryButton" onClick={saveQuote}>Guardar presupuesto</button></div><p><strong>Cliente:</strong> {preview.customer?.legalName}</p><Table headers={['Origen', 'Descripción', 'Cantidad', 'Precio']} rows={(preview.lines || []).map((line: AnyRecord) => <tr key={line.itemId}><td>#{String(line.deliveryNoteNumber).padStart(5, '0')}</td><td>{line.description}</td><td>{line.quantity} {line.unit}</td><td>{line.unitPrice == null ? 'Sin precio' : money.format(line.unitPrice)}</td></tr>)} /></div>}
-  </Page>;
+
+  function changeMonth(value: string) {
+    setBillingMonth(value);
+    resetSelection();
+  }
+
+  function selectCustomerPending(customerIdToSelect: string) {
+    setSelected(
+      visibleNotes
+        .filter((note) => note.customerId === customerIdToSelect && note.status === 'PENDING')
+        .map((note) => note.id)
+    );
+    setPreview(null);
+    setPrices({});
+  }
+
+  async function prepareQuote() {
+    if (!customerId || !sameCustomer) return;
+    const result = await postJson<AnyRecord>('/api/delivery-notes/convert-to-quote/preview', {
+      companyId,
+      customerId,
+      deliveryNoteIds: selected,
+      billingMonth
+    });
+    setPreview(result);
+    setPrices(Object.fromEntries((result.lines || []).map((line: AnyRecord) => [
+      line.itemId,
+      line.unitPrice == null || Number(line.unitPrice) <= 0 ? '' : String(line.unitPrice)
+    ])));
+  }
+  async function saveQuote() {
+    if (!preview || !customerId || !allPricesReady) return;
+    await notify('Presupuesto creado desde remitos.', () => postJson('/api/delivery-notes/convert-to-quote', {
+      companyId,
+      customerId,
+      deliveryNoteIds: selected,
+      billingMonth,
+      prices: Object.fromEntries(Object.entries(prices).map(([id, value]) => [id, Number(value)]))
+    }));
+    resetSelection();
+  }
+  async function closeMonth(invoiceType: 'A' | 'B') {
+    if (!preview || !customerId || !allPricesReady) return;
+    const confirmed = window.confirm(
+      `Vas a crear un borrador de factura ${invoiceType} por ${money.format(closeTotals.total)} para ${selectedCustomer}. ` +
+      'Los remitos seleccionados quedarán marcados como facturados. ¿Continuar?'
+    );
+    if (!confirmed) return;
+    await notify('Cierre mensual preparado como borrador de factura.', () => postJson('/api/delivery-notes/close-month', {
+      companyId,
+      customerId,
+      deliveryNoteIds: selected,
+      billingMonth,
+      invoiceType,
+      prices: Object.fromEntries(Object.entries(prices).map(([id, value]) => [id, Number(value)]))
+    }));
+    resetSelection();
+  }
+
+  const customerGroups = [...new Map(
+    visibleNotes.map((note) => [note.customerId, note.customer?.legalName || 'Cliente sin nombre'])
+  ).entries()];
+
+  return (
+    <Page title="Remitos" text="Orden mensual de trabajos, consolidación por cliente y preparación de facturas.">
+      <section className="deliveryMonthToolbar card">
+        <label className="field compactField">
+          <span>Mes de trabajo</span>
+          <select value={billingMonth} onChange={(event) => changeMonth(event.target.value)}>
+            {(availableMonths.length ? availableMonths : [billingMonth]).map((month) => (
+              <option key={month} value={month}>
+                {new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric' }).format(new Date(`${month}-15T12:00:00`))}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field compactField">
+          <span>Estado</span>
+          <select value={status} onChange={(event) => { setStatus(event.target.value); resetSelection(); }}>
+            <option value="PENDING">Pendientes</option>
+            <option value="INVOICED">Facturados</option>
+            <option value="QUOTED">Presupuestados</option>
+            <option value="ALL">Todos</option>
+          </select>
+        </label>
+        <div className="monthMetric"><span>Pendientes</span><strong>{pendingCount}</strong></div>
+        <div className="monthMetric"><span>Clientes para cerrar</span><strong>{pendingCustomers}</strong></div>
+      </section>
+
+      <section className="card">
+        <div className="sectionHead">
+          <div>
+            <h2>Remitos del mes</h2>
+            <p className="muted">Elegí un cliente y consolidá todos o algunos de sus remitos. Nunca se mezclan clientes ni meses.</p>
+          </div>
+          <button className="primaryButton" disabled={!selected.length || !sameCustomer} onClick={prepareQuote}>
+            Revisar cierre ({selected.length})
+          </button>
+        </div>
+        {status === 'PENDING' && customerGroups.length > 0 && (
+          <div className="customerCloseChips">
+            {customerGroups.map(([groupCustomerId, name]) => {
+              const count = visibleNotes.filter((note) => note.customerId === groupCustomerId && note.status === 'PENDING').length;
+              return count ? <button type="button" key={groupCustomerId} onClick={() => selectCustomerPending(groupCustomerId)}>{name} <span>{count}</span></button> : null;
+            })}
+          </div>
+        )}
+        <Table headers={['', 'Número', 'Cliente', 'Fecha', 'Descripción', 'Estado', 'PDF']} rows={visibleNotes.map((note) => <tr key={note.id}>
+          <td><input type="checkbox" aria-label={`Seleccionar remito ${note.number}`} checked={selected.includes(note.id)} disabled={note.status !== 'PENDING' || (selected.length > 0 && note.customerId !== customerId)} onChange={(event) => {
+            setPreview(null);
+            setPrices({});
+            setSelected((current) => event.target.checked ? [...current, note.id] : current.filter((id) => id !== note.id));
+          }} /></td>
+          <td>#{String(note.number).padStart(5, '0')}</td>
+          <td><strong>{note.customer?.legalName}</strong></td>
+          <td>{dateFmt.format(new Date(note.issueDate))}</td>
+          <td>{note.items?.map((item: AnyRecord) => item.description).join('; ')}</td>
+          <td><Badge value={note.status} /></td>
+          <td>{note.documentId && <a href={`/api/documents/${note.documentId}/content?companyId=${encodeURIComponent(companyId)}`} target="_blank" rel="noreferrer">Ver PDF</a>}</td>
+        </tr>)} />
+      </section>
+
+      {preview && <section className="card monthlyCloseReview">
+        <div className="sectionHead">
+          <div><span className="pageEyebrow">Cierre mensual</span><h2>{selectedCustomer}</h2><p className="muted">{preview.deliveryNotes?.length || selected.length} remito(s). Completá los precios antes de continuar.</p></div>
+          <button type="button" onClick={resetSelection}>Cancelar selección</button>
+        </div>
+        <Table headers={['Origen', 'Descripción', 'Cantidad', 'Precio unitario']} rows={(preview.lines || []).map((line: AnyRecord) => <tr key={line.itemId}>
+          <td>#{String(line.deliveryNoteNumber).padStart(5, '0')}</td>
+          <td>{line.description}</td>
+          <td>{line.quantity} {line.unit}</td>
+          <td><label className="priceInput"><span>$</span><input type="number" min="0.01" step="0.01" value={prices[line.itemId] ?? ''} onChange={(event) => setPrices((current) => ({ ...current, [line.itemId]: event.target.value }))} aria-label={`Precio de ${line.description}`} /></label></td>
+        </tr>)} />
+        {!allPricesReady && <p className="formWarning">Completá todos los precios con importes mayores a cero.</p>}
+        <div className="quoteTotals" aria-live="polite">
+          <span>Moneda: {preview.currency || 'ARS'}</span>
+          <span>Subtotal: {money.format(closeTotals.subtotal)}</span>
+          <span>IVA: {money.format(closeTotals.tax)}</span>
+          <strong>Total del cierre: {money.format(closeTotals.total)}</strong>
+        </div>
+        <div className="monthlyCloseActions">
+          <button type="button" disabled={!allPricesReady} onClick={saveQuote}>Sólo presupuesto</button>
+          <button type="button" className="primaryButton" disabled={!allPricesReady} onClick={() => closeMonth('B')}>Preparar factura B</button>
+          <button type="button" className="primaryButton" disabled={!allPricesReady} onClick={() => closeMonth('A')}>Preparar factura A</button>
+        </div>
+        <p className="muted">Se crea un borrador revisable. La autorización fiscal ante ARCA sigue siendo un paso separado.</p>
+      </section>}
+    </Page>
+  );
 }
 
 function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: string; notify: Function }) {
@@ -742,6 +959,8 @@ function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: strin
   ]);
   const [marginPercent, setMarginPercent] = useState(0);
   const [expandedLine, setExpandedLine] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [quoteError, setQuoteError] = useState('');
 
   const preview = useMemo(() => {
     const priced = lines.map((line) => ({
@@ -793,23 +1012,38 @@ function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: strin
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setQuoteError('');
     const form = new FormData(event.currentTarget);
-    await notify('Presupuesto creado.', () => postJson('/api/quotes/draft-from-items', {
-      companyId,
-      customerId: String(form.get('customerId')),
-      marginPercent,
-      notes: String(form.get('notes') || ''),
-      items: lines
-        .filter((line) => line.description.trim() && Number(line.quantity) > 0)
-        .map((line) => ({
+    const customerId = String(form.get('customerId') || '');
+    if (!customerId) {
+      setQuoteError('Seleccioná un cliente.');
+      return;
+    }
+    if (!lines.length || lines.some((line) => !line.description.trim() || Number(line.quantity) <= 0 || Number(line.unitPrice) <= 0)) {
+      setQuoteError('Cada ítem debe tener descripción, cantidad y precio mayores a cero.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await notify('Presupuesto creado.', () => postJson('/api/quotes/draft-from-items', {
+        companyId,
+        customerId,
+        marginPercent,
+        notes: String(form.get('notes') || ''),
+        items: lines.map((line) => ({
           productId: line.productId || undefined,
-          description: line.description,
+          description: line.description.trim(),
           quantity: Number(line.quantity),
           unit: line.unit,
           unitPrice: Number(line.unitPrice),
           taxRate: Number(line.taxRate)
         }))
-    }));
+      }));
+    } catch (caught) {
+      setQuoteError(caught instanceof Error ? caught.message : 'No se pudo crear el presupuesto.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -817,7 +1051,7 @@ function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: strin
       <section className="grid two">
         <form className="card form quoteBuilder" onSubmit={submit}>
           <div className="sectionRow"><h2>Nuevo borrador FMH</h2><button type="button" onClick={addLine}>Agregar item</button></div>
-          <SelectField label="Cliente" name="customerId">{customers.map((c: AnyRecord) => <option value={c.id} key={c.id}>{c.legalName}</option>)}</SelectField>
+          <SelectField label="Cliente" name="customerId" required defaultValue=""><option value="" disabled>Seleccionar cliente</option>{customers.map((c: AnyRecord) => <option value={c.id} key={c.id}>{c.legalName}</option>)}</SelectField>
           {lines.map((line, index) => {
             const summary = lineSummary(line, index);
             return (
@@ -839,49 +1073,70 @@ function Quotes({ data, companyId, notify }: { data: AnyRecord; companyId: strin
                     </SelectField>
                     <label className="field full"><span>Descripcion</span><textarea value={line.description} onChange={(event) => updateLine(index, { description: event.target.value })} rows={3} required /></label>
                     <div className="lineGrid">
-                      <Field label="Cantidad" type="number" step="0.01" value={line.quantity} onChange={(event) => updateLine(index, { quantity: Number(event.target.value) })} required />
+                      <Field label="Cantidad" type="number" min="0.01" step="0.01" value={line.quantity} onChange={(event) => updateLine(index, { quantity: Number(event.target.value) })} required />
                       <Field label="Unidad" value={line.unit} onChange={(event) => updateLine(index, { unit: event.target.value })} />
-                      <Field label="Precio" type="number" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: Number(event.target.value) })} required />
-                      <Field label="IVA %" type="number" step="0.01" value={line.taxRate} onChange={(event) => updateLine(index, { taxRate: Number(event.target.value) })} />
+                      <Field label="Precio" type="number" min="0.01" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: Number(event.target.value) })} required />
+                      <Field label="IVA %" type="number" min="0" max="100" step="0.01" value={line.taxRate} onChange={(event) => updateLine(index, { taxRate: Number(event.target.value) })} />
                     </div>
                   </>
                 )}
               </div>
             );
           })}
-          <Field label="Margen general %" type="number" step="0.01" value={marginPercent} onChange={(event) => setMarginPercent(Number(event.target.value))} />
+          <Field label="Margen general %" type="number" min="-100" max="1000" step="0.01" value={marginPercent} onChange={(event) => setMarginPercent(Number(event.target.value))} />
           <Field label="Notas" name="notes" />
+          {quoteError && <p className="formWarning" role="alert">{quoteError}</p>}
           <div className="quoteTotals">
             <span>Subtotal: {money.format(preview.subtotal)}</span>
             <span>IVA: {money.format(preview.tax)}</span>
             <strong>Total: {money.format(preview.total)}</strong>
           </div>
-          <button>Crear borrador</button>
+          <button disabled={saving || !customers.length}>{saving ? 'Creando…' : 'Crear borrador'}</button>
         </form>
-        <div className="card"><h2>Listado</h2><Table headers={['N°', 'Cliente', 'Estado', 'Total', 'Descargas']} rows={(data.quotes || []).map((q: AnyRecord) => <tr key={q.id}><td>#{q.number}</td><td>{q.customer.legalName}</td><td><Badge value={q.status} /></td><td>{money.format(Number(q.total))}</td><td className="actions"><a href={`/api/quotes/${q.id}/docx`} target="_blank"><FileText size={16} /> DOCX</a><a href={`/api/quotes/${q.id}/pdf`} target="_blank"><FileText size={16} /> PDF</a></td></tr>)} /></div>
+        <div className="card"><h2>Listado</h2><Table headers={['N°', 'Cliente', 'Estado', 'Total', 'Descargas']} rows={(data.quotes || []).map((q: AnyRecord) => <tr key={q.id}><td>#{q.number}</td><td>{q.customer.legalName}</td><td><Badge value={q.status} /></td><td>{money.format(Number(q.total))}</td><td className="actions"><a href={`/api/quotes/${q.id}/docx?companyId=${encodeURIComponent(companyId)}`} target="_blank"><FileText size={16} /> DOCX</a><a href={`/api/quotes/${q.id}/pdf?companyId=${encodeURIComponent(companyId)}`} target="_blank"><FileText size={16} /> PDF</a></td></tr>)} /></div>
       </section>
     </Page>
   );
 }
 
-function Invoices({ data, notify }: { data: AnyRecord; companyId: string; notify: Function }) {
+function Invoices({ data, companyId, notify }: { data: AnyRecord; companyId: string; notify: Function }) {
   const invoices = data.invoices || [];
   const quotes = data.quotes || [];
+  const [quoteQuery, setQuoteQuery] = useState('');
+  const [arcaError, setArcaError] = useState('');
+  const visibleQuotes = quotes.filter((quote: AnyRecord) => {
+    const haystack = `${quote.number} ${quote.customer?.legalName || ''}`.toLocaleLowerCase('es-AR');
+    return haystack.includes(quoteQuery.trim().toLocaleLowerCase('es-AR'));
+  });
 
   async function createDraft(quoteId: string, type: 'A' | 'B') {
-    await notify('Borrador de factura creado.', () => postJson('/api/quotes/' + quoteId + '/invoice-draft', { type }));
+    await notify('Borrador de factura creado.', () => postJson('/api/quotes/' + quoteId + '/invoice-draft', { type, companyId }));
   }
 
   async function authorize(invoiceId: string) {
-    await notify('Factura enviada a ARCA.', () => postJson('/api/invoices/' + invoiceId + '/authorize-arca', {}));
+    setArcaError('');
+    try {
+      const preflight = await api<AnyRecord>('/api/invoices/' + invoiceId + '/arca-preflight?companyId=' + encodeURIComponent(companyId));
+      if (!preflight.ok) {
+        throw new Error(`No se puede autorizar: ${(preflight.missing || []).join(', ') || 'faltan datos obligatorios'}.`);
+      }
+      const confirmed = window.confirm(
+        `Se enviará la factura a ARCA en ${preflight.environment}. Esta acción fiscal no se puede deshacer. ¿Continuar?`
+      );
+      if (!confirmed) return;
+      await notify('Factura enviada a ARCA.', () => postJson('/api/invoices/' + invoiceId + '/authorize-arca', { companyId }));
+    } catch (caught) {
+      setArcaError(caught instanceof Error ? caught.message : 'No se pudo validar la factura para ARCA.');
+    }
   }
 
   return (
     <Page title="Facturas" text="Prepará comprobantes A o B y revisalos antes de enviarlos a ARCA.">
       <section className="card invoiceCreate">
         <div className="sectionRow"><div><h2>Crear desde presupuesto</h2><p className="mutedText">Elegí un presupuesto y el tipo de comprobante.</p></div></div>
+        <Field label="Buscar presupuesto o cliente" value={quoteQuery} onChange={(event) => setQuoteQuery(event.target.value)} placeholder="Ej. 125 o Metalúrgica..." />
         <div className="invoiceCreateGrid">
-          {quotes.slice(0, 12).map((quote: AnyRecord) => (
+          {visibleQuotes.map((quote: AnyRecord) => (
             <div className="invoiceQuoteCard" key={quote.id}>
               <strong>Presupuesto #{quote.number}</strong>
               <span>{quote.customer?.legalName || 'Cliente sin nombre'}</span>
@@ -889,9 +1144,10 @@ function Invoices({ data, notify }: { data: AnyRecord; companyId: string; notify
               <div className="actions"><button type="button" onClick={() => createDraft(quote.id, 'A')}>Factura A</button><button type="button" onClick={() => createDraft(quote.id, 'B')}>Factura B</button></div>
             </div>
           ))}
-          {!quotes.length && <Empty title="Sin presupuestos" text="Creá un presupuesto para preparar una factura." />}
+          {!visibleQuotes.length && <Empty title="Sin presupuestos coincidentes" text={quotes.length ? 'Probá otra búsqueda.' : 'Creá un presupuesto para preparar una factura.'} />}
         </div>
       </section>
+      {arcaError && <p className="formWarning" role="alert">{arcaError}</p>}
       <section className="card"><div className="sectionRow"><h2>Comprobantes</h2><span className="mutedText">{invoices.length} registrados</span></div>
         <Table headers={['Tipo', 'Cliente', 'Estado', 'Total', 'CAE', 'Acciones']} rows={invoices.map((invoice: AnyRecord) => <tr key={invoice.id}><td><Badge value={invoice.type} /></td><td>{invoice.customer?.legalName || '-'}</td><td><Badge value={invoice.status} /></td><td>{money.format(Number(invoice.total || 0))}</td><td>{invoice.cae || 'Pendiente'}</td><td className="actions">{invoice.status === 'PENDING_CONFIRMATION' && <button type="button" onClick={() => authorize(invoice.id)}>Autorizar ARCA</button>}</td></tr>)} />
       </section>
@@ -998,25 +1254,38 @@ function CustomersDirectory({ data, companyId, notify }: { data: AnyRecord; comp
   </Page>;
 }
 
-function WhatsAppInbox({ data }: { data: AnyRecord }) {
+function WhatsAppInbox({ data, companyId, notify }: { data: AnyRecord; companyId: string; notify: Function }) {
   const [query, setQuery] = useState('');
-  const messages = (data.whatsapp || []).filter((message: AnyRecord) => !query.trim() || `${message.fromNumber} ${message.body || ''}`.toLowerCase().includes(query.toLowerCase()));
-  return <Page eyebrow="Canales" title="WhatsApp" text="Mensajes recibidos y adjuntos listos para revisión." action={<span className="pageCount">{messages.length} mensajes</span>}>
-    <section className="whatsappOverview"><div className="whatsappStat"><span>Mensajes recibidos</span><strong>{messages.length}</strong></div><div className="whatsappStat"><span>Con adjuntos</span><strong>{messages.filter((message: AnyRecord) => message.mediaDocument).length}</strong></div><div className="whatsappStat"><span>Última actividad</span><strong>{messages[0]?.createdAt ? dateFmt.format(new Date(messages[0].createdAt)) : 'Sin actividad'}</strong></div></section>
-    <section className="card whatsappPanel"><div className="directoryHeader"><div><span className="pageEyebrow">Bandeja de entrada</span><h2>Conversaciones recientes</h2></div><label className="inlineSearch"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar número o mensaje" aria-label="Buscar WhatsApp" /></label></div><Table headers={['De', 'Tipo', 'Mensaje', 'Adjunto']} rows={messages.map((message: AnyRecord) => <tr key={message.id}><td><strong>{message.fromNumber}</strong><small>{message.createdAt ? dateFmt.format(new Date(message.createdAt)) : 'Fecha no disponible'}</small></td><td><Badge value={message.messageType} /></td><td><span className="messagePreview">{message.body || 'Mensaje multimedia'}</span></td><td>{message.mediaDocument ? <a href={`/api/documents/${message.mediaDocument.id}/content`} target="_blank" rel="noreferrer"><FileText size={14} /> {message.mediaDocument.fileName}</a> : '—'}</td></tr>)} /></section>
+  const allMessages = data.whatsapp || [];
+  const messages = allMessages.filter((message: AnyRecord) => !query.trim() || `${message.fromNumber} ${message.toNumber} ${message.body || ''} ${message.status || ''}`.toLowerCase().includes(query.toLowerCase()));
+  const inbound = allMessages.filter((message: AnyRecord) => message.direction === 'INBOUND');
+  const failed = allMessages.filter((message: AnyRecord) => message.status === 'failed');
+  async function reprocess(messageId: string) {
+    await notify('Mensaje reprocesado.', () => postJson(`/api/whatsapp/messages/${messageId}/reprocess`, { companyId }));
+  }
+  return <Page eyebrow="Canales" title="WhatsApp" text="Trazabilidad de mensajes entrantes, respuestas del bot y fallos de envío." action={<span className="pageCount">{messages.length} mensajes</span>}>
+    <section className="whatsappOverview"><div className="whatsappStat"><span>Entrantes</span><strong>{inbound.length}</strong></div><div className="whatsappStat"><span>Fallos de envío</span><strong>{failed.length}</strong></div><div className="whatsappStat"><span>Con adjuntos</span><strong>{allMessages.filter((message: AnyRecord) => message.mediaDocument).length}</strong></div></section>
+    <section className="card whatsappPanel"><div className="directoryHeader"><div><span className="pageEyebrow">Actividad del bot</span><h2>Mensajes recientes</h2></div><label className="inlineSearch"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar número, mensaje o estado" aria-label="Buscar WhatsApp" /></label></div><Table headers={['Dirección', 'Número', 'Tipo', 'Mensaje', 'Estado', 'Adjunto / acción']} rows={messages.map((message: AnyRecord) => <tr key={message.id}><td><Badge value={message.direction} /></td><td><strong>{message.direction === 'INBOUND' ? message.fromNumber : message.toNumber}</strong><small>{message.createdAt ? dateFmt.format(new Date(message.createdAt)) : 'Fecha no disponible'}</small></td><td><Badge value={message.messageType} /></td><td><span className="messagePreview">{message.body || 'Mensaje multimedia'}</span></td><td><Badge value={message.status || 'unknown'} /></td><td className="actions">{message.mediaDocument && <a href={`/api/documents/${message.mediaDocument.id}/content?companyId=${encodeURIComponent(companyId)}`} target="_blank" rel="noreferrer"><FileText size={14} /> {message.mediaDocument.fileName}</a>}{message.direction === 'INBOUND' && <button type="button" onClick={() => reprocess(message.id)}>Reprocesar</button>}{!message.mediaDocument && message.direction !== 'INBOUND' ? '—' : null}</td></tr>)} /></section>
   </Page>;
 }
 
-function SettingsCenter({ notify }: { notify: Function }) {
+function SettingsCenter({ data, companyId, notify }: { data: AnyRecord; companyId: string; notify: Function }) {
   const [whatsappConfig, setWhatsappConfig] = useState<AnyRecord | null>(null);
   useEffect(() => { api<AnyRecord>('/api/whatsapp/config').then(setWhatsappConfig).catch(() => setWhatsappConfig(null)); }, []);
+  const company = data.dashboard?.company;
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const company = await notify('Empresa creada.', () => postJson<AnyRecord>('/api/companies', { legalName: form.get('legalName'), tradeName: form.get('tradeName'), cuit: form.get('cuit'), taxCondition: form.get('taxCondition') }));
-    localStorage.setItem('companyId', company.id); location.reload();
+    const body = { legalName: form.get('legalName'), tradeName: form.get('tradeName'), cuit: form.get('cuit'), taxCondition: form.get('taxCondition') };
+    if (companyId) {
+      await notify('Empresa actualizada.', () => api<AnyRecord>(`/api/companies/${companyId}`, { method: 'PATCH', body: JSON.stringify(body) }));
+    } else {
+      const created = await notify('Empresa creada.', () => postJson<AnyRecord>('/api/companies', body));
+      localStorage.setItem('companyId', created.id);
+      location.reload();
+    }
   }
-  return <Page eyebrow="Sistema" title="Ajustes" text="Configurá la empresa y revisá el estado de tus integraciones."><section className="settingsLayout"><form className="card form directoryForm" onSubmit={submit}><div><span className="pageEyebrow">Identidad</span><h2>Datos de empresa</h2><p className="mutedText">Esta información aparece en tus documentos y comprobantes.</p></div><Field label="Razón social" name="legalName" required /><Field label="Nombre comercial" name="tradeName" /><Field label="CUIT" name="cuit" required /><Field label="Condición fiscal" name="taxCondition" defaultValue="Responsable Inscripto" required /><button>Guardar empresa</button></form><div className="settingsStack"><div className="card settingsCard"><div className="sectionRow"><div><span className="pageEyebrow">Integración</span><h2>WhatsApp</h2></div><Badge value={whatsappConfig?.canReceive && whatsappConfig?.canSend ? 'OK' : 'Falta config'} /></div><div className="statusList"><div className="statusRow"><span>Webhook</span><code>{whatsappConfig?.webhookUrl || 'No disponible'}</code></div><div className="statusRow"><span>App ID</span><strong>{whatsappConfig?.appId || 'No configurado'}</strong></div><div className="statusRow"><span>Recibir mensajes</span><Badge value={whatsappConfig?.canReceive ? 'OK' : 'Falta config'} /></div><div className="statusRow"><span>Enviar documentos</span><Badge value={whatsappConfig?.canSend ? 'OK' : 'Falta token'} /></div></div></div><div className="card settingsCard"><span className="pageEyebrow">Facturación electrónica</span><h2>ARCA</h2><p className="mutedText">Configurá certificado, clave privada, CUIT y punto de venta en las variables del entorno de producción.</p><div className="integrationNotice"><CheckCircle2 size={16} /> La conexión se valida al autorizar una factura.</div></div></div></section></Page>;
+  return <Page eyebrow="Sistema" title="Ajustes" text="Configurá la empresa y revisá el estado de tus integraciones."><section className="settingsLayout"><form key={company?.id || 'new'} className="card form directoryForm" onSubmit={submit}><div><span className="pageEyebrow">Identidad</span><h2>Datos de empresa</h2><p className="mutedText">Esta información aparece en tus documentos y comprobantes.</p></div><Field label="Razón social" name="legalName" defaultValue={company?.legalName || ''} required /><Field label="Nombre comercial" name="tradeName" defaultValue={company?.tradeName || ''} /><Field label="CUIT" name="cuit" defaultValue={company?.cuit || ''} required /><Field label="Condición fiscal" name="taxCondition" defaultValue={company?.taxCondition || 'Responsable Inscripto'} required /><button>{companyId ? 'Actualizar empresa' : 'Crear empresa'}</button></form><div className="settingsStack"><div className="card settingsCard"><div className="sectionRow"><div><span className="pageEyebrow">Integración</span><h2>WhatsApp</h2></div><Badge value={whatsappConfig?.canReceive && whatsappConfig?.canSend ? 'OK' : 'Falta config'} /></div><div className="statusList"><div className="statusRow"><span>Webhook</span><code>{whatsappConfig?.webhookUrl || 'No disponible'}</code></div><div className="statusRow"><span>App ID</span><strong>{whatsappConfig?.appId || 'No configurado'}</strong></div><div className="statusRow"><span>Operadores permitidos</span><Badge value={whatsappConfig?.operatorAllowlistConfigured ? 'OK' : 'Falta allowlist'} /></div><div className="statusRow"><span>Recibir mensajes</span><Badge value={whatsappConfig?.canReceive ? 'OK' : 'Falta config'} /></div><div className="statusRow"><span>Enviar documentos</span><Badge value={whatsappConfig?.canSend ? 'OK' : 'Falta token'} /></div></div></div><div className="card settingsCard"><span className="pageEyebrow">Facturación electrónica</span><h2>ARCA</h2><p className="mutedText">Configurá certificado, clave privada, CUIT y punto de venta en las variables del entorno de producción.</p><div className="integrationNotice"><CheckCircle2 size={16} /> La conexión se valida al autorizar una factura.</div></div></div></section></Page>;
 }
 
 function Customers({ data, companyId, notify }: { data: AnyRecord; companyId: string; notify: Function }) {

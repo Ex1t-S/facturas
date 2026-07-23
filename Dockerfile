@@ -12,7 +12,9 @@ COPY package*.json ./
 RUN npm ci --include=dev
 
 COPY . .
-RUN npx prisma generate && npm run build
+RUN npx prisma generate \
+  && npm run build \
+  && npm prune --omit=dev
 
 EXPOSE 3000
 CMD ["npm", "start"]

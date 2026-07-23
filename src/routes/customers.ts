@@ -2,11 +2,20 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 
+const optionalCuit = z.preprocess(
+  (value) => {
+    if (typeof value !== 'string') return value;
+    const digits = value.replace(/\D/g, '');
+    return digits || undefined;
+  },
+  z.string().regex(/^\d{11}$/, 'El CUIT debe tener 11 dígitos.').optional()
+);
+
 const customerSchema = z.object({
   companyId: z.string(),
   legalName: z.string().min(1),
   tradeName: z.string().optional(),
-  cuit: z.string().optional(),
+  cuit: optionalCuit,
   taxCondition: z.string().optional(),
   address: z.string().optional(),
   contactName: z.string().optional(),

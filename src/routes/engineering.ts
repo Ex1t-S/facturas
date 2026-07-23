@@ -74,6 +74,28 @@ export const engineeringRoutes: FastifyPluginAsync = async (app) => {
     const body = z.object({ companyId: z.string(), name: z.string().trim().max(160).optional() }).parse(request.body);
     return saveEngineeringCase(params.id, body.companyId, body.name);
   });
+  app.get('/engineering/cases', async (request) => {
+    const query = z.object({
+      companyId: z.string(),
+      status: z.string().optional(),
+      take: z.coerce.number().int().min(1).max(200).default(100)
+    }).parse(request.query);
+    return prisma.engineeringCase.findMany({
+      where: { companyId: query.companyId, status: query.status },
+      include: {
+        conversation: {
+          select: {
+            id: true,
+            title: true,
+            updatedAt: true,
+            messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { content: true } }
+          }
+        }
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: query.take
+    });
+  });
   app.get('/engineering/regulations', async (request) => {
     const query = z.object({ companyId: z.string(), q: z.string().default('') }).parse(request.query);
     return searchOfficialEngineeringRegulations(query.companyId, query.q);

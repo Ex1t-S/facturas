@@ -2,10 +2,12 @@ import { prisma } from '../../db.js';
 import { normalizeEngineeringText, tokensForEngineeringSearch } from './engineeringIntelligence.js';
 import { normalizeName } from '../normalize.js';
 
-export type EngineeringSearchInput = { companyId: string; q: string; projectType?: string; material?: string; verified?: boolean; dateFrom?: string; dateTo?: string; take?: number };
+export type EngineeringSearchInput = { companyId: string; q: string; projectType?: string; documentType?: string; material?: string; verified?: boolean; dateFrom?: string; dateTo?: string; take?: number };
 
 const documentTypePriority: Record<string, number> = {
+  DRAWING: 5,
   TECHNICAL_DRAWING: 5,
+  CALCULATION: 4.5,
   TECHNICAL_CALCULATION: 4.5,
   REGULATION: 4,
   CATALOG: 3,
@@ -42,6 +44,7 @@ export async function searchEngineeringKnowledge(input: EngineeringSearchInput) 
   const tokens = Array.from(new Set(tokensForEngineeringSearch(input.q))).slice(0, 12);
   const where: any = { OR: [{ companyId: input.companyId }, { companyId: null }] };
   if (input.projectType) where.projectType = input.projectType;
+  if (input.documentType) where.documentType = input.documentType;
   if (input.verified !== undefined) where.verified = input.verified;
   if (input.dateFrom || input.dateTo) where.documentDate = { gte: input.dateFrom ? new Date(input.dateFrom) : undefined, lte: input.dateTo ? new Date(input.dateTo) : undefined };
   if (tokens.length) where.AND = [{ OR: textFilters(tokens) }];

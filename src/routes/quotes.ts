@@ -5,6 +5,7 @@ import { prisma } from '../db.js';
 import { calculateQuoteTotals } from '../domain/money.js';
 import { convertDocxToPdf, writeFmhQuoteDocx } from '../services/fmhQuoteDocument.js';
 import { renderQuotePdf } from '../services/pdf.js';
+import { runSerializableTransaction } from '../services/transaction.js';
 
 const quoteItemSchema = z.object({
   productId: z.string().optional(),
@@ -39,39 +40,41 @@ export const quoteRoutes: FastifyPluginAsync = async (app) => {
   app.post('/quotes', async (request, reply) => {
     const body = quoteSchema.parse(request.body);
     const totals = calculateQuoteTotals(body.items);
-    const last = await prisma.quote.findFirst({
-      where: { companyId: body.companyId },
-      orderBy: { number: 'desc' }
-    });
-    const number = (last?.number ?? 0) + 1;
-
-    const quote = await prisma.quote.create({
-      data: {
-        companyId: body.companyId,
-        customerId: body.customerId,
-        number,
-        validUntil: body.validUntil,
-        currency: body.currency,
-        notes: body.notes,
-        createdById: body.createdById,
-        subtotal: totals.subtotal,
-        taxTotal: totals.taxTotal,
-        total: totals.total,
-        items: {
-          create: body.items.map((item, index) => ({
-            productId: item.productId,
-            description: item.description,
-            quantity: item.quantity,
-            unit: item.unit,
-            unitPrice: item.unitPrice,
-            discount: item.discount,
-            taxRate: item.taxRate,
-            total: totals.lines[index]?.total ?? 0
-          }))
-        }
-      },
-      include: { customer: true, items: true }
-    });
+    const quote = await runSerializableTransaction(async (tx) => {
+      const customer = await tx.customer.findFirst({ where: { id: body.customerId, companyId: body.companyId }, select: { id: true } });
+      if (!customer) throw Object.assign(new Error('El cliente no pertenece a la empresa activa.'), { statusCode: 422 });
+      const last = await tx.quote.findFirst({
+        where: { companyId: body.companyId },
+        orderBy: { number: 'desc' }
+      });
+      return tx.quote.create({
+        data: {
+          companyId: body.companyId,
+          customerId: body.customerId,
+          number: (last?.number ?? 0) + 1,
+          validUntil: body.validUntil,
+          currency: body.currency,
+          notes: body.notes,
+          createdById: body.createdById,
+          subtotal: totals.subtotal,
+          taxTotal: totals.taxTotal,
+          total: totals.total,
+          items: {
+            create: body.items.map((item, index) => ({
+              productId: item.productId,
+              description: item.description,
+              quantity: item.quantity,
+              unit: item.unit,
+              unitPrice: item.unitPrice,
+              discount: item.discount,
+              taxRate: item.taxRate,
+              total: totals.lines[index]?.total ?? 0
+            }))
+          }
+        },
+        include: { customer: true, items: true }
+      });
+    }, { retryUniqueConflict: true });
 
     return reply.code(201).send(quote);
   });
@@ -93,50 +96,53 @@ export const quoteRoutes: FastifyPluginAsync = async (app) => {
       unitPrice: Math.round((item.unitPrice * (1 + body.marginPercent / 100) + Number.EPSILON) * 100) / 100
     }));
     const totals = calculateQuoteTotals(items);
-    const last = await prisma.quote.findFirst({
-      where: { companyId: body.companyId },
-      orderBy: { number: 'desc' }
-    });
-    const number = (last?.number ?? 0) + 1;
-
-    const quote = await prisma.quote.create({
-      data: {
-        companyId: body.companyId,
-        customerId: body.customerId,
-        number,
-        status: 'DRAFT',
-        validUntil: body.validUntil,
-        currency: body.currency,
-        notes: [body.notes, body.source ? `Origen: ${body.source}` : undefined, body.marginPercent ? `Margen aplicado: ${body.marginPercent}%` : undefined]
-          .filter(Boolean)
-          .join('\n'),
-        createdById: body.createdById,
-        subtotal: totals.subtotal,
-        taxTotal: totals.taxTotal,
-        total: totals.total,
-        items: {
-          create: items.map((item, index) => ({
-            productId: item.productId,
-            description: item.description,
-            quantity: item.quantity,
-            unit: item.unit,
-            unitPrice: item.unitPrice,
-            discount: item.discount,
-            taxRate: item.taxRate,
-            total: totals.lines[index]?.total ?? 0
-          }))
-        }
-      },
-      include: { customer: true, items: true }
-    });
+    const quote = await runSerializableTransaction(async (tx) => {
+      const customer = await tx.customer.findFirst({ where: { id: body.customerId, companyId: body.companyId }, select: { id: true } });
+      if (!customer) throw Object.assign(new Error('El cliente no pertenece a la empresa activa.'), { statusCode: 422 });
+      const last = await tx.quote.findFirst({
+        where: { companyId: body.companyId },
+        orderBy: { number: 'desc' }
+      });
+      return tx.quote.create({
+        data: {
+          companyId: body.companyId,
+          customerId: body.customerId,
+          number: (last?.number ?? 0) + 1,
+          status: 'DRAFT',
+          validUntil: body.validUntil,
+          currency: body.currency,
+          notes: [body.notes, body.source ? `Origen: ${body.source}` : undefined, body.marginPercent ? `Margen aplicado: ${body.marginPercent}%` : undefined]
+            .filter(Boolean)
+            .join('\n'),
+          createdById: body.createdById,
+          subtotal: totals.subtotal,
+          taxTotal: totals.taxTotal,
+          total: totals.total,
+          items: {
+            create: items.map((item, index) => ({
+              productId: item.productId,
+              description: item.description,
+              quantity: item.quantity,
+              unit: item.unit,
+              unitPrice: item.unitPrice,
+              discount: item.discount,
+              taxRate: item.taxRate,
+              total: totals.lines[index]?.total ?? 0
+            }))
+          }
+        },
+        include: { customer: true, items: true }
+      });
+    }, { retryUniqueConflict: true });
 
     return reply.code(201).send(quote);
   });
 
   app.get('/quotes/:id/docx', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
-    const quote = await prisma.quote.findUnique({
-      where: { id: params.id },
+    const query = z.object({ companyId: z.string() }).parse(request.query);
+    const quote = await prisma.quote.findFirst({
+      where: { id: params.id, companyId: query.companyId },
       include: { customer: true, items: true }
     });
 
@@ -150,8 +156,9 @@ export const quoteRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/quotes/:id/pdf', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
-    const quote = await prisma.quote.findUnique({
-      where: { id: params.id },
+    const query = z.object({ companyId: z.string() }).parse(request.query);
+    const quote = await prisma.quote.findFirst({
+      where: { id: params.id, companyId: query.companyId },
       include: { customer: true, items: true }
     });
 

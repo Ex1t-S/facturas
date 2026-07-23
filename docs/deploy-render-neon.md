@@ -8,9 +8,10 @@ Estado actual:
 
 Importante:
 
-- Hoy el proyecto sigue usando `SQLite` en Prisma (`provider = "sqlite"`).
-- Antes de conectar Neon de verdad hay que migrar Prisma a `PostgreSQL`.
-- Sin esa migracion, Render puede correr la app, pero Neon no va a ser la base real.
+- El runtime principal usa PostgreSQL.
+- El historial de migraciones contiene etapas antiguas de SQLite y todavía no es un baseline reproducible.
+- `scripts/migrateSqliteToPostgres.ts` está bloqueado porque borraba el destino y omitía modelos nuevos.
+- No ejecutar `prisma migrate deploy` sobre una base real hasta generar y verificar un baseline en una base vacía.
 
 ## Comandos utiles
 
@@ -31,25 +32,30 @@ npm run neon:projects
 
 ## Flujo recomendado
 
-1. Migrar Prisma de SQLite a PostgreSQL.
-2. Crear proyecto Neon.
-3. Copiar `DATABASE_URL` de Neon.
-4. Crear servicio web en Render usando `render.yaml`.
-5. Cargar variables de entorno reales en Render.
-6. Probar `/api/health`.
-7. Recien despues conectar webhook de Meta y configuracion ARCA.
+1. Crear un backup verificable de cualquier base existente.
+2. Generar un baseline PostgreSQL desde `prisma/schema.prisma` en una base vacía.
+3. Probar creación, migración y restauración en un entorno aislado.
+4. Crear el proyecto Neon y aplicar únicamente el baseline aprobado.
+5. Copiar `DATABASE_URL` de Neon.
+6. Configurar secretos, Basic Auth, CORS y almacenamiento persistente.
+7. Crear el servicio web usando `render.yaml`.
+8. Probar `/api/health/live`, `/api/health` y un flujo comercial sintético.
+9. Recién después conectar el webhook de Meta.
 
 ## Variables que no sirven igual en cloud
 
 - `HISTORICAL_DOCUMENT_ROOT`
   - sirve localmente, no como ruta real en Render
 - `UPLOAD_DIR`
-  - en free tier queda en filesystem efimero
-  - para produccion real conviene storage externo
+  - en el filesystem efímero se pierden documentos al reiniciar o redesplegar;
+  - usar disco persistente o almacenamiento de objetos antes de cargar documentación real.
 
 ## Bloqueantes antes de deploy serio
 
-- migracion a Postgres
-- estrategia para archivos/documentos
+- baseline PostgreSQL reproducible
+- estrategia persistente para archivos/documentos y prueba de restauración
+- `BASIC_AUTH_USERNAME`, contraseña fuerte y `CORS_ORIGINS`
 - variables reales de Meta
-- variables reales de ARCA
+- cola durable/reintentos para el webhook
+
+ARCA sigue bloqueado y no forma parte del deploy inicial.

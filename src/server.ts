@@ -4,8 +4,10 @@ import { pathToFileURL } from 'node:url';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
+import rateLimit from '@fastify/rate-limit';
 import staticPlugin from '@fastify/static';
 import Fastify, { type FastifyError } from 'fastify';
+import { ZodError } from 'zod';
 import { config } from './config.js';
 import { prisma } from './db.js';
 import { assistantRoutes } from './routes/assistant.js';
@@ -25,16 +27,50 @@ import { engineeringRoutes } from './routes/engineering.js';
 import { deliveryNoteRoutes } from './routes/deliveryNotes.js';
 import { webRoutes } from './routes/web.js';
 import { syncPublicSupplierPrices } from './services/supplierPublicSync.js';
+import {
+  configuredCorsOrigins,
+  createBasicAuthHook,
+  validateBasicAuthConfiguration,
+  validateWhatsAppSecurityConfiguration
+} from './security.js';
 
 export async function buildServer() {
+  const production = process.env.NODE_ENV === 'production';
+  validateBasicAuthConfiguration({
+    username: config.BASIC_AUTH_USERNAME,
+    password: config.BASIC_AUTH_PASSWORD,
+    production
+  });
+  validateWhatsAppSecurityConfiguration({
+    accessToken: config.WHATSAPP_ACCESS_TOKEN,
+    phoneNumberId: config.WHATSAPP_PHONE_NUMBER_ID,
+    verifyToken: config.WHATSAPP_VERIFY_TOKEN,
+    appSecret: config.WHATSAPP_APP_SECRET,
+    allowedFrom: config.WHATSAPP_ALLOWED_FROM,
+    production
+  });
   const uploadRoot = path.resolve(config.UPLOAD_DIR);
-  const publicRoot = path.resolve('public');
   const frontendAssetsRoot = path.resolve('frontend/dist/ui-assets');
   await fs.mkdir(uploadRoot, { recursive: true });
-  await fs.mkdir(publicRoot, { recursive: true });
   await fs.mkdir(frontendAssetsRoot, { recursive: true });
 
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    bodyLimit: 1024 * 1024,
+    trustProxy: config.TRUST_PROXY,
+    logger: {
+      redact: {
+        paths: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          'req.headers.x-hub-signature-256',
+          'headers.authorization',
+          'headers.cookie',
+          'headers.x-hub-signature-256'
+        ],
+        censor: '[REDACTED]'
+      }
+    }
+  });
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (_request, body, done) => {
     try {
       const parsed = JSON.parse(body.toString('utf8')) as Record<string, unknown>;
@@ -45,16 +81,65 @@ export async function buildServer() {
     }
   });
   await app.register(helmet);
-  await app.register(cors, { origin: true });
+  const isCorsOriginAllowed = configuredCorsOrigins(config.PUBLIC_BASE_URL, config.CORS_ORIGINS, production);
+  await app.register(cors, {
+    origin: (origin, callback) => callback(null, isCorsOriginAllowed(origin)),
+    credentials: true
+  });
+  await app.register(rateLimit, {
+    global: true,
+    max: config.API_RATE_LIMIT_MAX,
+    timeWindow: '1 minute',
+    errorResponseBuilder: (request, context) => ({
+      error: 'Demasiadas solicitudes. Intentá nuevamente en unos instantes.',
+      requestId: request.id,
+      retryAfterSeconds: Math.ceil(context.ttl / 1000)
+    })
+  });
+  app.addHook('onRequest', createBasicAuthHook({
+    username: config.BASIC_AUTH_USERNAME,
+    password: config.BASIC_AUTH_PASSWORD,
+    production
+  }));
+  app.addHook('onSend', async (request, reply, payload) => {
+    reply.header('X-Request-Id', request.id);
+    return payload;
+  });
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024 } });
-  await app.register(staticPlugin, { root: uploadRoot, prefix: '/uploads/' });
   await app.register(staticPlugin, { root: frontendAssetsRoot, prefix: '/ui-assets/', decorateReply: false });
-  await app.register(staticPlugin, { root: publicRoot, prefix: '/assets/', decorateReply: false });
 
-  app.setErrorHandler((error: FastifyError, _request, reply) => {
-    app.log.error(error);
-    const status = 'statusCode' in error && typeof error.statusCode === 'number' ? error.statusCode : 500;
-    reply.code(status).send({ error: error.message });
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    const prismaCode = typeof (error as { code?: unknown }).code === 'string'
+      ? String((error as { code: string }).code)
+      : undefined;
+    const status = error instanceof ZodError
+      ? 400
+      : prismaCode === 'P2002'
+        ? 409
+        : prismaCode === 'P2025'
+          ? 404
+          : typeof error.statusCode === 'number'
+            ? error.statusCode
+            : 500;
+    request.log.error({ err: error, requestId: request.id, prismaCode }, 'request failed');
+    if (error instanceof ZodError) {
+      return reply.code(400).send({
+        error: 'Los datos enviados no son válidos.',
+        requestId: request.id,
+        issues: error.issues.slice(0, 20).map((issue) => ({
+          path: issue.path.join('.'),
+          message: issue.message
+        }))
+      });
+    }
+    const publicMessage = status >= 500
+      ? 'No se pudo completar la operación.'
+      : prismaCode === 'P2002'
+        ? 'Ya existe un registro con esos datos.'
+        : prismaCode === 'P2025'
+          ? 'No se encontró el registro solicitado.'
+          : error.message;
+    return reply.code(status).send({ error: publicMessage, requestId: request.id });
   });
 
   await app.register(healthRoutes, { prefix: '/api' });

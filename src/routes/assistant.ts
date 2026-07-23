@@ -4,7 +4,7 @@ import { prisma } from '../db.js';
 import { answerAssistant, type AssistantMessage, type PendingDeliveryDraft } from '../services/assistant.js';
 
 const assistantSchema = z.object({
-  companyId: z.string().optional(),
+  companyId: z.string(),
   message: z.string().trim().min(1).max(3000),
   history: z
     .array(
@@ -23,6 +23,7 @@ const createChatSchema = z.object({
 });
 
 const createMessageSchema = z.object({
+  companyId: z.string(),
   message: z.string().trim().min(1).max(3000)
 });
 
@@ -114,8 +115,9 @@ export const assistantRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/assistant/chats/:id/messages', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
-    const chat = await prisma.assistantChat.findUnique({
-      where: { id: params.id },
+    const query = z.object({ companyId: z.string() }).parse(request.query);
+    const chat = await prisma.assistantChat.findFirst({
+      where: { id: params.id, companyId: query.companyId },
       include: { messages: { orderBy: { createdAt: 'asc' } } }
     });
     if (!chat) return reply.code(404).send({ error: 'Chat not found' });
@@ -132,8 +134,8 @@ export const assistantRoutes: FastifyPluginAsync = async (app) => {
   app.post('/assistant/chats/:id/messages', async (request, reply) => {
     const params = z.object({ id: z.string() }).parse(request.params);
     const body = createMessageSchema.parse(request.body);
-    const chat = await prisma.assistantChat.findUnique({
-      where: { id: params.id },
+    const chat = await prisma.assistantChat.findFirst({
+      where: { id: params.id, companyId: body.companyId },
       include: { messages: { orderBy: { createdAt: 'asc' }, take: 20 } }
     });
     if (!chat) return reply.code(404).send({ error: 'Chat not found' });
@@ -150,16 +152,14 @@ export const assistantRoutes: FastifyPluginAsync = async (app) => {
       .filter((message) => message.role === 'user' || message.role === 'assistant')
       .slice(-12)
       .map((message) => ({ role: message.role as AssistantMessage['role'], content: message.content }));
-    const latestDeliveryAction = [...chat.messages]
-      .reverse()
-      .find((message) => message.role === 'assistant' && (message.actionType === 'document_draft_pending' || message.actionType === 'delivery_note_draft_pending' || message.actionType === 'delivery_note_created' || message.actionType === 'quote_draft_created'));
-    const pendingDeliveryDraft = latestDeliveryAction?.actionType === 'document_draft_pending' || latestDeliveryAction?.actionType === 'delivery_note_draft_pending' ? latestDeliveryAction : undefined;
+    const latestAssistantMessage = [...chat.messages].reverse().find((message) => message.role === 'assistant');
+    const pendingDeliveryDraft = latestAssistantMessage ? parsePendingDeliveryDraft(latestAssistantMessage.sourcesJson) : undefined;
 
     const response = await answerAssistant({
       companyId: chat.companyId,
       message: body.message,
       history: [...history, { role: 'user', content: body.message }],
-      pendingDeliveryDraft: parsePendingDeliveryDraft(pendingDeliveryDraft?.sourcesJson)
+      pendingDeliveryDraft
     });
 
     const assistantMessage = await prisma.assistantMessage.create({

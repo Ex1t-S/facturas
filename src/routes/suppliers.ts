@@ -110,7 +110,7 @@ export const supplierRoutes: FastifyPluginAsync = async (app) => {
       })
       .parse(request.body);
 
-    const supplier = await prisma.supplier.findUnique({ where: { id: params.id } });
+    const supplier = await prisma.supplier.findFirst({ where: { id: params.id, companyId: body.companyId } });
     if (!supplier) return reply.code(404).send({ error: 'Supplier not found' });
 
     const priceList = await prisma.supplierPriceList.create({

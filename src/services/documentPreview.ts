@@ -24,13 +24,14 @@ export function isImageMime(mimeType: string, fileName: string) {
   return mimeType.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(fileName);
 }
 
-export async function buildPreview(document: { id: string; mimeType: string; fileName: string; storagePath: string }): Promise<DocumentPreview> {
+export async function buildPreview(document: { id: string; mimeType: string; fileName: string; storagePath: string }, companyId: string): Promise<DocumentPreview> {
+  const contentUrl = `/api/documents/${document.id}/content?companyId=${encodeURIComponent(companyId)}`;
   if (isPdfMime(document.mimeType, document.fileName)) {
-    return { type: 'pdf', url: `/api/documents/${document.id}/content` };
+    return { type: 'pdf', url: contentUrl };
   }
 
   if (isImageMime(document.mimeType, document.fileName)) {
-    return { type: 'image', url: `/api/documents/${document.id}/content` };
+    return { type: 'image', url: contentUrl };
   }
 
   if (isWordMime(document.mimeType, document.fileName)) {

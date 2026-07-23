@@ -8,6 +8,7 @@ export const engineeringIntents = [
   'SECTION_COMPARISON',
   'SECTION_SELECTION',
   'PRELIMINARY_DESIGN',
+  'PRELIMINARY_DRAWING',
   'MATERIAL_TAKEOFF',
   'PURCHASE_PLAN',
   'COST_ESTIMATE',
@@ -77,7 +78,7 @@ export function extractEngineeringFacts(rawMessage: string): EngineeringFact[] {
   const capacity = message.match(/(\d+(?:[.,]\d+)?)\s*(t|tn|ton|toneladas|kg)\b/i);
   if (capacity) add(fact('capacity', parseEngineeringNumber(capacity[1]), capacity[2].toLowerCase() === 'tn' ? 't' : capacity[2].toLowerCase()));
 
-  const supports = message.match(/(\d+)\s*(?:patas?|apoyos?|soportes?|columnas?)\b/i);
+  const supports = message.match(/(\d+)\s*(?:patas?|apoyos?|soportes?|columnas?|piezas?)\b/i);
   if (supports) add(fact('supportCount', Number(supports[1]), 'un'));
 
   const alternatives = lower.match(/(\d+)\s*(?:patas?|apoyos?|soportes?)\s*(?:contra|vs|versus|o|y)\s*(\d+)\s*(?:patas?|apoyos?|soportes?)?/i)
@@ -131,7 +132,8 @@ export function extractEngineeringFacts(rawMessage: string): EngineeringFact[] {
     add(fact('sectionThickness', thickness, 'mm'));
   }
   if (!section) {
-    const fallbackSection = message.match(/(\d{2,4})\s*[xX×*]\s*(\d{2,4})\s*[xX×*]\s*(\d+(?:[.,]\d+)?)/i);
+    const fallbackSection = message.match(/(\d{2,4})\s*[xX×*]\s*(\d{2,4})\s*[xX×*]\s*(\d+(?:[.,]\d+)?)/i)
+      || message.match(/(\d{2,4})\s*[xX×*]\s*(\d{2,4})\s*(?:y|de)\s*(\d+(?:[.,]\d+)?)\s*mm/i);
     if (fallbackSection) {
       const width = Number(fallbackSection[1]);
       const height = Number(fallbackSection[2]);
@@ -169,8 +171,10 @@ export function classifyEngineeringIntent(rawMessage: string, context?: { projec
   let confidence = 0.78;
 
   if (/\b(antecedente|biblioteca|referencia|historial|proyecto fmh)\b/.test(lower)) intent = 'KNOWLEDGE_SEARCH';
-  else if (/\b(plano|planos|dibujo|dibujos)\b/.test(lower) && /buscar|encontr|mostrar|similar/.test(lower)) intent = 'DRAWING_SEARCH';
+  else if (/\b(cortar|corte|cortes|chapa)\b/.test(lower) && /\b(pla+nos?|esquemas?|piezas?|materiales?)\b/.test(lower)) intent = 'MATERIAL_TAKEOFF';
+  else if (/\b(pla+nos?|dibujos?|esquemas?)\b/.test(lower) && /buscar|encontr|mostrar|similar/.test(lower)) intent = 'DRAWING_SEARCH';
   else if (/\b(revisar|analizar)\b/.test(lower) && /plano|dibujo/.test(lower)) intent = 'DRAWING_REVIEW';
+  else if (/\b(pla+nos?|dibujos?|esquemas?)\b/.test(lower) && /\b(hacer|haceme|generar|genera|generame|crear|crea|preparar|prepara|pasar|pasame|quiero|necesito|armar|arma)\b/.test(lower)) intent = 'PRELIMINARY_DRAWING';
   else if (/\b(costo|coste|precio|presupuesto)\b/.test(lower)) intent = 'COST_ESTIMATE';
   else if (/\b(comprar|compro|barras?|sobrante|plan de compra)\b/.test(lower)) intent = 'PURCHASE_PLAN';
   else if (/\b(cortar|corte|cortes|chapa|cmputo|computo|materiales?|metros? lineales?)\b/.test(lower)) intent = 'MATERIAL_TAKEOFF';
@@ -185,6 +189,10 @@ export function classifyEngineeringIntent(rawMessage: string, context?: { projec
   if (context?.currentIntent && intent === 'GENERAL_QUESTION' && /^(y|tambien|también|entonces|con eso|para ese caso)\b/.test(lower)) {
     intent = context.currentIntent;
     confidence = 0.68;
+  }
+  if (context?.currentIntent && intent === 'GENERAL_QUESTION' && /^(que|qué)\s+(datos|falta|faltan|necesit)/.test(lower)) {
+    intent = context.currentIntent;
+    confidence = 0.98;
   }
   if (intent === 'GENERAL_QUESTION' && /\b(pandeo|esbeltez|tension|tensión|carga|apoyo|perfil|acero)\b/.test(lower)) confidence = 0.9;
   if (!message.trim()) confidence = 0;
@@ -202,9 +210,21 @@ export function buildMissingData(intent: EngineeringIntent, known: Array<{ key: 
     require('freeHeight', 'Define la longitud libre del elemento.', 'CRITICAL');
     require('bracing', 'Define si la longitud efectiva puede reducirse.', 'IMPORTANT');
   }
-  if (intent === 'MATERIAL_TAKEOFF') { require('supportCount', 'Define la cantidad de elementos.', 'IMPORTANT'); require('freeHeight', 'Define la longitud de cada elemento.', 'IMPORTANT'); }
+  if (intent === 'MATERIAL_TAKEOFF') {
+    const isRectangularSheetCut = has('sheetDimensions') && has('sectionWidth') && has('sectionHeight') && has('supportCount');
+    require('supportCount', 'Define la cantidad de elementos.', 'IMPORTANT');
+    if (!isRectangularSheetCut) require('freeHeight', 'Define la longitud de cada elemento.', 'IMPORTANT');
+  }
   if (intent === 'PURCHASE_PLAN') { require('commercialLength', 'Define el largo comercial disponible.', 'IMPORTANT'); }
   if (intent === 'COST_ESTIMATE') { require('costSource', 'Necesito precios vigentes o una fuente de costos.', 'IMPORTANT'); }
+  if (intent === 'PRELIMINARY_DRAWING') {
+    require('diameter', 'Define el ancho principal del silo.', 'IMPORTANT');
+    require('bodyHeight', 'Define la altura del cuerpo cilíndrico.', 'IMPORTANT');
+    require('coneHeight', 'Define la geometría de descarga.', 'OPTIONAL');
+    require('freeHeight', 'Define la altura libre de la estructura soporte.', 'IMPORTANT');
+    require('supportCount', 'Define la distribución de apoyos en planta.', 'IMPORTANT');
+    require('location', 'Permite identificar las acciones ambientales que deberán verificarse.', 'OPTIONAL');
+  }
   return missing;
 }
 

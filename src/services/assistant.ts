@@ -1,4 +1,4 @@
-import { DocumentKind } from '../generated/postgres-client/index.js';
+import type { Customer } from '../generated/postgres-client/index.js';
 import fs from 'node:fs/promises';
 import { nanoid } from 'nanoid';
 import { config } from '../config.js';
@@ -17,12 +17,23 @@ import { renderFmhDeliveryNotePdf, writeFmhDeliveryNoteDocx } from './fmhDeliver
 import { renderDocumentFromTemplate, type RendererUsed } from './documentTemplateRenderer.js';
 import { renderDeliveryNotePdf, renderQuotePdf } from './pdf.js';
 import { createDeliveryNoteRecord, listPendingDeliveryNotes, linkDeliveryNotesToQuote } from './deliveryNotes/deliveryNoteService.js';
+import { runSerializableTransaction } from './transaction.js';
 import {
   resolveDocumentConversationMessage,
   unsupportedWhatsAppAnswer,
   type DocumentConversationAction,
   type DocumentConversationResolution
 } from './documentConversationResolver.js';
+import {
+  applyCommercialDraftMutation,
+  commercialMenu,
+  customerChangeQuery,
+  documentNameChangeQuery,
+  isCommercialMenuRequest,
+  menuSelection,
+  normalizeCommercialText,
+  type CommercialDraftItem
+} from './commercialConversation.js';
 
 const OPENAI_TIMEOUT_MS = 35_000;
 
@@ -62,13 +73,7 @@ export type AssistantResponse = {
 
 type DraftIntent = 'quote' | 'delivery_note' | 'invoice' | 'none';
 
-type DraftItem = {
-  description: string;
-  quantity?: number;
-  unit?: string;
-  unitPrice?: number;
-  taxRate?: number;
-};
+type DraftItem = CommercialDraftItem;
 
 type DraftPayload = {
   customerName?: string;
@@ -100,6 +105,8 @@ export type PendingDeliveryDraft = {
   lastConversationAction?: DocumentConversationAction;
   lastConversationConfidence?: DocumentConversationResolution['confidence'];
   lastConversationReason?: string;
+  awaiting?: 'customer' | 'customer_selection' | 'items' | 'prices' | 'review';
+  customerCandidates?: Array<{ id: string; legalName: string; cuit?: string | null; address?: string | null }>;
 };
 
 function withConversationResolution(pending: PendingDeliveryDraft, resolution: DocumentConversationResolution): PendingDeliveryDraft {
@@ -242,7 +249,10 @@ function draftKindLabel(type: PendingDeliveryDraft['type']) {
 
 function formatDocumentDraft(pending: PendingDeliveryDraft) {
   const items = pending.payload.items.length
-    ? pending.payload.items.map((item, index) => (index + 1) + '. ' + (item.quantity || 1) + ' ' + (item.unit || 'unidad') + ' - ' + item.description).join('\n')
+    ? pending.payload.items.map((item, index) => {
+        const price = pending.type === 'quote' ? ` — $${Number(item.unitPrice || 0).toLocaleString('es-AR')}` : '';
+        return (index + 1) + '. ' + (item.quantity || 1) + ' ' + (item.unit || 'unidad') + ' - ' + item.description + price;
+      }).join('\n')
     : 'Sin items cargados.';
   return [
     'Borrador de ' + draftKindLabel(pending.type) + ':',
@@ -251,7 +261,9 @@ function formatDocumentDraft(pending: PendingDeliveryDraft) {
     items,
     'Nombre sugerido: ' + pending.suggestedFileName,
     '',
-    'Si esta bien, escribi "guardalo". Si queres cambiar el nombre, escribi por ejemplo: "guardalo como remito-mario-alvarez.pdf".'
+    pending.status === 'WAITING_CONFIRMATION'
+      ? 'Si está bien, escribí "guardalo". Para cambiar algo, indicá el ítem y el cambio.'
+      : 'Podés agregar, cambiar o borrar ítems. Cuando esté listo, pedime el PDF.'
   ].join('\n');
 }
 
@@ -272,8 +284,9 @@ function pendingDeliveryNote(history?: AssistantMessage[]) {
 
 function isCustomerOnlyDeliverySetup(message: string) {
   const normalized = normalizeText(message);
+  if (/\d|\$|\b(?:unidad(?:es)?|kg|metros?|mts|trabajos?|a\s+\d|por\s+\d)\b/.test(normalized)) return false;
   const withoutCustomer = normalized
-    .replace(/\b(vamos\s+a\s+armarlo|armarlo|lo\s+armamos|hacerlo|hacelo|hacer\s+remito|haceme|armame|generame|preparame|remito)\b/g, ' ')
+    .replace(/\b(vamos\s+a\s+armarlo|armarlo|lo\s+armamos|hacerlo|hacelo|hacer\s+(?:remito|presupuesto)|haceme|armame|generame|preparame|remito|presupuesto|un)\b/g, ' ')
     .replace(/\b(para|cliente)\s+[^,.;\n]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -299,9 +312,11 @@ async function listCustomers(companyId: string) {
   ].join('\n');
 }
 
-function parseLocalDraft(message: string): DraftPayload {
+export function parseLocalDraft(message: string): DraftPayload {
   const customerName = firstCustomerGuess(message);
   const currency = /\b(u\$s|usd|dolar|dolares)\b/i.test(message) ? 'USD' : 'ARS';
+  const documentOnlyRequest = /\b(?:presupuesto|remito)\b/i.test(message)
+    && !/\d|\b(?:unidad(?:es)?|kg|metros?|mts|trabajo(?:s)?|material(?:es)?|item|rodamiento(?:s)?|ruleman(?:es)?|motor(?:es)?|reparaci[oó]n|soldadura|instalaci[oó]n|fabricaci[oó]n|cambio|revisi[oó]n|noria|cinta|soporte|chapa|perfil|traslado)\b/i.test(message);
   const itemMatches = [...message.matchAll(/(\d+(?:[,.]\d+)?)\s*(unidades|unidad|mts|metros|kg|trabajos|trabajo|u)\s+(?:de\s+)?([^,.;\n]+?)(?:\s+(?:a|por|precio)\s*(?:\$|u\$s|usd)?\s*([\d.,]+))?(?=,|;|\.|\sy\s\d|$)/gi)];
   const items: DraftItem[] = itemMatches
     .map((match): DraftItem | null => {
@@ -317,7 +332,7 @@ function parseLocalDraft(message: string): DraftPayload {
     })
     .filter((item): item is DraftItem => item !== null);
 
-  if (items.length === 0) items.push(...structuredDeliveryItemsFromMessage(message).map((item) => ({ ...item, unitPrice: 0, taxRate: 21 })));
+  if (items.length === 0 && !documentOnlyRequest) items.push(...structuredDeliveryItemsFromMessage(message).map((item) => ({ ...item, unitPrice: 0, taxRate: 21 })));
 
   return { customerName, currency, items, notes: undefined };
 }
@@ -456,20 +471,94 @@ async function resolveCustomer(input: { companyId: string; name?: string; cuit?:
     if (byCuit) return byCuit;
   }
 
-  if (input.name) {
-    const byName = await prisma.customer.findFirst({
-      where: {
-        companyId: input.companyId,
-        OR: [{ legalName: { contains: input.name } }, { tradeName: { contains: input.name } }]
-      }
-    });
-    if (byName) return byName;
-  }
+  if (input.name) return (await resolveCustomerChoice(input.companyId, input.name)).selected;
 
   return null;
 }
+
+type CustomerChoice = {
+  selected: Customer | null;
+  candidates: Customer[];
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+};
+
+async function resolveCustomerChoice(companyId: string, query: string): Promise<CustomerChoice> {
+  const needle = normalizeCommercialText(query).replace(/\b(?:srl|sa|sas|sh)\b/g, '').trim();
+  if (!needle) return { selected: null, candidates: [], confidence: 'LOW' };
+  const customers = await prisma.customer.findMany({ where: { companyId }, orderBy: { legalName: 'asc' }, take: 300 });
+  const normalizedCuit = query.replace(/\D/g, '');
+  const exact = customers.filter((customer) => {
+    const names = [customer.legalName, customer.tradeName].filter(Boolean).map((value) => normalizeCommercialText(String(value)).replace(/\b(?:srl|sa|sas|sh)\b/g, '').trim());
+    return names.includes(needle) || (normalizedCuit.length >= 8 && customer.cuit?.replace(/\D/g, '') === normalizedCuit);
+  });
+  if (exact.length === 1) return { selected: exact[0]!, candidates: exact, confidence: 'HIGH' };
+  if (exact.length > 1) return { selected: null, candidates: exact.slice(0, 5), confidence: 'MEDIUM' };
+
+  const tokens = needle.split(' ').filter((token) => token.length >= 2);
+  const partial = customers.filter((customer) => {
+    const haystack = normalizeCommercialText([customer.legalName, customer.tradeName, customer.cuit].filter(Boolean).join(' '));
+    return haystack.includes(needle) || (tokens.length > 0 && tokens.every((token) => haystack.includes(token)));
+  });
+  if (partial.length === 1) return { selected: partial[0]!, candidates: partial, confidence: 'HIGH' };
+  return { selected: null, candidates: partial.slice(0, 5), confidence: partial.length ? 'MEDIUM' : 'LOW' };
+}
+
+function applyCustomerToPayload(payload: DraftPayload, customer: Customer): DraftPayload {
+  return {
+    ...payload,
+    customerName: customer.legalName,
+    customerCuit: customer.cuit || undefined,
+    customerAddress: customer.address || undefined
+  };
+}
+
+function withStableLineIds(items: DraftItem[]) {
+  return items.map((item) => ({ ...item, lineId: item.lineId || nanoid(8) }));
+}
+
+function customerCandidatesAnswer(candidates: Customer[]) {
+  return [
+    'Encontré más de un cliente posible:',
+    ...candidates.map((customer, index) => `${index + 1}. ${customer.legalName}${customer.cuit ? ` — CUIT ${customer.cuit}` : ''}`),
+    'Respondeme con el número correcto.'
+  ].join('\n');
+}
+
+function isLikelyCommercialItemEntry(message: string) {
+  const normalized = normalizeCommercialText(message);
+  return /\d|\b(?:unidad(?:es)?|item|material(?:es)?|trabajo(?:s)?|precio|importe|rodamiento(?:s)?|ruleman(?:es)?|motor(?:es)?|reparaci[oó]n|soldadura|instalaci[oó]n|fabricaci[oó]n|cambio|revisi[oó]n|noria|cinta|soporte|ca[nñ]o|chapa|perfil|traslado)\b/.test(normalized);
+}
+
+function createCollectingDraft(input: {
+  type: 'quote' | 'delivery_note';
+  payload: DraftPayload;
+  sourceMessage: string;
+  awaiting: PendingDeliveryDraft['awaiting'];
+  candidates?: Customer[];
+}): PendingDeliveryDraft {
+  const now = new Date();
+  const payload = { ...input.payload, items: withStableLineIds(input.payload.items) };
+  return {
+    type: input.type,
+    payload,
+    suggestedFileName: suggestedDocumentFileName(input.type, payload),
+    token: nanoid(),
+    previewStoragePath: '',
+    previewFileName: '',
+    previewMimeType: 'application/pdf',
+    status: 'COLLECTING_INFORMATION',
+    awaiting: input.awaiting,
+    customerCandidates: input.candidates?.map(({ id, legalName, cuit, address }) => ({ id, legalName, cuit, address })),
+    draftVersion: 1,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + config.WHATSAPP_DOCUMENT_DRAFT_TTL_HOURS * 3600_000).toISOString(),
+    rawSourceMessages: [input.sourceMessage]
+  };
+}
 function normalizeDraftItems(payload: DraftPayload, defaultUnitPrice: number) {
   return payload.items.map((item) => ({
+    lineId: item.lineId || nanoid(8),
     productId: undefined,
     description: item.description,
     quantity: Number(item.quantity || 1),
@@ -637,26 +726,26 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
   if (!customer) throw new Error('El cliente no está registrado. Confirmá el CUIT antes de guardar el presupuesto.');
   const items = normalizeDraftItems(payload, 0);
   const totals = calculateQuoteTotals(items);
-  const last = await prisma.quote.findFirst({ where: { companyId }, orderBy: { number: 'desc' } });
-  const number = (last?.number ?? 0) + 1;
-
-  const quote = await prisma.quote.create({
-    data: {
-      companyId,
-      customerId: customer.id,
-      number,
-      status: 'DRAFT',
-      currency: payload.currency ?? 'ARS',
-      notes: [payload.notes, `Origen IA: ${message}`].filter(Boolean).join('\n'),
-      subtotal: totals.subtotal,
-      taxTotal: totals.taxTotal,
-      total: totals.total,
-      items: {
-        create: items.map((item, index) => ({ ...item, total: totals.lines[index]?.total ?? 0 }))
-      }
-    },
-    include: { customer: true, items: true }
-  });
+  const quote = await runSerializableTransaction(async (tx) => {
+    const last = await tx.quote.findFirst({ where: { companyId }, orderBy: { number: 'desc' } });
+    return tx.quote.create({
+      data: {
+        companyId,
+        customerId: customer.id,
+        number: (last?.number ?? 0) + 1,
+        status: 'DRAFT',
+        currency: payload.currency ?? 'ARS',
+        notes: [payload.notes, `Origen IA: ${message}`].filter(Boolean).join('\n'),
+        subtotal: totals.subtotal,
+        taxTotal: totals.taxTotal,
+        total: totals.total,
+        items: {
+          create: items.map((item, index) => ({ ...item, total: totals.lines[index]?.total ?? 0 }))
+        }
+      },
+      include: { customer: true, items: true }
+    });
+  }, { retryUniqueConflict: true });
 
   let pdf: Buffer | null = null;
   try {
@@ -731,7 +820,7 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
     ].join('\n'),
     sources: [
       { type: 'quote', id: quote.id, title: `Presupuesto #${quote.number}`, subtitle: quote.customer.legalName },
-      { type: 'document', id: document.id, title: document.fileName, subtitle: 'Presupuesto PDF / Estructurado', url: `/api/documents/${document.id}/content` }
+      { type: 'document', id: document.id, title: document.fileName, subtitle: 'Presupuesto PDF / Estructurado', url: `/api/documents/${document.id}/content?companyId=${encodeURIComponent(companyId)}` }
     ]
   };
 }
@@ -745,9 +834,15 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
     source: 'remito generado por asistente IA'
   });
   if (!customer) throw new Error('El cliente no está registrado. Confirmá el CUIT antes de guardar el remito.');
-  const count = await prisma.document.count({ where: { companyId, kind: DocumentKind.DELIVERY_NOTE, sourceType: 'ai_generated' } });
-  const number = String(count + 1).padStart(5, '0');
   const items = payload.items.length ? payload.items : [{ description: message, quantity: 1, unit: 'trabajo' }];
+  const deliveryNote = await createDeliveryNoteRecord({
+    companyId,
+    customerId: customer.id,
+    items: items.map((item) => ({ description: item.description, quantity: Number(item.quantity || 1), unit: item.unit || 'unidad', unitPrice: item.unitPrice, taxRate: item.taxRate })),
+    notes: payload.notes,
+    currency: payload.currency ?? 'ARS'
+  });
+  const number = String(deliveryNote.number).padStart(5, '0');
   const issueDate = new Date();
   const deliveryNoteInput = {
     number,
@@ -799,14 +894,7 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
       }
     }
   });
-  const deliveryNote = await createDeliveryNoteRecord({
-    companyId,
-    customerId: customer.id,
-    documentId: document.id,
-    items: items.map((item) => ({ description: item.description, quantity: Number(item.quantity || 1), unit: item.unit || 'unidad', unitPrice: item.unitPrice, taxRate: item.taxRate })),
-    notes: payload.notes,
-    currency: payload.currency ?? 'ARS'
-  });
+  await prisma.deliveryNote.update({ where: { id: deliveryNote.id }, data: { documentId: document.id } });
 
   return {
     type: 'delivery_note_created',
@@ -815,7 +903,7 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
       `Listo. Guardé el remito #${String(deliveryNote.number).padStart(5, '0')} para ${customer.legalName}.`,
       'Estado: pendiente de presupuestar o facturar.'
     ].join('\n'),
-    sources: [{ type: 'document', id: document.id, title: document.fileName, subtitle: 'Remito / Estructurado', url: `/api/documents/${document.id}/content` }]
+    sources: [{ type: 'document', id: document.id, title: document.fileName, subtitle: 'Remito / Estructurado', url: `/api/documents/${document.id}/content?companyId=${encodeURIComponent(companyId)}` }]
   };
 }
 
@@ -977,10 +1065,23 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
   const company = await resolveCompany(input.companyId);
   const companyId = company?.id;
   const suggestions = ['Buscar remitos de un cliente', 'Armar remito borrador', 'Armar presupuesto borrador', 'Analizar puntos debiles'];
-  const intent = detectDraftIntent(input.message);
+  const selectedMenuOption = menuSelection(input.message, input.history);
+  const intent: DraftIntent = selectedMenuOption === 'quote' || selectedMenuOption === 'delivery_note' || selectedMenuOption === 'invoice'
+    ? selectedMenuOption
+    : detectDraftIntent(input.message);
 
   if (!companyId) {
     return { mode: 'local', answer: 'No hay empresa activa cargada para consultar o guardar datos.', sources: [], suggestions };
+  }
+
+  if (isCommercialMenuRequest(input.message) || selectedMenuOption === 'menu') {
+    return { mode: 'local', answer: commercialMenu, sources: [], suggestions, pendingDeliveryDraft: input.pendingDeliveryDraft };
+  }
+  if (selectedMenuOption === 'pending_documents') {
+    return { mode: 'local', answer: 'Decime el cliente y te muestro sus remitos o presupuestos pendientes.', sources: [], suggestions };
+  }
+  if (selectedMenuOption === 'search') {
+    return { mode: 'local', answer: 'Decime qué cliente o producto querés buscar.', sources: [], suggestions };
   }
 
   const conversationResolution = resolveDocumentConversationMessage({
@@ -1001,6 +1102,17 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     };
   }
 
+  // La cancelación tiene prioridad sobre cualquier estado de captura
+  // (cliente, ítems, precios o revisión), incluso si todavía no hay PDF.
+  if (input.pendingDeliveryDraft && conversationResolution.action === 'CANCEL_DOCUMENT') {
+    return {
+      mode: 'local',
+      answer: `Cancelé el borrador de ${draftKindLabel(input.pendingDeliveryDraft.type)}.`,
+      sources: [],
+      suggestions
+    };
+  }
+
   // Una consulta se responde fuera del borrador y luego se restaura su contexto.
   // Así una pregunta de stock o documentos nunca termina dentro del detalle.
   if (input.pendingDeliveryDraft && conversationResolution.action === 'QUERY') {
@@ -1011,7 +1123,132 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     };
   }
 
-  if (input.pendingDeliveryDraft && conversationResolution.action === 'AMBIGUOUS') {
+  if (input.pendingDeliveryDraft?.awaiting === 'customer_selection' && input.pendingDeliveryDraft.customerCandidates?.length) {
+    const selectedIndex = Number(normalizeCommercialText(input.message)) - 1;
+    const selected = input.pendingDeliveryDraft.customerCandidates[selectedIndex];
+    if (!selected) {
+      return {
+        mode: 'local',
+        answer: 'Elegí uno de los números de cliente que te mostré, o escribí "cancelar".',
+        sources: [], suggestions, pendingDeliveryDraft: input.pendingDeliveryDraft
+      };
+    }
+    const nextPayload = {
+      ...input.pendingDeliveryDraft.payload,
+      customerName: selected.legalName,
+      customerCuit: selected.cuit || undefined,
+      customerAddress: selected.address || undefined
+    };
+    const next = {
+      ...input.pendingDeliveryDraft,
+      payload: nextPayload,
+      customerCandidates: undefined,
+      awaiting: nextPayload.items.length ? ('review' as const) : ('items' as const),
+      suggestedFileName: suggestedDocumentFileName(input.pendingDeliveryDraft.type, nextPayload),
+      updatedAt: new Date().toISOString()
+    };
+    return {
+      mode: 'local',
+      answer: `Seleccioné a ${selected.legalName}. ${nextPayload.items.length ? 'Revisá los ítems o pedime el PDF.' : 'Ahora decime los ítems o trabajos.'}`,
+      sources: [], suggestions, pendingDeliveryDraft: next
+    };
+  }
+
+  if (input.pendingDeliveryDraft?.awaiting === 'customer') {
+    const query = firstCustomerGuess(input.message) || input.message.trim();
+    const choice = await resolveCustomerChoice(companyId, query);
+    if (choice.selected) {
+      const nextPayload = applyCustomerToPayload(input.pendingDeliveryDraft.payload, choice.selected);
+      const next = {
+        ...input.pendingDeliveryDraft,
+        payload: nextPayload,
+        awaiting: nextPayload.items.length ? ('review' as const) : ('items' as const),
+        suggestedFileName: suggestedDocumentFileName(input.pendingDeliveryDraft.type, nextPayload),
+        updatedAt: new Date().toISOString()
+      };
+      return { mode: 'local', answer: `Seleccioné a ${choice.selected.legalName}. Ahora decime los ítems o trabajos.`, sources: [], suggestions, pendingDeliveryDraft: next };
+    }
+    if (choice.candidates.length) {
+      return {
+        mode: 'local', answer: customerCandidatesAnswer(choice.candidates), sources: [], suggestions,
+        pendingDeliveryDraft: { ...input.pendingDeliveryDraft, awaiting: 'customer_selection', customerCandidates: choice.candidates }
+      };
+    }
+    return { mode: 'local', answer: `No encontré un cliente registrado que coincida con "${query}". Probá con la razón social, alias o CUIT.`, sources: [], suggestions, pendingDeliveryDraft: input.pendingDeliveryDraft };
+  }
+
+  if (input.pendingDeliveryDraft) {
+    const requestedName = documentNameChangeQuery(input.message);
+    if (requestedName) {
+      const nextFileName = ensurePdfFileName(requestedName);
+      const next = {
+        ...input.pendingDeliveryDraft,
+        suggestedFileName: nextFileName,
+        updatedAt: new Date().toISOString()
+      };
+      return {
+        mode: 'local',
+        answer: `Cambié el nombre sugerido a ${nextFileName}. Cuando quieras, pedime el PDF o decime "guardalo".`,
+        sources: [], suggestions,
+        pendingDeliveryDraft: next
+      };
+    }
+    const changedCustomer = customerChangeQuery(input.message);
+    if (changedCustomer) {
+      const choice = await resolveCustomerChoice(companyId, changedCustomer);
+      if (choice.selected) {
+        const payload = applyCustomerToPayload(input.pendingDeliveryDraft.payload, choice.selected);
+        const next = {
+          ...input.pendingDeliveryDraft,
+          payload,
+          suggestedFileName: suggestedDocumentFileName(input.pendingDeliveryDraft.type, payload),
+          status: 'COLLECTING_INFORMATION' as const,
+          awaiting: payload.items.length ? ('review' as const) : ('items' as const),
+          draftVersion: (input.pendingDeliveryDraft.draftVersion ?? 1) + 1,
+          previewVersion: undefined,
+          updatedAt: new Date().toISOString()
+        };
+        return { mode: 'local', answer: `Cambié el cliente a ${choice.selected.legalName}. El preview anterior quedó invalidado.`, sources: [], suggestions, pendingDeliveryDraft: next };
+      }
+      if (choice.candidates.length) {
+        return {
+          mode: 'local', answer: customerCandidatesAnswer(choice.candidates), sources: [], suggestions,
+          pendingDeliveryDraft: { ...input.pendingDeliveryDraft, awaiting: 'customer_selection', customerCandidates: choice.candidates }
+        };
+      }
+      return { mode: 'local', answer: `No encontré el cliente "${changedCustomer}". No modifiqué el borrador.`, sources: [], suggestions, pendingDeliveryDraft: input.pendingDeliveryDraft };
+    }
+
+    const mutation = applyCommercialDraftMutation(input.message, input.pendingDeliveryDraft.payload.items);
+    if (mutation.status !== 'not_a_mutation') {
+      if (mutation.status !== 'applied') {
+        return { mode: 'local', answer: mutation.message || 'No pude identificar el ítem.', sources: [], suggestions, pendingDeliveryDraft: input.pendingDeliveryDraft };
+      }
+      const next = {
+        ...input.pendingDeliveryDraft,
+        payload: { ...input.pendingDeliveryDraft.payload, items: mutation.items as DraftItem[] },
+        status: 'COLLECTING_INFORMATION' as const,
+        awaiting: mutation.items.length ? ('review' as const) : ('items' as const),
+        draftVersion: (input.pendingDeliveryDraft.draftVersion ?? 1) + 1,
+        previewVersion: undefined,
+        updatedAt: new Date().toISOString(),
+        rawSourceMessages: [...(input.pendingDeliveryDraft.rawSourceMessages ?? []), input.message]
+      };
+      return { mode: 'local', answer: `${mutation.message} Cuando quieras, pedime el resumen o el PDF actualizado.`, sources: [], suggestions, pendingDeliveryDraft: next };
+    }
+  }
+
+  const collectingItemEntry = Boolean(
+    input.pendingDeliveryDraft &&
+    (input.pendingDeliveryDraft.awaiting === 'items' || input.pendingDeliveryDraft.awaiting === 'prices') &&
+    isLikelyCommercialItemEntry(input.message)
+  );
+
+  if (
+    input.pendingDeliveryDraft &&
+    conversationResolution.action === 'AMBIGUOUS' &&
+    !collectingItemEntry
+  ) {
     return {
       mode: 'local',
       answer: `No estoy seguro de si eso va en el ${draftKindLabel(input.pendingDeliveryDraft.type)} abierto o si es otra consulta. Decime si querés que lo agregue.`,
@@ -1038,17 +1275,22 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
         pendingDeliveryDraft: pending
       };
     }
-    if (conversationResolution.action === 'APPEND_TO_DOCUMENT_DRAFT' || conversationResolution.action === 'UPDATE_DOCUMENT_DRAFT') {
-      const appended = structuredDeliveryItemsFromMessage(input.message);
-      if (appended.length && pending.type === 'delivery_note') {
-        const correction = conversationResolution.action === 'UPDATE_DOCUMENT_DRAFT';
-        const nextItems = correction && pending.payload.items.length
-          ? [...pending.payload.items.slice(0, -1), ...appended]
-          : [...pending.payload.items, ...appended];
+    if (
+      conversationResolution.action === 'APPEND_TO_DOCUMENT_DRAFT' ||
+      conversationResolution.action === 'UPDATE_DOCUMENT_DRAFT' ||
+      (pending.awaiting === 'items' || pending.awaiting === 'prices') && collectingItemEntry
+    ) {
+      const parsed = pending.type === 'quote'
+        ? (await parseOpenAiDraft(input.message, 'quote')) ?? parseLocalDraft(input.message)
+        : parseFollowUpDeliveryNoteForTest(input.message);
+      const appended = withStableLineIds(parsed.items);
+      if (appended.length) {
+        const nextItems = [...pending.payload.items, ...appended];
         const next: PendingDeliveryDraft = {
           ...pending,
           payload: { ...pending.payload, items: nextItems },
           status: 'COLLECTING_INFORMATION',
+          awaiting: pending.type === 'quote' && nextItems.some((item) => item.unitPrice === undefined || Number(item.unitPrice) <= 0) ? 'prices' : 'review',
           draftVersion: (pending.draftVersion ?? 1) + 1,
           previewVersion: undefined,
           updatedAt: new Date().toISOString(),
@@ -1056,7 +1298,7 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
         };
         return {
           mode: 'local',
-          answer: correction ? 'Corregido en el remito. Cuando quieras, pedime el PDF.' : 'Agregado al remito. Cuando quieras, pedime el PDF.',
+          answer: `Agregado al ${draftKindLabel(pending.type)}. Cuando quieras, pedime el resumen o el PDF.`,
           sources: [], suggestions, pendingDeliveryDraft: next
         };
       }
@@ -1097,6 +1339,31 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
 
     if (conversationResolution.action !== 'REQUEST_PREVIEW') {
       return { mode: 'local', answer: 'El borrador sigue abierto. Decime los trabajos, pedime el PDF o cancelalo.', sources: [], suggestions, pendingDeliveryDraft: pending };
+    }
+    if (!pending.payload.customerName && !pending.payload.customerCuit) {
+      return {
+        mode: 'local', answer: 'Antes del PDF necesito seleccionar el cliente. Decime la razón social, alias o CUIT.', sources: [], suggestions,
+        pendingDeliveryDraft: { ...pending, awaiting: 'customer' }
+      };
+    }
+    if (!pending.payload.items.length) {
+      return {
+        mode: 'local', answer: `Antes del PDF necesito al menos un ítem en el ${draftKindLabel(pending.type)}.`, sources: [], suggestions,
+        pendingDeliveryDraft: { ...pending, awaiting: 'items' }
+      };
+    }
+    if (pending.type === 'quote') {
+      const missingPrices = pending.payload.items
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => item.unitPrice === undefined || Number(item.unitPrice) <= 0);
+      if (missingPrices.length) {
+        return {
+          mode: 'local',
+          answer: ['Antes del PDF faltan precios:', ...missingPrices.map(({ item, index }) => `${index + 1}. ${item.description}`), 'Podés decir, por ejemplo: "cambiá el precio del ítem 1 a 50000".'].join('\n'),
+          sources: [], suggestions,
+          pendingDeliveryDraft: { ...pending, awaiting: 'prices' }
+        };
+      }
     }
     const fileName = requestedFileName || pending.suggestedFileName;
     const preview = pending.type === 'quote'
@@ -1165,35 +1432,62 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
 
   if (intent === 'quote' || intent === 'delivery_note' || (pendingDeliveryNote(input.history) && firstCustomerGuess(input.message))) {
     const effectiveIntent: DraftIntent = intent === 'none' ? 'delivery_note' : intent;
-    const payload =
-      effectiveIntent === 'delivery_note' && (intent === 'none' || isCustomerOnlyDeliverySetup(input.message))
-        ? parseFollowUpDeliveryNoteForTest(input.message)
-        : (await parseOpenAiDraft(input.message, effectiveIntent)) ?? parseLocalDraft(input.message);
-    const matchedCustomer = (payload.customerName || payload.customerCuit)
-      ? await resolveCustomer({ companyId, name: payload.customerName, cuit: payload.customerCuit, address: payload.customerAddress, source: 'asistente IA' })
-      : null;
-    const missing: string[] = [];
-    if (!payload.customerName && !payload.customerCuit) missing.push('cliente y CUIT');
-    if (payload.items.length === 0) missing.push('items o descripcion');
-      if (missing.length) {
-      const answer =
-        effectiveIntent === 'delivery_note' && payload.customerName && missing.length === 1 && missing[0] === 'items o descripcion'
-          ? 'Perfecto. Estoy armando un remito para ' + payload.customerName + '. Mandame los trabajos realizados.'
-          : 'Para crear el ' + (effectiveIntent === 'quote' ? 'presupuesto' : 'remito') + ' necesito estos datos: ' + missing.join(', ') + '. Pasamelos en un mensaje y lo guardo como borrador editable.';
-      const collecting: PendingDeliveryDraft | undefined = effectiveIntent === 'delivery_note' && payload.customerName && missing.length === 1
-        ? {
-            type: 'delivery_note', payload, suggestedFileName: suggestedDocumentFileName('delivery_note', payload), token: nanoid(),
-            previewStoragePath: '', previewFileName: '', previewMimeType: 'application/pdf', status: 'COLLECTING_INFORMATION',
-            draftVersion: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-            expiresAt: new Date(Date.now() + config.WHATSAPP_DOCUMENT_DRAFT_TTL_HOURS * 3600_000).toISOString(), rawSourceMessages: [input.message]
-          }
-        : undefined;
+    const customerOnly = isCustomerOnlyDeliverySetup(input.message) || Boolean(selectedMenuOption);
+    const localPayload = parseLocalDraft(input.message);
+    const aiPayload = customerOnly ? null : await parseOpenAiDraft(input.message, effectiveIntent);
+    let payload: DraftPayload = customerOnly
+      ? {
+          customerName: firstCustomerGuess(input.message),
+          currency: /\b(u\$s|usd|dolar|dolares)\b/i.test(input.message) ? 'USD' : 'ARS',
+          notes: effectiveIntent === 'delivery_note' ? 'Remito generado desde el asistente IA. Revisar antes de entregar.' : undefined,
+          items: []
+        }
+      : {
+          ...(aiPayload ?? localPayload),
+          customerName: aiPayload?.customerName || localPayload.customerName,
+          customerCuit: aiPayload?.customerCuit || localPayload.customerCuit,
+          customerAddress: aiPayload?.customerAddress || localPayload.customerAddress,
+          items: aiPayload?.items?.length ? aiPayload.items : localPayload.items
+        };
+
+    const deterministicCustomer = firstCustomerGuess(input.message);
+    if (deterministicCustomer) payload.customerName = deterministicCustomer;
+    payload = { ...payload, items: withStableLineIds(payload.items) };
+
+    const customerQuery = payload.customerCuit || payload.customerName;
+    const customerChoice = customerQuery ? await resolveCustomerChoice(companyId, customerQuery) : null;
+    if (customerChoice?.selected) payload = applyCustomerToPayload(payload, customerChoice.selected);
+
+    if (customerChoice && !customerChoice.selected && customerChoice.candidates.length) {
+      const collecting = createCollectingDraft({
+        type: effectiveIntent as 'quote' | 'delivery_note', payload, sourceMessage: input.message,
+        awaiting: 'customer_selection', candidates: customerChoice.candidates
+      });
+      return { mode: 'local', answer: customerCandidatesAnswer(customerChoice.candidates), sources: [], suggestions, pendingDeliveryDraft: collecting, action: { type: 'document_draft_pending' } };
+    }
+
+    if (!customerChoice?.selected) {
+      const collecting = createCollectingDraft({ type: effectiveIntent as 'quote' | 'delivery_note', payload, sourceMessage: input.message, awaiting: 'customer' });
+      const answer = customerQuery
+        ? `No encontré un cliente registrado que coincida con "${customerQuery}". Escribime la razón social, alias o CUIT.`
+        : `Para crear el ${effectiveIntent === 'quote' ? 'presupuesto' : 'remito'} necesito seleccionar el cliente. Escribime la razón social, alias o CUIT.`;
+      return { mode: 'local', answer, sources: [], suggestions, pendingDeliveryDraft: collecting, action: { type: 'document_draft_pending' } };
+    }
+
+    if (!payload.items.length) {
+      const collecting = createCollectingDraft({ type: effectiveIntent as 'quote' | 'delivery_note', payload, sourceMessage: input.message, awaiting: 'items' });
+      const answer = effectiveIntent === 'quote'
+        ? `Seleccioné a ${payload.customerName}. Decime los productos o trabajos, cantidades y precios del presupuesto.`
+        : `Seleccioné a ${payload.customerName}. Mandame los trabajos o materiales del remito.`;
+      return { mode: 'local', answer, sources: [], suggestions, pendingDeliveryDraft: collecting, action: { type: 'document_draft_pending' } };
+    }
+
+    if (effectiveIntent === 'quote' && payload.items.some((item) => item.unitPrice === undefined || Number(item.unitPrice) <= 0)) {
+      const collecting = createCollectingDraft({ type: 'quote', payload, sourceMessage: input.message, awaiting: 'prices' });
       return {
-        mode: config.OPENAI_API_KEY ? 'openai' : 'local',
-        answer,
-        sources: [],
-        suggestions,
-        pendingDeliveryDraft: collecting
+        mode: 'local',
+        answer: `${formatDocumentDraft(collecting)}\n\nFaltan uno o más precios. Indicame el precio por ítem antes de generar el PDF.`,
+        sources: [], suggestions, pendingDeliveryDraft: collecting, action: { type: 'document_draft_pending' }
       };
     }
 

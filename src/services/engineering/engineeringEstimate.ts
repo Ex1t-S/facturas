@@ -31,13 +31,24 @@ export function buildSiloMaterialEstimate(input: { supportCount: number; freeHei
   return { materials, purchase, assumptions, candidateSections: weighted, totalWeightKg, costKnown: purchase.reduce((sum, line) => sum + Number(line.subtotal || 0), 0), missingPrices: purchase.filter((line) => line.priceStatus === 'NO_PRICE').map((line) => String(line.description)) };
 }
 
-export async function buildEngineeringMaterialEstimate(companyId: string, state: StateLike): Promise<Estimate | null> {
+export async function buildEngineeringMaterialEstimate(
+  companyId: string,
+  state: StateLike,
+  options: { allowAssumptions?: boolean } = {}
+): Promise<Estimate | null> {
   if (state.projectType !== 'SILO') return null;
-  const freeHeightM = numberOf(valueOf(state, 'freeHeight'));
-  const diameterM = numberOf(valueOf(state, 'diameter'));
+  const explicitFreeHeightM = numberOf(valueOf(state, 'freeHeight'));
+  const explicitDiameterM = numberOf(valueOf(state, 'diameter'));
   const alternatives = (valueOf(state, 'supportAlternatives') as unknown[] | undefined)?.map(Number).filter((value) => Number.isInteger(value) && value > 0) || [];
-  const supportCount = alternatives[alternatives.length - 1] || numberOf(valueOf(state, 'supportCount'));
-  if (!freeHeightM || !supportCount) return null;
+  const explicitSupportCount = alternatives[alternatives.length - 1] || numberOf(valueOf(state, 'supportCount'));
+  if ((!explicitFreeHeightM || !explicitSupportCount) && !options.allowAssumptions) return null;
+  const freeHeightM = explicitFreeHeightM || 4;
+  const supportCount = explicitSupportCount || 6;
+  const diameterM = explicitDiameterM || (options.allowAssumptions ? 8 : undefined);
   const candidates = await searchEngineeringSectionCandidates(companyId, 'caño perfil tubo estructural', 12);
-  return buildSiloMaterialEstimate({ supportCount, freeHeightM, diameterM, candidates });
+  const estimate = buildSiloMaterialEstimate({ supportCount, freeHeightM, diameterM, candidates });
+  if (!explicitSupportCount) estimate.assumptions.push('Escenario orientativo con 6 apoyos porque todavía no se informó la cantidad.');
+  if (!explicitFreeHeightM) estimate.assumptions.push('Escenario orientativo con 4 m de altura libre porque todavía no se informó esa dimensión.');
+  if (!explicitDiameterM) estimate.assumptions.push('Escenario orientativo con 8 m de diámetro para poder estimar vinculaciones y diagonales.');
+  return estimate;
 }

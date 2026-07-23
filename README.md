@@ -16,15 +16,18 @@ Aplicación para ordenar documentos históricos, presupuestos, remitos, facturas
   - DOCX convertido a HTML
 - Generación de presupuestos FMH en DOCX/PDF.
 - Inventario orientado a materiales, separando trabajos/servicios del listado principal.
-- Asistente IA con búsqueda en datos internos y fuentes.
+- Asistente comercial con búsqueda en datos internos, preparación de borradores y trazabilidad.
 - Importación de documentos históricos desde carpeta local.
 - Base inicial para sincronizar precios públicos de proveedores.
+
+La guía del sistema visual y los patrones de nuevas pantallas está en [`docs/UI_SYSTEM.md`](docs/UI_SYSTEM.md).
 
 ## Stack
 
 - Backend: Fastify + TypeScript
 - Frontend: React + Vite
-- Base local: Prisma + SQLite
+- Base principal: Prisma + PostgreSQL
+- Esquema SQLite: auxiliar/histórico, no recomendado para producción
 - Documentos: Mammoth, PDFKit, DOCX
 - IA: OpenAI Responses API opcional
 
@@ -75,6 +78,9 @@ Variables principales:
 DATABASE_URL
 PORT
 PUBLIC_BASE_URL
+CORS_ORIGINS
+API_RATE_LIMIT_MAX
+TRUST_PROXY
 UPLOAD_DIR
 HISTORICAL_DOCUMENT_ROOT
 OPENAI_API_KEY
@@ -86,6 +92,9 @@ WHATSAPP_VERIFY_TOKEN
 WHATSAPP_APP_SECRET
 WHATSAPP_ACCESS_TOKEN
 WHATSAPP_PHONE_NUMBER_ID
+BASIC_AUTH_USERNAME
+BASIC_AUTH_PASSWORD
+WHATSAPP_ALLOWED_FROM
 ARCA_ENVIRONMENT
 ARCA_CUIT
 ARCA_CERT_PATH
@@ -192,7 +201,13 @@ Guía corta:
 docs/deploy-render-neon.md
 ```
 
-Importante: hoy Prisma sigue con `SQLite`, así que antes de usar Neon hay que migrar la aplicación a `PostgreSQL`.
+Importante: el runtime principal usa PostgreSQL, pero el historial de migraciones mezcla etapas antiguas de SQLite. Antes del primer despliegue nuevo hay que crear y verificar un baseline PostgreSQL en una base aislada. El migrador histórico destructivo está bloqueado.
+
+## Seguridad de producción
+
+En producción el servidor exige `BASIC_AUTH_USERNAME` y `BASIC_AUTH_PASSWORD` (mínimo 12 caracteres). Configurar además `CORS_ORIGINS` con el dominio exacto. WhatsApp requiere firma, token seguro y `WHATSAPP_ALLOWED_FROM`.
+
+Ver `docs/SECURITY_REVIEW.md`, `docs/ARCHITECTURE.md` y `docs/IMPROVEMENT_ROADMAP.md`.
 
 ## Ingeniería FMH
 
@@ -207,3 +222,17 @@ npm run engineering:ingest -- "C:\ruta\de\la\biblioteca"
 ```
 
 La sección `Ingeniería FMH` permite buscar antecedentes, calcular geometría y masa preliminar, consultar materiales y revisar las fuentes. Ver `docs/engineering-assistant.md`.
+
+## Cierre mensual de remitos
+
+La sección `Remitos` organiza el trabajo por mes, estado y cliente. El cierre permite completar precios y elegir entre crear sólo un presupuesto o preparar una factura A/B en estado `PENDING_CONFIRMATION`.
+
+El cierre:
+
+- no mezcla clientes, meses ni monedas;
+- conserva el vínculo entre remitos, presupuesto y factura;
+- evita duplicar una factura al repetir la operación;
+- registra la acción en `AuditLog`;
+- no autoriza automáticamente el comprobante ante ARCA.
+
+Ver `docs/USER_FLOWS.md` y `docs/REPOSITORY_AUDIT.md`.

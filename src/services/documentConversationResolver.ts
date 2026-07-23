@@ -24,7 +24,7 @@ function normalize(value: string) {
 const previewRequest = /\b(listo|terminamos|preparamelo|preparalo|prepara(?:me)?(?:\s+el)?\s+pdf|haceme\s+el\s+pdf|(?:dame|pasame|mandame|enviame|quiero\s+que\s+me\s+pases)\s+(?:el\s+)?pdf(?:\s+final)?|mostrame\s+como\s+quedo|mandame\s+el\s+borrador|quiero\s+revisarlo)\b/i;
 const reminderRequest = /\b(recorda(?:me|melo)?|recordatorio|avisame|avisa(?:me)?|alarma|agenda(?:me|lo)?|calendario|notifica(?:me)?)\b/i;
 const unsupportedActionRequest = /\b(?:manda(?:le)?\s+un\s+mensaje|envia(?:le)?\s+un\s+(?:mensaje|whatsapp|correo)|llama(?:lo|la)?\s+por\s+telefono|hace\s+una\s+transferencia|transferi(?:le)?|paga(?:le)?|compra(?:me)?|saca(?:me)?\s+un\s+turno)\b/i;
-const correctionRequest = /\b(perdon|en realidad|fueron|no eran|corregi|corregime|cambia|cambialo|reemplaza|saca|elimina)\b/i;
+const correctionRequest = /\b(perdon|en realidad|fueron|no eran|corregi|corregime|cambia|cambialo|reemplaza|borra|saca|elimina|quita|pone|precio|cantidad)\b/i;
 const appendRequest = /\b(tambien|ademas|agregale|agrega|aparte|falto poner|pone ademas|en el mismo remito|eso tambien va)\b/i;
 const workEvidence = /\b(cambiar|cambiamos|reparar|reparamos|revisar|revisamos|soldar|soldamos|fabricar|fabricamos|instalar|instalamos|retirar|retiramos|colocar|colocamos|atornillar|atornillamos|entregar|entregamos|llevar|llevamos|levantar|levantamos|limpiar|limpiamos|hicimos|realizamos|montaje|reparacion|soldadura|revision|rodamientos?|rulemanes?|sinfin|noria|cinta|silo|soporte|motoreductor|espira|cabezal)\b/i;
 const businessQuery = /\b(stock|inventario|existencia|precio|precios|cliente|clientes|producto|productos|proveedor|proveedores|remitos?\s+pendientes|presupuestos?\s+(?:abiertos|pendientes|guardados)|documentos?\s+(?:guardados|de))\b/i;
@@ -38,7 +38,7 @@ export function resolveDocumentConversationMessage(input: {
 
   if (reminderRequest.test(message)) return { action: 'UNSUPPORTED', confidence: 'HIGH', reason: 'reminder_not_supported' };
   if (unsupportedActionRequest.test(message)) return { action: 'UNSUPPORTED', confidence: 'HIGH', reason: 'external_action_not_supported' };
-  if (/\b(cancela|cancelalo|borra ese borrador|empecemos de nuevo)\b/i.test(message)) return { action: 'CANCEL_DOCUMENT', confidence: 'HIGH', reason: 'explicit_cancel' };
+  if (/\b(?:cancela|cancelalo|descartalo|olvidalo|borra ese borrador|empecemos de nuevo|no lo guardes|no quiero guardarlo|no lo quiero guardar|no hace falta guardarlo|dejalo asi)\b/i.test(message)) return { action: 'CANCEL_DOCUMENT', confidence: 'HIGH', reason: 'explicit_cancel' };
   if (/\b(que tenes anotado|como va el remito|mostrame lo que anotaste)\b/i.test(message)) return { action: 'ASK_DRAFT_STATUS', confidence: 'HIGH', reason: 'explicit_status_request' };
   if (/^(?:(?:guardar|guardalo|confirmar|confirmalo)(?:\s+como\s+.+)?|dale|ok|confirmado|esta bien|asi esta bien)[.!\s]*$/i.test(message)) {
     return { action: 'CONFIRM_DOCUMENT', confidence: 'HIGH', reason: 'explicit_confirmation' };

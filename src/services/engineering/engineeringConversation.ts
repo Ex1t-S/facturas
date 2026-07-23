@@ -1,5 +1,5 @@
 import { prisma } from '../../db.js';
-import { buildDeterministicEngineeringResult } from './engineeringDeterministic.js';
+import { buildDeterministicEngineeringResult, enforcePreliminaryDrawingDisclosure } from './engineeringDeterministic.js';
 import { buildMissingData, classifyEngineeringIntent, normalizeEngineeringText } from './engineeringIntelligence.js';
 import { activeInputs, engineeringConversationStateSchema, parseConversationState, updateConversationState, type EngineeringConversationState } from './conversationState.js';
 import { engineeringAssistantResultSchema } from './engineeringSchemas.js';
@@ -7,22 +7,58 @@ import { ensureRegulationCandidates } from './regulations.js';
 import { searchEngineeringGoldenLibrary } from './engineeringGoldenLibrary.js';
 import { engineeringToolDefinitions, executeEngineeringTool } from './engineeringTools.js';
 import { engineeringModelConfig, runEngineeringOpenAI, type EngineeringModelExecution, type EngineeringToolAudit } from './engineeringRuntime.js';
+import { buildEngineeringMaterialEstimate } from './engineeringEstimate.js';
 
 function compactState(state: EngineeringConversationState) {
   return { schemaVersion: state.schemaVersion, subject: state.subject, projectType: state.projectType, currentIntent: state.currentIntent, intentConfidence: state.intentConfidence, knownInputs: activeInputs(state), assumptions: state.assumptions, missingData: state.missingData, decisions: state.decisions, warnings: state.warnings };
 }
 
 function stateText(state: EngineeringConversationState, localAnswer: string) {
-  return `Estado técnico normalizado (no mostrar claves internas al usuario): ${JSON.stringify(compactState(state))}\nResultado determinístico disponible: ${localAnswer}`;
+  return `Estado técnico normalizado (no mostrar claves internas al usuario): ${JSON.stringify(compactState(state))}\nResultado determinístico disponible: ${localAnswer}\nPlantilla FMH para silo cuando faltan medidas: diámetro 8 m, cuerpo 7 m, cono 2 m, altura libre 4 m y 6 apoyos. Son valores ilustrativos, no deducciones de la capacidad. Si ofrecés generar el plano sin datos completos, usá exactamente esos valores y declaralos como hipótesis.`;
 }
 
 function systemPrompt() {
-  return `Sos el Asistente de Ingeniería de FMH, experto en estructuras metálicas, silos y equipos agroindustriales. Respondé en español argentino, con claridad y criterio práctico.\n\nReglas obligatorias:\n- Respondé primero lo que la pregunta permite resolver; no bloquees una respuesta simple por datos de una etapa posterior.\n- Preguntá sólo los datos que desbloquean el siguiente paso y como máximo los indispensables.\n- Usá los cálculos determinísticos disponibles y explicá supuestos.\n- Para cargas, comparaciones y propiedades geométricas, ejecutá la herramienta determinística correspondiente antes de responder.\n- Diferenciá dato aportado por el usuario, hipótesis, cálculo, antecedente histórico y fuente verificada.\n- Nunca inventes perfiles, precios, reglamentos, propiedades o verificaciones.\n- No muestres JSON, enums, nombres de herramientas ni razonamiento interno.\n- No digas que una estructura verifica si sólo hay un cribado preliminar.\n- Si el usuario cambia de tema, atendé la nueva pregunta y no arrastres una intención anterior.\n- Formato preferido: respuesta directa; resultado; supuestos sólo si aportan; qué falta sólo si es necesario; siguiente paso.\n- Los antecedentes FMH sirven como referencia, no como aprobación automática de un diseño.`;
+  return `Sos el Asistente de Ingeniería de FMH, experto en estructuras metálicas, silos y equipos agroindustriales. Conversá en español argentino de forma natural, directa y simple, como un buen asistente técnico.\n\nReglas obligatorias:\n- Respondé primero lo que la pregunta permite resolver; no bloquees una respuesta simple por datos de una etapa posterior.\n- Preguntá sólo los datos que desbloquean el siguiente paso y como máximo los indispensables.\n- Usá los cálculos determinísticos disponibles y explicá supuestos.\n- Para cargas, comparaciones y propiedades geométricas, ejecutá la herramienta determinística correspondiente antes de responder.\n- Cuando pidan un plano, ofrecé un plano orientativo dentro de la plantilla FMH. Si faltan medidas, explicá en una frase cuáles serán ilustrativas y permití generarlo igualmente.\n- Para silos, si la búsqueda web está disponible y la biblioteca interna no alcanza, priorizá fuentes primarias: INTI-CIRSOC, ASABE y el portal oficial Eurocodes de la Comisión Europea.\n- Diferenciá dato aportado por el usuario, hipótesis, cálculo, antecedente histórico y fuente verificada.\n- Nunca inventes perfiles, precios, reglamentos, propiedades o verificaciones.\n- No muestres JSON, enums, nombres de herramientas, proveedor, modelo ni razonamiento interno.\n- No digas que una estructura verifica si sólo hay un cribado preliminar.\n- Si el usuario cambia de tema, atendé la nueva pregunta y no arrastres una intención anterior.\n- Evitá encabezados repetitivos y lenguaje burocrático. Preferí párrafos breves y listas sólo cuando aclaren números.\n- Los antecedentes FMH sirven como referencia, no como aprobación automática de un diseño.`;
 }
 
 function shouldSearch(state: EngineeringConversationState) {
-  return ['KNOWLEDGE_SEARCH', 'DRAWING_SEARCH', 'DRAWING_REVIEW', 'SECTION_SELECTION', 'PRELIMINARY_DESIGN', 'SECTION_COMPARISON'].includes(state.currentIntent || '');
+  return ['KNOWLEDGE_SEARCH', 'DRAWING_SEARCH', 'DRAWING_REVIEW', 'SECTION_SELECTION', 'PRELIMINARY_DESIGN', 'PRELIMINARY_DRAWING', 'SECTION_COMPARISON'].includes(state.currentIntent || '');
 }
+
+const authoritativeSiloReferences = [
+  {
+    id: 'official-cirsoc-regulations',
+    title: 'INTI-CIRSOC — Reglamentos argentinos vigentes',
+    type: 'INTERNATIONAL_REFERENCE',
+    relevance: 1,
+    url: 'https://www.inti.gob.ar/areas/serviciosindustriales/construcciones-e-infraestructura/cirsoc/reglamentos',
+    excerpt: 'Fuente oficial para CIRSOC 101-25, CIRSOC 102-25 y CIRSOC 301-2018.'
+  },
+  {
+    id: 'official-asabe-s433-1',
+    title: 'ANSI/ASAE S433.1 — Loads Exerted by Free-Flowing Grain on Bins',
+    type: 'INTERNATIONAL_REFERENCE',
+    relevance: 0.95,
+    url: 'https://elibrary.asabe.org/abstract.asp?aid=49976&redir=&redirType=&t=2',
+    excerpt: 'Métodos para estimar presiones de granos de flujo libre en silos con carga y descarga centradas.'
+  },
+  {
+    id: 'official-asabe-s652',
+    title: 'ANSI/ASABE S652 — Wind Loads on Circular Corrugated Metal Grain Bins',
+    type: 'INTERNATIONAL_REFERENCE',
+    relevance: 0.9,
+    url: 'https://elibrary.asabe.org/abstract.asp?aid=55795&redir=&redirType=&t=3',
+    excerpt: 'Referencia oficial para estimar acciones de viento sobre paredes y cubiertas de silos circulares corrugados.'
+  },
+  {
+    id: 'official-en-1991-4',
+    title: 'EN 1991-4 — Actions on structures: Silos and tanks',
+    type: 'INTERNATIONAL_REFERENCE',
+    relevance: 0.85,
+    url: 'https://eurocodes.jrc.ec.europa.eu/EN-Eurocodes/eurocode-1-actions-structures?page=536',
+    excerpt: 'Referencia europea oficial para acciones en silos y tanques.'
+  }
+] as const;
 
 export function requiredToolForEngineeringIntent(intent?: string) {
   if (intent === 'LOAD_PER_SUPPORT') return 'calculate_load_per_support';
@@ -61,11 +97,17 @@ async function loadContext(companyId: string, state: EngineeringConversationStat
     searchEngineeringGoldenLibrary({ companyId, q: query, take: 8 }).catch(() => ({ fmhPrecedents: [], regulations: [], benchmarks: [], sectionCandidates: [], internationalReferences: [], sources: [], projects: [] })),
     ['PRELIMINARY_DESIGN', 'SECTION_SELECTION'].includes(state.currentIntent || '') ? ensureRegulationCandidates(companyId).then((rows) => rows.filter((row) => row.status === 'CURRENT').map((row) => ({ code: row.code, title: row.title, status: row.status, sourceUrl: row.sourceUrl || undefined, sourceType: 'OFFICIAL' as const }))).catch(() => []) : Promise.resolve([])
   ]);
-  const fmhSources = golden.fmhPrecedents.map((item: any) => ({ id: item.id, title: item.title || item.projectName || item.fileName, type: `FMH_PRECEDENT_${item.trustLevel || 'HISTORICAL'}`, relevance: Number(item.confidence) || 0.5, excerpt: item.excerpt }));
+  const fmhSources = golden.fmhPrecedents.map((item: any) => ({ id: item.id, title: item.title || item.projectName || item.fileName, type: `FMH_PRECEDENT_${item.trustLevel || 'HISTORICAL'}`, relevance: Number(item.confidence) || 0.5, excerpt: item.excerpt, url: item.sourceUrl as string | undefined }));
   const benchmarkSources = golden.benchmarks.map((item: any) => ({ id: item.id, title: item.title, type: 'WORKED_EXAMPLE_BENCHMARK', relevance: item.verified ? 1 : 0.5, excerpt: item.problemStatement, url: item.source?.sourceUrl }));
-  const sectionSources = golden.sectionCandidates.map((item: any) => ({ id: item.id, title: item.designation, type: item.source === 'STRUCTURAL_CATALOG' ? 'VERIFIED_CATALOG_CANDIDATE' : String(item.source || 'SECTION_CANDIDATE'), relevance: item.verified ? 1 : 0.5, excerpt: item.sourceTitle }));
+  const sectionSources = golden.sectionCandidates.map((item: any) => ({ id: item.id, title: item.designation, type: item.source === 'STRUCTURAL_CATALOG' ? 'VERIFIED_CATALOG_CANDIDATE' : String(item.source || 'SECTION_CANDIDATE'), relevance: item.verified ? 1 : 0.5, excerpt: item.sourceTitle, url: undefined as string | undefined }));
   const internationalSources = golden.internationalReferences.map((item: any) => ({ id: item.id, title: item.title, type: 'INTERNATIONAL_REFERENCE', relevance: 0.35, excerpt: item.publisher, url: item.sourceUrl }));
-  return { sources: [...fmhSources, ...benchmarkSources, ...sectionSources, ...internationalSources], regulations, goldenLibrary: { fmhPrecedents: golden.fmhPrecedents, regulations: golden.regulations, benchmarks: golden.benchmarks, sectionCandidates: golden.sectionCandidates, internationalReferences: golden.internationalReferences } };
+  const officialSiloSources = state.projectType === 'SILO' ? authoritativeSiloReferences : [];
+  const engineeringFmhSources = fmhSources.filter((item) => !item.type.includes('IRRELEVANT_FOR_ENGINEERING'));
+  const relevantFmhSources = state.projectType === 'SILO'
+    ? engineeringFmhSources.filter((item) => /\b(silo|cereal|grano|grain|bin)\b/i.test(`${item.title} ${item.excerpt || ''}`))
+    : engineeringFmhSources;
+  const uniqueSources = [...relevantFmhSources, ...benchmarkSources, ...sectionSources, ...internationalSources, ...officialSiloSources].filter((item, index, rows) => rows.findIndex((candidate) => (candidate.url && item.url ? candidate.url === item.url : candidate.title === item.title)) === index);
+  return { sources: uniqueSources, regulations, goldenLibrary: { fmhPrecedents: golden.fmhPrecedents, regulations: golden.regulations, benchmarks: golden.benchmarks, sectionCandidates: golden.sectionCandidates, internationalReferences: golden.internationalReferences } };
 }
 
 function serializeError(error?: EngineeringModelExecution['error']) {
@@ -79,7 +121,40 @@ export async function runEngineeringOrchestrator(input: { companyId: string; mes
   const state = updateConversationState(previous, input.message);
   state.missingData = buildMissingData(state.currentIntent || classifyEngineeringIntent(input.message).intent, activeInputs(state));
   const context = await loadContext(input.companyId, state, input.message);
-  const localBase = buildDeterministicEngineeringResult({ state, message: input.message, knowledge: context, provider: 'local' });
+  const wantsMaterialEstimate = ['MATERIAL_TAKEOFF', 'PURCHASE_PLAN', 'PRELIMINARY_DESIGN', 'COST_ESTIMATE'].includes(state.currentIntent || '');
+  const estimate = wantsMaterialEstimate
+    ? await buildEngineeringMaterialEstimate(input.companyId, state, { allowAssumptions: true }).catch(() => null)
+    : null;
+  const deterministic = buildDeterministicEngineeringResult({ state, message: input.message, knowledge: context, provider: 'local' });
+  const estimateSummary = estimate?.materials.length
+    ? [
+        '',
+        'Escenario de cómputo orientativo:',
+        ...estimate.materials.map((item) => {
+          const quantity = item.quantity ? `${item.quantity} ${item.unit || 'un'}` : '';
+          const length = item.totalLengthM ? `${Number(item.totalLengthM).toFixed(1)} m totales` : '';
+          return `- ${item.description}: ${[quantity, length, item.specification].filter(Boolean).join(' · ')}`;
+        }),
+        'Las secciones, uniones y dimensiones asumidas deben confirmarse antes de cotizar o fabricar.'
+      ].join('\n')
+    : '';
+  const localBase = engineeringAssistantResultSchema.parse({
+    ...deterministic,
+    answer: deterministic.answer + estimateSummary,
+    materials: estimate?.materials ?? deterministic.materials,
+    purchase: estimate?.purchase ?? deterministic.purchase,
+    assumptions: [...new Set([...deterministic.assumptions, ...(estimate?.assumptions ?? [])])],
+    warnings: [
+      ...deterministic.warnings,
+      ...(estimate?.missingPrices.length
+        ? [`Faltan precios verificados para ${estimate.missingPrices.join(', ')}.`]
+        : [])
+    ],
+    estimatedCost: estimate?.costKnown
+      ? { currency: 'ARS', materials: estimate.costKnown, total: estimate.costKnown }
+      : deterministic.estimatedCost,
+    level: estimate ? 'ESTIMATION' : deterministic.level
+  });
   const modelConfig = engineeringModelConfig();
   const execution = await runEngineeringOpenAI({
     systemPrompt: systemPrompt(),
@@ -91,7 +166,11 @@ export async function runEngineeringOrchestrator(input: { companyId: string; mes
     executeTool: (name, args) => executeEngineeringTool(name, normalizeEngineeringToolArguments(name, args, state), input.companyId)
   });
   const fallbackUsed = !execution.success;
-  const result = engineeringAssistantResultSchema.parse({ ...localBase, answer: execution.outputText || localBase.answer, provider: execution.success ? 'openai' : 'local', requestedModel: execution.requestedModel, actualModel: execution.actualModel, model: execution.success ? (execution.actualModel || execution.requestedModel) : 'local', responseId: execution.responseId, fallbackUsed, latencyMs: execution.latencyMs, executionError: execution.error, toolCalls: execution.toolCalls.map((tool) => ({ name: tool.name, status: tool.status, summary: tool.status })), intent: state.currentIntent, intentConfidence: state.intentConfidence });
+  const generatedAnswer = enforcePreliminaryDrawingDisclosure(execution.outputText || localBase.answer, state);
+  const hasDeterministicSheetLayout = state.currentIntent === 'MATERIAL_TAKEOFF'
+    && localBase.calculations.some((item) => item.title === 'Acomodo preliminar de placas');
+  const answer = hasDeterministicSheetLayout ? localBase.answer : generatedAnswer;
+  const result = engineeringAssistantResultSchema.parse({ ...localBase, answer, provider: execution.success ? 'openai' : 'local', requestedModel: execution.requestedModel, actualModel: execution.actualModel, model: execution.success ? (execution.actualModel || execution.requestedModel) : 'local', responseId: execution.responseId, fallbackUsed, latencyMs: execution.latencyMs, executionError: execution.error, toolCalls: execution.toolCalls.map((tool) => ({ name: tool.name, status: tool.status, summary: tool.status })), intent: state.currentIntent, intentConfidence: state.intentConfidence });
   return { state, result, execution };
 }
 

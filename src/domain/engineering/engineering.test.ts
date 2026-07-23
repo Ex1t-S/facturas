@@ -95,8 +95,8 @@ describe('engineering deterministic calculations', () => {
   });
   it('generates a traceable FMH preliminary drawing without using image generation', () => {
     const svg = renderPreliminaryEngineeringSvg({ drawingType: 'SILO', diameter: 8, bodyHeight: 7, coneHeight: 2, freeHeight: 4, supportCount: 6, capacityT: 200, customerName: 'Cliente de prueba' });
-    expect(svg).toContain('PLANO PRELIMINAR PARA PRESUPUESTO');
+    expect(svg).toContain('PLANO ORIENTATIVO PARA ANÁLISIS Y PRESUPUESTO');
     expect(svg).toContain('NO APTO PARA FABRICACION');
-    expect(svg).toContain('6 apoyos');
+    expect(svg).toContain('6 APOYOS');
   });
 });

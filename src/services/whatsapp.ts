@@ -3,9 +3,48 @@ import { config } from '../config.js';
 
 const WHATSAPP_TIMEOUT_MS = 30_000;
 const TRANSCRIBE_TIMEOUT_MS = 45_000;
+const MAX_INBOUND_MEDIA_BYTES = 25 * 1024 * 1024;
+const ALLOWED_INBOUND_MEDIA_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'audio/aac',
+  'audio/amr',
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/ogg',
+  'audio/wav',
+  'audio/webm'
+]);
+const META_MEDIA_HOST_SUFFIXES = ['.facebook.com', '.fbcdn.net', '.fbsbx.com', '.whatsapp.net'];
 
 function timeoutSignal(ms: number) {
   return AbortSignal.timeout(ms);
+}
+
+export function isAllowedMetaMediaUrl(value: string) {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    return url.protocol === 'https:' && META_MEDIA_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix));
+  } catch {
+    return false;
+  }
+}
+
+export function validateInboundMediaMetadata(input: { url?: string; mimeType?: string; fileSize?: number }) {
+  if (!input.url || !isAllowedMetaMediaUrl(input.url)) {
+    throw new Error('WhatsApp media URL is not an allowed Meta host');
+  }
+  if (!input.mimeType || !ALLOWED_INBOUND_MEDIA_TYPES.has(input.mimeType.toLowerCase())) {
+    throw new Error('WhatsApp media type is not supported');
+  }
+  if (input.fileSize !== undefined && (!Number.isFinite(input.fileSize) || input.fileSize < 0 || input.fileSize > MAX_INBOUND_MEDIA_BYTES)) {
+    throw new Error('WhatsApp media exceeds the 25 MB limit');
+  }
 }
 
 export function verifyMetaSignature(rawBody: Buffer, signatureHeader?: string): boolean {
@@ -117,8 +156,13 @@ export async function getWhatsAppMedia(mediaId: string): Promise<{ buffer: Buffe
     throw new Error(`WhatsApp media metadata failed: ${metadataResponse.status} ${await metadataResponse.text()}`);
   }
 
-  const metadata = (await metadataResponse.json()) as { url: string; mime_type?: string; file_size?: number; sha256?: string };
-  const mediaResponse = await fetch(metadata.url, {
+  const metadata = (await metadataResponse.json()) as { url?: string; mime_type?: string; file_size?: number; sha256?: string };
+  validateInboundMediaMetadata({
+    url: metadata.url,
+    mimeType: metadata.mime_type,
+    fileSize: metadata.file_size
+  });
+  const mediaResponse = await fetch(metadata.url!, {
     signal: timeoutSignal(WHATSAPP_TIMEOUT_MS),
     headers: { Authorization: `Bearer ${config.WHATSAPP_ACCESS_TOKEN}` }
   });
@@ -129,6 +173,12 @@ export async function getWhatsAppMedia(mediaId: string): Promise<{ buffer: Buffe
 
   const arrayBuffer = await mediaResponse.arrayBuffer();
   const mimeType = metadata.mime_type ?? mediaResponse.headers.get('content-type') ?? 'application/octet-stream';
+  if (arrayBuffer.byteLength > MAX_INBOUND_MEDIA_BYTES) {
+    throw new Error('WhatsApp media exceeds the 25 MB limit');
+  }
+  if (!ALLOWED_INBOUND_MEDIA_TYPES.has(mimeType.toLowerCase())) {
+    throw new Error('WhatsApp media type is not supported');
+  }
   const extension = mimeType.includes('pdf') ? 'pdf' : mimeType.includes('image') ? 'jpg' : mimeType.includes('audio') ? 'ogg' : 'bin';
 
   return {

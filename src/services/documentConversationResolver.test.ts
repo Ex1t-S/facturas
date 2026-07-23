@@ -30,11 +30,18 @@ describe('DocumentConversationResolver', () => {
   it('distinguishes additions and corrections', () => {
     expect(resolve('También soldamos el soporte inferior.').action).toBe('APPEND_TO_DOCUMENT_DRAFT');
     expect(resolve('Perdón, fueron tres rodamientos.').action).toBe('UPDATE_DOCUMENT_DRAFT');
+    expect(resolve('Borrá los rodamientos.').action).toBe('UPDATE_DOCUMENT_DRAFT');
+    expect(resolve('Cambiá el precio del item 1 a 50000.').action).toBe('UPDATE_DOCUMENT_DRAFT');
   });
 
   it('accepts clear work evidence but asks about unclear audio', () => {
     expect(resolve('Cambiamos dos rodamientos de la noria.').action).toBe('APPEND_TO_DOCUMENT_DRAFT');
     expect(resolve('Eso de mañana quedó más o menos.').action).toBe('AMBIGUOUS');
+  });
+
+  it('understands natural-language refusal to save a finished draft', () => {
+    expect(resolve('Al final no lo quiero guardar.').action).toBe('CANCEL_DOCUMENT');
+    expect(resolve('Descartalo.').action).toBe('CANCEL_DOCUMENT');
   });
 
   it('starts an explicit new document instead of appending it', () => {

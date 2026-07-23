@@ -12,6 +12,15 @@ function numberOf(value: unknown, unit?: string) { const result = Number(value);
 function format(value: number, decimals = 1) { return new Intl.NumberFormat('es-AR', { maximumFractionDigits: decimals, minimumFractionDigits: decimals }).format(value); }
 function calculation(title: string, formula: string, inputs: Array<{ name: string; value: number; unit: string }>, result: number, unit: string, explanation: string) { return { title, formula, inputs, result, resultUnit: unit, explanation }; }
 
+export function enforcePreliminaryDrawingDisclosure(answer: string, state: EngineeringConversationState) {
+  const siloGeometryKeys = new Set(['diameter', 'bodyHeight', 'coneHeight', 'freeHeight', 'supportCount']);
+  const needsSiloDefaults = state.currentIntent === 'PRELIMINARY_DRAWING'
+    && state.projectType === 'SILO'
+    && state.missingData.some((item) => siloGeometryKeys.has(item.key));
+  if (!needsSiloDefaults || /valores ilustrativos/i.test(answer)) return answer;
+  return `${answer}\n\nPara generar la lámina ahora, la plantilla FMH usará como hipótesis valores ilustrativos: Ø 8 m, cuerpo de 7 m, cono de 2 m, altura libre de 4 m y 6 apoyos. No son dimensiones calculadas a partir de la capacidad y deben reemplazarse con datos confirmados.`;
+}
+
 function sectionDesignations(message: string) {
   return [...normalizeEngineeringText(message).matchAll(/(\d{2,4})\s*[x×*]\s*(\d{2,4})\s*[x×*]\s*(\d+(?:[.,]\d+)?)\s*(?:mm)?\b/gi)].map((match) => ({ width: Number(match[1]), height: Number(match[2]), thickness: parseEngineeringNumber(match[3]), designation: `${match[1]}x${match[2]}x${match[3]} mm` }));
 }
@@ -94,12 +103,55 @@ export function buildDeterministicEngineeringResult(input: { state: EngineeringC
     assumptions.push(...result.assumptions);
   } else if (intent === 'MATERIAL_TAKEOFF') {
     const sheet = valueOf(state, 'sheetDimensions');
-    if (Array.isArray(sheet) && sheet.length === 2) answer = `La chapa informada tiene ${format(Number(sheet[0]), 2)} × ${format(Number(sheet[1]), 2)} m. Para definir los cortes todavía necesito las medidas y cantidades de las piezas; con eso puedo devolver un plan de corte y sobrante.`;
+    const pieceWidthMm = Number(valueOf(state, 'sectionWidth') || 0);
+    const pieceHeightMm = Number(valueOf(state, 'sectionHeight') || 0);
+    if (Array.isArray(sheet) && sheet.length === 2 && pieceWidthMm > 0 && pieceHeightMm > 0 && supportCount > 0) {
+      const sheetWidthMm = Number(sheet[0]) * 1000;
+      const sheetHeightMm = Number(sheet[1]) * 1000;
+      const illustrativeKerfMm = 3;
+      const illustrativeMarginMm = 10;
+      const columns = Math.max(1, Math.floor((sheetWidthMm - illustrativeMarginMm * 2 + illustrativeKerfMm) / (pieceWidthMm + illustrativeKerfMm)));
+      const rowsNeeded = Math.ceil(supportCount / columns);
+      const occupiedHeightMm = rowsNeeded * pieceHeightMm + Math.max(0, rowsNeeded - 1) * illustrativeKerfMm;
+      const fits = occupiedHeightMm + illustrativeMarginMm * 2 <= sheetHeightMm;
+      const rowPlan = Array.from({ length: rowsNeeded }, (_, index) => Math.min(columns, supportCount - index * columns)).filter((count) => count > 0);
+      const thicknessMm = Number(valueOf(state, 'sectionThickness') || 0);
+      answer = `Interpreto las piezas como **placas cuadradas de ${format(pieceWidthMm, 0)} × ${format(pieceHeightMm, 0)} mm** cortadas de una chapa de ${format(Number(sheet[0]), 2)} × ${format(Number(sheet[1]), 2)} m.\n\nCon un esquema orientativo de ${illustrativeMarginMm} mm de margen y ${illustrativeKerfMm} mm de corte, entran **${columns} piezas por fila**. Para ${supportCount} piezas usaría ${rowsNeeded} filas (${rowPlan.join(' + ')}), ocupando aproximadamente ${format(occupiedHeightMm, 0)} mm del largo de la chapa. ${fits ? '**Una chapa alcanza.**' : '**Ese acomodo no entra en una sola chapa.**'}\n\nAntes de liberar el plano confirmame una sola cosa: ¿son placas de ${format(pieceWidthMm, 0)} × ${format(pieceHeightMm, 0)} mm${thicknessMm ? ` y ${format(thicknessMm, 2)} mm de espesor` : ''}, o “patas” de tubo estructural ${format(pieceWidthMm, 0)} × ${format(pieceHeightMm, 0)}${thicknessMm ? ` × ${format(thicknessMm, 2)} mm` : ''}? Si son tubos, no se obtienen de una chapa y necesito el largo de cada pata.`;
+      assumptions.push(`Esquema de corte ilustrativo con margen perimetral de ${illustrativeMarginMm} mm y ancho de corte de ${illustrativeKerfMm} mm.`);
+      warnings.push('Confirmar proceso de corte, tolerancia, sentido de laminación y dimensiones reales antes de fabricar.');
+      calculations.push(calculation('Acomodo preliminar de placas', 'columnas = piso((ancho chapa - márgenes + corte) / (ancho pieza + corte))', [{ name: 'ancho de chapa', value: sheetWidthMm, unit: 'mm' }, { name: 'ancho de pieza', value: pieceWidthMm, unit: 'mm' }, { name: 'cantidad', value: supportCount, unit: 'un' }], rowsNeeded, 'filas', 'Distribución ilustrativa; requiere confirmación del proceso de corte.'));
+      nextAction = { label: 'Confirmar tipo de pieza', type: 'REQUEST_INPUT' };
+    } else if (Array.isArray(sheet) && sheet.length === 2) answer = `La chapa informada tiene ${format(Number(sheet[0]), 2)} × ${format(Number(sheet[1]), 2)} m. Para definir los cortes todavía necesito las medidas y cantidades de las piezas; con eso puedo devolver un plan de corte y sobrante.`;
     else if (supportCount > 0 && Number(valueOf(state, 'freeHeight') || 0) > 0) {
       const totalLength = supportCount * Number(valueOf(state, 'freeHeight'));
       answer = `Para ${supportCount} patas de ${format(Number(valueOf(state, 'freeHeight')), 2)} m, la longitud neta es **${format(totalLength, 2)} m**. Falta confirmar la sección y los largos comerciales para calcular peso, cortes y barras de compra.`;
       calculations.push(calculation('Longitud neta de patas', 'L = n × largo', [{ name: 'cantidad', value: supportCount, unit: 'un' }, { name: 'largo', value: Number(valueOf(state, 'freeHeight')), unit: 'm' }], totalLength, 'm', 'No incluye desperdicio ni recortes de conexión.'));
     } else answer = 'Puedo preparar el cómputo. Para hacerlo necesito las dimensiones o cantidades de las piezas; si hablamos de patas, indicame cantidad, longitud y sección.';
+  } else if (intent === 'PRELIMINARY_DRAWING') {
+    const diameter = Number(valueOf(state, 'diameter') || 0);
+    const bodyHeight = Number(valueOf(state, 'bodyHeight') || 0);
+    const coneHeight = Number(valueOf(state, 'coneHeight') || 0);
+    const freeHeight = Number(valueOf(state, 'freeHeight') || 0);
+    const missingGeometry = [
+      !diameter && 'diámetro',
+      !bodyHeight && 'altura del cuerpo',
+      !coneHeight && 'altura del cono',
+      !freeHeight && 'altura libre',
+      !supportCount && 'cantidad de apoyos'
+    ].filter(Boolean);
+    const knownSummary = [
+      capacityT > 0 && `${format(capacityT, 0)} t`,
+      diameter > 0 && `Ø ${format(diameter, 2)} m`,
+      bodyHeight > 0 && `cuerpo ${format(bodyHeight, 2)} m`,
+      coneHeight > 0 && `cono ${format(coneHeight, 2)} m`,
+      freeHeight > 0 && `altura libre ${format(freeHeight, 2)} m`,
+      supportCount > 0 && `${supportCount} apoyos`
+    ].filter(Boolean).join(', ');
+    answer = missingGeometry.length
+      ? `Sí. Puedo preparar el plano orientativo del silo${knownSummary ? ` con ${knownSummary}` : ''}. Faltan ${missingGeometry.join(', ')}; para no frenarte, la plantilla usará como hipótesis valores ilustrativos: Ø 8 m, cuerpo de 7 m, cono de 2 m, altura libre de 4 m y 6 apoyos. Después reemplazamos sólo los valores que confirmes.`
+      : `Sí. Ya tengo los datos principales (${knownSummary}) y el plano orientativo está listo para generar dentro de la plantilla FMH.`;
+    warnings.push('El plano es orientativo para análisis y presupuesto. No es apto para fabricación ni reemplaza la memoria de cálculo.');
+    nextAction = { label: 'Generar plano orientativo', type: 'GENERATE_DRAWING' };
   } else if (intent === 'SECTION_SELECTION' || intent === 'PRELIMINARY_DESIGN') {
     answer = capacityT > 0 && supportCount > 0 ? `Con ${format(capacityT, 0)} t y ${supportCount} apoyos, la carga vertical nominal inicial es de aproximadamente ${format(totalLoad / supportCount, 1)} kN por apoyo. Para analizar una pata todavía necesito la altura libre, el arriostramiento y un catálogo de secciones con propiedades verificables.` : 'Puedo hacer un predimensionamiento preliminar de las patas. Necesito, como mínimo, la carga, la altura libre y cómo están arriostradas.';
     nextAction = { label: 'Completar datos de patas', type: 'REQUEST_INPUT' };
@@ -114,7 +166,7 @@ export function buildDeterministicEngineeringResult(input: { state: EngineeringC
   }
 
   if (!answer.trim()) answer = 'No pude construir una respuesta útil con los datos disponibles.';
-  const sources = (knowledge?.sources || []).map((source) => ({ id: source.id, title: source.title, type: source.type, relevance: source.relevance, excerpt: source.excerpt }));
+  const sources = (knowledge?.sources || []).map((source) => ({ id: source.id, title: source.title, type: source.type, relevance: source.relevance, url: source.url, excerpt: source.excerpt }));
   return engineeringAssistantResultSchema.parse({
     intent, subject: state.subject || message.slice(0, 120), answer, inputData: activeInputs(state).map((item) => ({ name: item.key, value: typeof item.value === 'number' ? item.value : String(item.value), unit: item.unit, source: item.source })), missingData: state.missingData.map((item) => ({ name: item.key, reason: item.reason, critical: item.criticality === 'CRITICAL' })), assumptions: [...state.assumptions.map((item) => item.description), ...assumptions], calculations, materials: [], purchase: [], sources, regulations: knowledge?.regulations || [], goldenLibrary: knowledge?.goldenLibrary, toolCalls, warnings, confidence: sources.length ? 0.75 : 0.7, reviewRequired: true, level: calculations.length ? 'ESTIMATION' : 'ORIENTATION', model: execution?.actualModel || execution?.requestedModel, capability: calculations.length ? 'SUPPORTED_DETERMINISTIC' : 'PRELIMINARY_ASSISTED', provider, requestedModel: execution?.requestedModel, actualModel: execution?.actualModel, responseId: execution?.responseId, fallbackUsed: execution?.fallbackUsed ?? provider === 'local', latencyMs: execution?.latencyMs, intentConfidence: state.intentConfidence, executionError: execution?.error, nextAction
   });

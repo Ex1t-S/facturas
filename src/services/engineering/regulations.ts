@@ -1,15 +1,15 @@
 import { prisma } from '../../db.js';
 
 const candidates = [
-  { code: 'CIRSOC 101', title: 'Reglamento argentino de cargas permanentes y sobrecargas', sourceDomain: 'inti.gob.ar', sourceUrl: 'https://www.inti.gob.ar/cirsoc', notes: 'Candidato para acciones gravitatorias; verificar edición y alcance.' },
-  { code: 'CIRSOC 102', title: 'Reglamento argentino de acción del viento', sourceDomain: 'inti.gob.ar', sourceUrl: 'https://www.inti.gob.ar/cirsoc', notes: 'Candidato para viento; no asumir vigencia sin comprobación oficial.' },
-  { code: 'CIRSOC 301', title: 'Reglamento argentino de estructuras de acero', sourceDomain: 'inti.gob.ar', sourceUrl: 'https://www.inti.gob.ar/cirsoc', notes: 'Candidato para elementos y estructuras de acero.' },
-  { code: 'CIRSOC 201', title: 'Reglamento argentino de estructuras de hormigón', sourceDomain: 'inti.gob.ar', sourceUrl: 'https://www.inti.gob.ar/cirsoc', notes: 'Candidato para bases y fundaciones de hormigón.' },
-  { code: 'INPRES-CIRSOC 103', title: 'Reglamento argentino para construcciones sismorresistentes', sourceDomain: 'inpres.gob.ar', sourceUrl: 'https://www.inpres.gob.ar/', notes: 'Aplicabilidad dependiente de la ubicación y uso.' }
+  { code: 'CIRSOC 101-25', revision: '2025', status: 'CURRENT', title: 'Reglamento argentino de cargas permanentes y sobrecargas mínimas de diseño', sourceDomain: 'inti.gob.ar', sourceUrl: 'https://www.inti.gob.ar/areas/serviciosindustriales/construcciones-e-infraestructura/cirsoc/reglamentos', notes: 'Fuente oficial INTI-CIRSOC; alcance y combinaciones a confirmar para cada proyecto.' },
+  { code: 'CIRSOC 102-25', revision: '2025', status: 'CURRENT', title: 'Reglamento argentino de acción del viento sobre las construcciones', sourceDomain: 'inti.gob.ar', sourceUrl: 'https://www.inti.gob.ar/areas/serviciosindustriales/construcciones-e-infraestructura/cirsoc/reglamentos', notes: 'Fuente oficial INTI-CIRSOC para acciones de viento.' },
+  { code: 'CIRSOC 301-2018', revision: '2018', status: 'CURRENT', title: 'Reglamento argentino de estructuras de acero para edificios', sourceDomain: 'inti.gob.ar', sourceUrl: 'https://www.inti.gob.ar/areas/serviciosindustriales/construcciones-e-infraestructura/cirsoc/reglamentos', notes: 'Fuente oficial INTI-CIRSOC para miembros y sistemas resistentes de acero; verificar alcance específico.' },
+  { code: 'CIRSOC 201-25', revision: '2025', status: 'CURRENT', title: 'Reglamento argentino de estructuras de hormigón', sourceDomain: 'inti.gob.ar', sourceUrl: 'https://www.inti.gob.ar/areas/serviciosindustriales/construcciones-e-infraestructura/cirsoc/reglamentos', notes: 'Fuente oficial INTI-CIRSOC para bases y fundaciones de hormigón, sujeto a estudio geotécnico.' },
+  { code: 'INPRES-CIRSOC 103', revision: '', status: 'UNKNOWN', title: 'Reglamento argentino para construcciones sismorresistentes', sourceDomain: 'inpres.gob.ar', sourceUrl: 'https://www.inpres.gob.ar/', notes: 'Aplicabilidad dependiente de la ubicación, categoría y características del proyecto.' }
 ];
 
 export async function ensureRegulationCandidates(companyId: string) {
-  for (const item of candidates) await prisma.engineeringRegulation.upsert({ where: { companyId_code_revision: { companyId, code: item.code, revision: '' } }, update: { title: item.title, sourceUrl: item.sourceUrl, sourceDomain: item.sourceDomain, notes: item.notes }, create: { companyId, ...item, revision: '', status: 'UNKNOWN' } });
+  for (const item of candidates) await prisma.engineeringRegulation.upsert({ where: { companyId_code_revision: { companyId, code: item.code, revision: item.revision } }, update: { title: item.title, sourceUrl: item.sourceUrl, sourceDomain: item.sourceDomain, notes: item.notes, status: item.status }, create: { companyId, ...item } });
   const officialSources = await prisma.engineeringSource.findMany({ where: { jurisdiction: 'AR', sourceType: 'REGULATION' } });
   for (const source of officialSources) {
     const code = source.title.match(/(?:CIRSOC|INPRES-CIRSOC)\s+[0-9]+(?:-[0-9]+)?/i)?.[0]?.toUpperCase() || source.id.toUpperCase();
