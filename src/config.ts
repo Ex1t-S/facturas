@@ -1,6 +1,15 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+const booleanFromEnv = z.preprocess((value) => {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return value;
+}, z.coerce.boolean());
+
 const configSchema = z.object({
   DATABASE_URL: z.string().default('file:./dev.db'),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -35,7 +44,7 @@ const configSchema = z.object({
   OPENAI_VECTOR_STORE_ID: z.string().default(''),
   BASIC_AUTH_USERNAME: z.string().default(''),
   BASIC_AUTH_PASSWORD: z.string().default(''),
-  BASIC_AUTH_REQUIRED: z.coerce.boolean().default(true),
+  BASIC_AUTH_REQUIRED: booleanFromEnv.default(true),
   WHATSAPP_ALLOWED_FROM: z.string().default(''),
   WHATSAPP_TEST_MODE: z.coerce.boolean().default(false),
   SUPPLIER_PUBLIC_SYNC_ENABLED: z.coerce.boolean().default(true),
