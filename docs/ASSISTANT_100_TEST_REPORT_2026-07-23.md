@@ -66,7 +66,7 @@ npm run build            PASS
 100/100 conversaciones directas PASS
 ```
 
-El renderer FMH de LibreOffice sigue mostrando un warning en algunos remitos y utiliza el fallback PDF genérico; el documento se genera correctamente y no bloquea la conversación.
+La primera batería mostró el fallback genérico porque LibreOffice no estaba instalado en Windows. Luego se instaló LibreOffice 26.2.4.2 y se verificó conversión real de presupuesto y remito con la plantilla verde (`rendererUsed: FMH_TEMPLATE`, PDF no nulo). El `Dockerfile` ya instala `libreoffice-writer` para el deploy Linux.
 
 ## Próximos pasos recomendados
 
