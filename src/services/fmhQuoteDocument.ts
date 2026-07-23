@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import AdmZip from 'adm-zip';
 import type { Quote, QuoteItem, Customer } from '../generated/postgres-client/index.js';
 import { config } from '../config.js';
-import { applyFmhA4Layout, buildBottomAnchoredFmhBody } from './fmhDocumentLayout.js';
+import { applyFmhA4Layout, applyFmhA4PageSize, buildBottomAnchoredFmhBody } from './fmhDocumentLayout.js';
 import { isModernFmhQuoteTemplate, replaceModernQuoteTemplate } from './fmhModernTemplate.js';
 
 const execFileAsync = promisify(execFile);
@@ -151,13 +151,14 @@ export async function renderFmhQuoteDocx(quote: QuoteWithDetails) {
   const entry = zip.getEntry('word/document.xml');
   if (!entry) throw new Error('Template is missing word/document.xml');
   let xml = entry.getData().toString('utf8');
-  if (isModernFmhQuoteTemplate(xml)) {
+  const modernTemplate = isModernFmhQuoteTemplate(xml);
+  if (modernTemplate) {
     xml = replaceModernQuoteTemplate(xml, quote);
   } else {
     xml = replaceTemplateText(xml, quote);
     xml = replaceQuoteBody(xml, quote);
   }
-  xml = applyFmhA4Layout(xml);
+  xml = modernTemplate ? applyFmhA4PageSize(xml) : applyFmhA4Layout(xml);
   zip.updateFile('word/document.xml', Buffer.from(xml, 'utf8'));
   return zip.toBuffer();
 }

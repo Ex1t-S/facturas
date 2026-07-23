@@ -3,7 +3,7 @@ import path from 'node:path';
 import AdmZip from 'adm-zip';
 import { config } from '../config.js';
 import { convertDocxToPdf } from './fmhQuoteDocument.js';
-import { applyFmhA4Layout, buildBottomAnchoredFmhBody } from './fmhDocumentLayout.js';
+import { applyFmhA4Layout, applyFmhA4PageSize, buildBottomAnchoredFmhBody } from './fmhDocumentLayout.js';
 import { isModernFmhDeliveryTemplate, replaceModernDeliveryTemplate } from './fmhModernTemplate.js';
 
 export type FmhDeliveryNoteDocumentInput = {
@@ -90,7 +90,8 @@ export async function renderFmhDeliveryNoteDocx(input: FmhDeliveryNoteDocumentIn
   const entry = zip.getEntry('word/document.xml');
   if (!entry) throw new Error('FMH remito template is missing word/document.xml');
   let xml = entry.getData().toString('utf8');
-  if (isModernFmhDeliveryTemplate(xml)) {
+  const modernTemplate = isModernFmhDeliveryTemplate(xml);
+  if (modernTemplate) {
     xml = replaceModernDeliveryTemplate(xml, input);
   } else {
     xml = replaceParagraphContaining(xml, 'Remito', paragraph(`REMITO N.º ${input.number ? String(input.number).padStart(5, '0') : 'BORRADOR'}`));
@@ -98,7 +99,7 @@ export async function renderFmhDeliveryNoteDocx(input: FmhDeliveryNoteDocumentIn
     xml = replaceParagraphContaining(xml, 'Fecha de emisión:', paragraph(`Fecha de emisión: ${formatDate(input.issueDate)}`));
     xml = replaceDetails(xml, input);
   }
-  xml = applyFmhA4Layout(xml);
+  xml = modernTemplate ? applyFmhA4PageSize(xml) : applyFmhA4Layout(xml);
   zip.updateFile('word/document.xml', Buffer.from(xml, 'utf8'));
   return zip.toBuffer();
 }

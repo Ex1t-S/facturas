@@ -4,9 +4,13 @@ const A4_HEIGHT_TWIPS = 16838;
 export const FMH_BODY_ROW_HEIGHT_TWIPS = 6000;
 export const FMH_DETAIL_AREA_HEIGHT_TWIPS = 2500;
 
+export function applyFmhA4PageSize(xml: string) {
+  return xml.replace(/<w:pgSz\b[^>]*\/>/, `<w:pgSz w:w="${A4_WIDTH_TWIPS}" w:h="${A4_HEIGHT_TWIPS}"/>`);
+}
+
 /** Enforces the same portrait A4 canvas and a useful full-page body area. */
 export function applyFmhA4Layout(xml: string, bodyRowHeight = FMH_BODY_ROW_HEIGHT_TWIPS) {
-  let output = xml.replace(/<w:pgSz\b[^>]*\/>/, `<w:pgSz w:w="${A4_WIDTH_TWIPS}" w:h="${A4_HEIGHT_TWIPS}"/>`);
+  let output = applyFmhA4PageSize(xml);
   const rowHeights = [...output.matchAll(/<w:trHeight\b[^>]*\/>/g)];
   const last = rowHeights.at(-1);
   if (last?.index !== undefined) {

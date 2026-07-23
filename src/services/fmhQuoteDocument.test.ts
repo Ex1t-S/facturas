@@ -22,7 +22,7 @@ describe('FMH quote DOCX template', () => {
     const text = documentXml.replace(/<[^>]+>/g, '');
 
     expect(documentXml).toContain('<w:pgSz w:w="11906" w:h="16838"/>');
-    expect(documentXml).toContain('<w:trHeight w:val="6000" w:hRule="atLeast"/>');
+    expect(documentXml).not.toContain('<w:trHeight w:val="6000" w:hRule="atLeast"/>');
     expect(documentXml.match(/<w:tbl\b/g)?.length).toBeGreaterThanOrEqual(8);
     expect(text).toContain('1');
     expect(text).toContain('Abulonar cangilones');

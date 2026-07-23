@@ -28,7 +28,7 @@ describe('FMH delivery note DOCX template', () => {
     expect(text).not.toContain('Matadero Municipal');
     expect(text).toContain('FABRICACIÓN Y MONTAJE INDUSTRIAL');
     expect(documentXml).toContain('<w:pgSz w:w="11906" w:h="16838"/>');
-    expect(documentXml).toContain('<w:trHeight w:val="6000" w:hRule="atLeast"/>');
+    expect(documentXml).not.toContain('<w:trHeight w:val="6000" w:hRule="atLeast"/>');
     expect(documentXml.match(/<w:tbl\b/g)?.length).toBeGreaterThanOrEqual(8);
     expect(text).not.toContain('1 trabajo - Acortar cinta de noria');
     expect(text).toContain('Recibí conforme · Cliente');
