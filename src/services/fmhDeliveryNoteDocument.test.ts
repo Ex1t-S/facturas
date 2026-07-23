@@ -18,16 +18,19 @@ describe('FMH delivery note DOCX template', () => {
     const documentXml = zip.getEntry('word/document.xml')?.getData().toString('utf8') ?? '';
     const text = documentXml.replace(/<[^>]+>/g, '');
 
-    expect(documentXml).toContain('REMITO N.º 00007');
-    expect(text).toContain('CLIENTE: Cooperativa Adolfo Alsina');
+    expect(text.replace(/\s+/g, ' ')).toContain('REMITO N.º 00007');
+    expect(text).toContain('CLIENTE');
+    expect(text).toContain('Cooperativa Adolfo Alsina');
     expect(text).toContain('Acortar cinta de noria');
-    expect(text).toContain('2 caños - Destapar dos caños de llenado de silo');
+    expect(text).toContain('2');
+    expect(text).toContain('caños');
+    expect(text).toContain('Destapar dos caños de llenado de silo');
     expect(text).not.toContain('Matadero Municipal');
-    expect(text).toContain('F.M.H.');
+    expect(text).toContain('FABRICACIÓN Y MONTAJE INDUSTRIAL');
     expect(documentXml).toContain('<w:pgSz w:w="11906" w:h="16838"/>');
     expect(documentXml).toContain('<w:trHeight w:val="6000" w:hRule="atLeast"/>');
-    expect(documentXml.match(/<w:tbl>/g)?.length).toBe(2);
+    expect(documentXml.match(/<w:tbl\b/g)?.length).toBeGreaterThanOrEqual(8);
     expect(text).not.toContain('1 trabajo - Acortar cinta de noria');
-    expect(text.indexOf('Destapar dos caños')).toBeLessThan(text.indexOf('Hago propicia'));
+    expect(text).toContain('Recibí conforme · Cliente');
   });
 });

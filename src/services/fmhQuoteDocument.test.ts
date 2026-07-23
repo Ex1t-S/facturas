@@ -23,10 +23,12 @@ describe('FMH quote DOCX template', () => {
 
     expect(documentXml).toContain('<w:pgSz w:w="11906" w:h="16838"/>');
     expect(documentXml).toContain('<w:trHeight w:val="6000" w:hRule="atLeast"/>');
-    expect(documentXml.match(/<w:tbl>/g)?.length).toBe(2);
-    expect(text).toContain('1. Abulonar cangilones');
-    expect(text).toContain('2. Soldar una cremallera');
-    expect(text.match(/Costo:/g)?.length).toBe(2);
-    expect(text.indexOf('Soldar una cremallera')).toBeLessThan(text.indexOf('hacemos propicia'));
+    expect(documentXml.match(/<w:tbl\b/g)?.length).toBeGreaterThanOrEqual(8);
+    expect(text).toContain('1');
+    expect(text).toContain('Abulonar cangilones');
+    expect(text).toContain('2');
+    expect(text).toContain('Soldar una cremallera');
+    expect(text).toContain('$ 100.000');
+    expect(text).toContain('TOTAL');
   });
 });

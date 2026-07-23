@@ -8,6 +8,7 @@ import AdmZip from 'adm-zip';
 import type { Quote, QuoteItem, Customer } from '../generated/postgres-client/index.js';
 import { config } from '../config.js';
 import { applyFmhA4Layout, buildBottomAnchoredFmhBody } from './fmhDocumentLayout.js';
+import { isModernFmhQuoteTemplate, replaceModernQuoteTemplate } from './fmhModernTemplate.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -150,8 +151,12 @@ export async function renderFmhQuoteDocx(quote: QuoteWithDetails) {
   const entry = zip.getEntry('word/document.xml');
   if (!entry) throw new Error('Template is missing word/document.xml');
   let xml = entry.getData().toString('utf8');
-  xml = replaceTemplateText(xml, quote);
-  xml = replaceQuoteBody(xml, quote);
+  if (isModernFmhQuoteTemplate(xml)) {
+    xml = replaceModernQuoteTemplate(xml, quote);
+  } else {
+    xml = replaceTemplateText(xml, quote);
+    xml = replaceQuoteBody(xml, quote);
+  }
   xml = applyFmhA4Layout(xml);
   zip.updateFile('word/document.xml', Buffer.from(xml, 'utf8'));
   return zip.toBuffer();
@@ -165,14 +170,17 @@ export async function writeFmhQuoteDocx(quote: QuoteWithDetails) {
 }
 
 async function findSoffice() {
+  const configured = config.LIBREOFFICE_PATH.trim();
   const candidates = [
+    ...(configured ? [configured] : []),
     'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
     'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
-    'soffice'
+    'soffice',
+    'libreoffice'
   ];
   for (const candidate of candidates) {
     try {
-      if (candidate !== 'soffice') {
+      if (candidate.includes('\\') || candidate.includes('/')) {
         await fs.access(candidate);
         return candidate;
       }
@@ -193,16 +201,20 @@ export async function convertDocxToPdf(docxPath: string) {
   // interactive LibreOffice profile and silently skipping the conversion.
   const profileDir = path.join(outDir, `.libreoffice-profile-${crypto.randomUUID()}`);
   await fs.mkdir(profileDir, { recursive: true });
-  await execFileAsync(soffice, [
-    `-env:UserInstallation=${pathToFileURL(profileDir).href}`,
-    '--headless', '--nologo', '--nofirststartwizard', '--convert-to', 'pdf', '--outdir', outDir, docxPath
-  ], { timeout: 30000 });
-  const pdfPath = docxPath.replace(/\.docx$/i, '.pdf');
   try {
-    await fs.access(pdfPath);
-    return pdfPath;
-  } catch {
-    return null;
+    await execFileAsync(soffice, [
+      `-env:UserInstallation=${pathToFileURL(profileDir).href}`,
+      '--headless', '--nologo', '--nofirststartwizard', '--convert-to', 'pdf', '--outdir', outDir, docxPath
+    ], { timeout: 30000 });
+    const pdfPath = docxPath.replace(/\.docx$/i, '.pdf');
+    try {
+      await fs.access(pdfPath);
+      return pdfPath;
+    } catch {
+      return null;
+    }
+  } finally {
+    await fs.rm(profileDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 

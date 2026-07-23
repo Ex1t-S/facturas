@@ -4,6 +4,7 @@ import AdmZip from 'adm-zip';
 import { config } from '../config.js';
 import { convertDocxToPdf } from './fmhQuoteDocument.js';
 import { applyFmhA4Layout, buildBottomAnchoredFmhBody } from './fmhDocumentLayout.js';
+import { isModernFmhDeliveryTemplate, replaceModernDeliveryTemplate } from './fmhModernTemplate.js';
 
 export type FmhDeliveryNoteDocumentInput = {
   number?: string;
@@ -89,10 +90,14 @@ export async function renderFmhDeliveryNoteDocx(input: FmhDeliveryNoteDocumentIn
   const entry = zip.getEntry('word/document.xml');
   if (!entry) throw new Error('FMH remito template is missing word/document.xml');
   let xml = entry.getData().toString('utf8');
-  xml = replaceParagraphContaining(xml, 'Remito', paragraph(`REMITO N.º ${input.number ? String(input.number).padStart(5, '0') : 'BORRADOR'}`));
-  xml = replaceParagraphContaining(xml, 'CLIENTE:', paragraph(`CLIENTE: ${input.customerName}`));
-  xml = replaceParagraphContaining(xml, 'Fecha de emisión:', paragraph(`Fecha de emisión: ${formatDate(input.issueDate)}`));
-  xml = replaceDetails(xml, input);
+  if (isModernFmhDeliveryTemplate(xml)) {
+    xml = replaceModernDeliveryTemplate(xml, input);
+  } else {
+    xml = replaceParagraphContaining(xml, 'Remito', paragraph(`REMITO N.º ${input.number ? String(input.number).padStart(5, '0') : 'BORRADOR'}`));
+    xml = replaceParagraphContaining(xml, 'CLIENTE:', paragraph(`CLIENTE: ${input.customerName}`));
+    xml = replaceParagraphContaining(xml, 'Fecha de emisión:', paragraph(`Fecha de emisión: ${formatDate(input.issueDate)}`));
+    xml = replaceDetails(xml, input);
+  }
   xml = applyFmhA4Layout(xml);
   zip.updateFile('word/document.xml', Buffer.from(xml, 'utf8'));
   return zip.toBuffer();

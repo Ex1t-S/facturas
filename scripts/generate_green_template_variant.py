@@ -13,8 +13,10 @@ from generate_fmh_template_proposals import set_cell_border, set_cell_margins
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "templates" / "propuestas-fmh-2026" / "01-industrial-clasica" / "01-presupuesto-industrial-clasica.docx"
+SOURCE_REMITO = ROOT / "templates" / "propuestas-fmh-2026" / "01-industrial-clasica" / "01-remito-industrial-clasica.docx"
 TARGET_DIR = ROOT / "templates" / "propuestas-fmh-2026" / "01-industrial-clasica-verde"
 TARGET = TARGET_DIR / "01-presupuesto-industrial-clasica-verde.docx"
+TARGET_REMITO = TARGET_DIR / "01-remito-industrial-clasica-verde.docx"
 LOGO = ROOT / "templates" / "propuestas-fmh-2026" / "assets" / "fmh-logo.jpeg"
 
 
@@ -102,6 +104,25 @@ def apply_green_variant() -> None:
     )
 
 
+def apply_green_delivery_variant() -> None:
+    if not SOURCE_REMITO.exists():
+        raise FileNotFoundError(f"No se encontró el remito base: {SOURCE_REMITO}")
+    TARGET_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(SOURCE_REMITO, TARGET_REMITO)
+    doc = Document(TARGET_REMITO)
+    replace_color_attributes(doc)
+    add_logo_to_brand_cell(doc)
+    top_right = doc.tables[0].cell(0, 1)
+    from generate_fmh_template_proposals import set_cell_shading
+
+    set_cell_shading(top_right, "176245")
+    doc.core_properties.title = "Remito FMH · Variante Verde"
+    doc.core_properties.subject = "Plantilla FMH verde y gris con logo"
+    doc.save(TARGET_REMITO)
+
+
 if __name__ == "__main__":
     apply_green_variant()
+    apply_green_delivery_variant()
     print(TARGET)
+    print(TARGET_REMITO)
