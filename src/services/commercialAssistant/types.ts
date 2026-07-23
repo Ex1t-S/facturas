@@ -104,6 +104,7 @@ export type CommercialAction =
   | { type: 'RENAME_DRAFT'; fileName: string }
   | { type: 'CONFIRM_DOCUMENT'; fileName?: string }
   | { type: 'CANCEL_DRAFT' }
+  | { type: 'GREETING' }
   | { type: 'BUSINESS_QUERY'; query: string }
   | { type: 'AMBIGUOUS'; reason: string }
   | { type: 'UNSUPPORTED'; reason: string }

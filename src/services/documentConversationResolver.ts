@@ -72,7 +72,10 @@ export function resolveDocumentConversationMessage(input: {
       reason: classified.rule
     };
   }
-  if (/\b(?:cancela|cancelalo|descartalo|olvidalo|borra ese borrador|empecemos de nuevo|no lo guardes|no quiero guardarlo|no lo quiero guardar|no hace falta guardarlo|dejalo asi)\b/i.test(message)) return { action: 'CANCEL_DOCUMENT', confidence: 'HIGH', reason: 'explicit_cancel' };
+  if (/^(?:cancelar(?:\s+el)?\s+borrador|no[,.]?\s+deja(?:lo)?)$/i.test(message)) {
+    return { action: 'CANCEL_DOCUMENT', confidence: 'HIGH', reason: 'explicit_cancel' };
+  }
+  if (/\b(?:cancela|cancelalo|descartalo|olvidalo|borra ese borrador|reiniciar|reinicia|reset|salir|salir del borrador|volver a empezar|arranquemos de nuevo|arranquemos de (?:0|cero)|empezar de nuevo|empezar de (?:0|cero)|empecemos de nuevo|empezamos de nuevo|empecemos de (?:0|cero)|empezamos de (?:0|cero)|borron y cuenta nueva|no lo guardes|no quiero guardarlo|no lo quiero guardar|no hace falta guardarlo|dejalo asi)\b/i.test(message)) return { action: 'CANCEL_DOCUMENT', confidence: 'HIGH', reason: 'explicit_cancel' };
   if (/\b(que tenes anotado|como va el remito|mostrame lo que anotaste)\b/i.test(message)) return { action: 'ASK_DRAFT_STATUS', confidence: 'HIGH', reason: 'explicit_status_request' };
   if (/^(?:(?:guardar|guardalo|confirmar|confirmalo)(?:\s+como\s+.+)?|dale|ok|confirmado|esta bien|asi esta bien)[.!\s]*$/i.test(message)) {
     return { action: 'CONFIRM_DOCUMENT', confidence: 'HIGH', reason: 'explicit_confirmation' };

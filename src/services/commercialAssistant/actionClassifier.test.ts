@@ -31,6 +31,8 @@ describe('commercial action classifier priority', () => {
     ['al item uno ponle 20000$', 'SET_ITEM_PRICE'],
     ['precio del item 2 a 20000', 'SET_ITEM_PRICE'],
     ['pone 20 mil al segundo', 'SET_ITEM_PRICE'],
+    ['pone USD 20000 al primero', 'SET_ITEM_PRICE'],
+    ['pone 20.000 pesos al primer item', 'SET_ITEM_PRICE'],
     ['resumen', 'SHOW_SUMMARY'],
     ['resumen PDF', 'GENERATE_PREVIEW'],
     ['pasame el PDF', 'GENERATE_PREVIEW'],
@@ -40,9 +42,26 @@ describe('commercial action classifier priority', () => {
     expect(classifyCommercialAction(message, activeDraft).type).toBe(expected);
   });
 
+  it.each(['reiniciar', 'salir', 'empecemos de 0', 'empezamos de cero', 'cancelar borrador', 'no, dejá'])('%s cancels instead of becoming an item', (message) => {
+    expect(classifyCommercialAction(message, activeDraft).type).toBe('CANCEL_DRAFT');
+  });
+
+  it.each(['hola', 'buenas', 'buenas tardes', 'gracias', 'okey', 'como estas'])('%s is social text, not commercial content', (message) => {
+    expect(classifyCommercialAction(message, activeDraft).type).toBe('GREETING');
+  });
+
+  it('does not append an arbitrary message without commercial evidence', () => {
+    expect(classifyCommercialAction('que lindo dia', activeDraft).type).toBe('AMBIGUOUS');
+    expect(classifyCommercialAction('Techado de galpon con 14 metros', activeDraft).type).toBe('APPEND_ITEM');
+  });
+
   it.each(['guardalo', 'guardalo como remito-mario-2307'])('%s confirms a current preview', (message) => {
     expect(classifyCommercialAction(message, { ...activeDraft, status: 'WAITING_CONFIRMATION' }).type).toBe(
       'CONFIRM_DOCUMENT'
     );
+  });
+
+  it('keeps confirmation ahead of the social-message guard', () => {
+    expect(classifyCommercialAction('ok', { ...activeDraft, status: 'WAITING_CONFIRMATION' }).type).toBe('CONFIRM_DOCUMENT');
   });
 });

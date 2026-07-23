@@ -134,6 +134,8 @@ export function extractCommercialAction(
       return { type: 'START_DRAFT', documentType: /\bremito\b/.test(folded) ? 'DELIVERY_NOTE' : 'QUOTE' };
     case 'CANCEL_DRAFT':
       return { type: 'CANCEL_DRAFT' };
+    case 'GREETING':
+      return { type: 'GREETING' };
     case 'CONFIRM_DOCUMENT':
       return { type: 'CONFIRM_DOCUMENT', fileName: extractFileName(message) };
     case 'RENAME_DRAFT':

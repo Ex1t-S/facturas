@@ -119,17 +119,31 @@ function resultFromTransition(
   };
 }
 
-export async function processCommercialMessage(input: {
+export type CommercialMessageInput = {
   companyId: string;
   conversationId: string;
   message: string;
   messageId?: string;
   draft?: CommercialDraft | null;
   adapters: CommercialOrchestratorAdapters;
-}): Promise<CommercialProcessResult> {
+};
+
+export async function processCommercialMessage(input: CommercialMessageInput): Promise<CommercialProcessResult> {
   let draft = input.draft ?? null;
   const classification = classifyCommercialAction(input.message, draft);
   let action = extractCommercialAction(classification, input.message, draft);
+
+  if (action.type === 'GREETING') {
+    return {
+      handled: true,
+      classification,
+      action,
+      draft,
+      answer: draft
+        ? 'Hola. El borrador sigue intacto. Podés continuar, pedir un resumen o decir "reiniciar" para empezar de cero.'
+        : 'Hola. Puedo ayudarte a preparar un remito, un presupuesto o consultar documentos.'
+    };
+  }
 
   if (!draft && classification.type === 'AMBIGUOUS') {
     return {

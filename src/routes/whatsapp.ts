@@ -343,7 +343,8 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       messageId: input.inbound.id,
       message: input.inbound.body ?? '',
       history,
-      pendingDeliveryDraft: previousPending
+      pendingDeliveryDraft: previousPending,
+      channel: 'whatsapp'
     });
     app.log.info({ conversationId: input.conversation.id, action: assistantResponse.action?.type }, 'whatsapp assistant response generated');
     await persistCommercialDraftSnapshot({

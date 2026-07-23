@@ -41,14 +41,16 @@ describe('commercial parameter extraction', () => {
   });
 
   it.each([
-    ['al item uno ponle 20000$', 20_000, 1],
-    ['cambia el precio del item 1 a 50000', 50_000, 1],
-    ['precio del item 2 a 20000', 20_000, 2],
-    ['pone 20 mil al segundo', 20_000, 2]
-  ])('extracts price from %s', (message, amount, index) => {
+    ['al item uno ponle 20000$', 20_000, { kind: 'INDEX', index: 1 }],
+    ['cambia el precio del item 1 a 50000', 50_000, { kind: 'INDEX', index: 1 }],
+    ['precio del item 2 a 20000', 20_000, { kind: 'INDEX', index: 2 }],
+    ['pone 20 mil al segundo', 20_000, { kind: 'INDEX', index: 2 }],
+    ['pone USD 20000 al primero', 20_000, { kind: 'FIRST' }],
+    ['pone 20.000 pesos al primer item', 20_000, { kind: 'FIRST' }]
+  ])('extracts price from %s', (message, amount, reference) => {
     expect(action(message)).toMatchObject({
       type: 'SET_ITEM_PRICE',
-      reference: { kind: 'INDEX', index },
+      reference,
       unitPrice: amount
     });
   });

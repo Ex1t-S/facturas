@@ -42,6 +42,8 @@ describe('DocumentConversationResolver', () => {
   it('understands natural-language refusal to save a finished draft', () => {
     expect(resolve('Al final no lo quiero guardar.').action).toBe('CANCEL_DOCUMENT');
     expect(resolve('Descartalo.').action).toBe('CANCEL_DOCUMENT');
+    expect(resolve('cancelar borrador').action).toBe('CANCEL_DOCUMENT');
+    expect(resolve('no, dejá').action).toBe('CANCEL_DOCUMENT');
   });
 
   it('starts an explicit new document instead of appending it', () => {

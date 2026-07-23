@@ -34,12 +34,21 @@ import {
   normalizeCommercialText,
   type CommercialDraftItem
 } from './commercialConversation.js';
-import { processCommercialMessage } from './commercialAssistant/orchestrator.js';
+import { processCommercialMessageWithGraph } from './commercialAssistant/graph.js';
 import type {
   CommercialConversationState,
   CommercialDraft,
   CommercialCustomer
 } from './commercialAssistant/types.js';
+import {
+  isWhatsAppMenuRequest,
+  menuState,
+  parseWhatsAppCustomerInput,
+  parseWhatsAppDocumentQuery,
+  whatsappMainMenu,
+  whatsappMenuSelection,
+  type WhatsAppMenuState
+} from './whatsappMenu.js';
 
 const OPENAI_TIMEOUT_MS = 35_000;
 
@@ -59,6 +68,7 @@ export type AssistantInput = {
   message: string;
   history?: AssistantMessage[];
   pendingDeliveryDraft?: PendingDeliveryDraft;
+  channel?: 'web' | 'whatsapp';
 };
 
 export type AssistantResponse = {
@@ -121,6 +131,8 @@ export type PendingDeliveryDraft = {
    * readable by previous deployments.
    */
   commercialDraft?: CommercialDraft;
+  /** Persisted WhatsApp navigation state when no commercial draft is open. */
+  menuState?: WhatsAppMenuState;
 };
 
 function withConversationResolution(pending: PendingDeliveryDraft, resolution: DocumentConversationResolution): PendingDeliveryDraft {
@@ -1265,7 +1277,7 @@ async function runCommercialAssistant(
   companyId: string,
   suggestions: string[]
 ): Promise<AssistantResponse | null> {
-  const customers = await prisma.customer.findMany({
+  let customers = await prisma.customer.findMany({
     where: { companyId },
     select: { id: true, legalName: true, tradeName: true, cuit: true, address: true }
   });
@@ -1280,7 +1292,7 @@ async function runCommercialAssistant(
   let finalizedResponse:
     | (AssistantResponse['action'] & { answer: string; sources: KnowledgeSource[] })
     | undefined;
-  const result = await processCommercialMessage({
+  const result = await processCommercialMessageWithGraph({
     companyId,
     conversationId,
     messageId: input.messageId,
@@ -1380,6 +1392,149 @@ async function runCommercialAssistant(
   };
 }
 
+function menuOnlyPending(state: WhatsAppMenuState): PendingDeliveryDraft {
+  return { menuState: state } as PendingDeliveryDraft;
+}
+
+function pendingMenuState(pending?: PendingDeliveryDraft) {
+  return pending && !pending.commercialDraft && !pending.type ? pending.menuState : undefined;
+}
+
+function formatWhatsAppDate(value: Date) {
+  return value.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+}
+
+function parseQueryDate(value?: string) {
+  if (!value) return undefined;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const start = new Date(year, month - 1, day);
+  if (start.getFullYear() !== year || start.getMonth() !== month - 1 || start.getDate() !== day) return undefined;
+  const end = new Date(year, month - 1, day + 1);
+  return { start, end };
+}
+
+async function answerWhatsAppDocumentQuery(companyId: string, state: WhatsAppMenuState, message: string) {
+  const parsed = parseWhatsAppDocumentQuery(message);
+  const customerQuery = parsed.customerQuery || state.customerQuery;
+  const date = parsed.date || state.date;
+  if (!customerQuery) {
+    return { answer: 'Para consultar, escribi el nombre del cliente. Tambien necesito la fecha (DD/MM/AAAA).', state: menuState('DOCUMENT_QUERY') };
+  }
+  if (!date) {
+    return { answer: `Cliente: ${customerQuery}. Ahora escribi la fecha en formato DD/MM/AAAA.`, state: menuState('DOCUMENT_QUERY', { customerQuery }) };
+  }
+  const range = parseQueryDate(date);
+  if (!range) return { answer: 'No pude interpretar la fecha. Usá el formato DD/MM/AAAA, por ejemplo 23/07/2026.', state: menuState('DOCUMENT_QUERY', { customerQuery }) };
+
+  let customers = await prisma.customer.findMany({
+    where: {
+      companyId,
+      OR: [
+        { legalName: { contains: customerQuery } },
+        { tradeName: { contains: customerQuery } }
+      ]
+    },
+    select: { id: true, legalName: true, tradeName: true },
+    take: 10,
+    orderBy: { legalName: 'asc' }
+  });
+  if (!customers.length) {
+    const normalizedQuery = normalizeText(customerQuery).trim();
+    const fallback = await prisma.customer.findMany({
+      where: { companyId },
+      select: { id: true, legalName: true, tradeName: true },
+      take: 1000,
+      orderBy: { legalName: 'asc' }
+    });
+    customers = fallback.filter((customer) =>
+      normalizeText(customer.legalName).includes(normalizedQuery)
+      || Boolean(customer.tradeName && normalizeText(customer.tradeName).includes(normalizedQuery))
+    ).slice(0, 10);
+  }
+  if (!customers.length) {
+    return { answer: `No encontre un cliente que coincida con "${customerQuery}". Revisá el nombre e intentá de nuevo.`, state: menuState('DOCUMENT_QUERY') };
+  }
+  const customerIds = customers.map((customer) => customer.id);
+  const [quotes, deliveryNotes] = await Promise.all([
+    prisma.quote.findMany({
+      where: { companyId, customerId: { in: customerIds }, issueDate: { gte: range.start, lt: range.end } },
+      select: { number: true, status: true, currency: true, total: true, issueDate: true, customer: { select: { legalName: true } } },
+      orderBy: { issueDate: 'desc' }
+    }),
+    prisma.deliveryNote.findMany({
+      where: { companyId, customerId: { in: customerIds }, issueDate: { gte: range.start, lt: range.end } },
+      select: { number: true, status: true, issueDate: true, projectName: true, customer: { select: { legalName: true } }, items: { select: { description: true }, take: 5 } },
+      orderBy: { issueDate: 'desc' }
+    })
+  ]);
+  const lines = [`Consulta para ${customers[0]!.legalName} · ${formatWhatsAppDate(range.start)}`];
+  if (quotes.length) {
+    lines.push('', 'Presupuestos:');
+    for (const quote of quotes) lines.push(`- #${quote.number} · ${quote.status} · ${quote.currency} ${Number(quote.total).toLocaleString('es-AR')}`);
+  }
+  if (deliveryNotes.length) {
+    lines.push('', 'Remitos:');
+    for (const note of deliveryNotes) lines.push(`- #${note.number} · ${note.status}${note.projectName ? ` · ${note.projectName}` : ''}${note.items.length ? ` · ${note.items.map((item) => item.description).join('; ')}` : ''}`);
+  }
+  if (!quotes.length && !deliveryNotes.length) lines.push('', 'No hay remitos ni presupuestos para ese cliente en esa fecha.');
+  return { answer: lines.join('\n'), state: undefined };
+}
+
+async function answerWhatsAppMenuFlow(input: AssistantInput, companyId: string, suggestions: string[]) {
+  const currentState = pendingMenuState(input.pendingDeliveryDraft);
+  const route = whatsappMenuSelection(input.message, currentState, input.history);
+  if (isWhatsAppMenuRequest(input.message) || route === 'menu') {
+    const pending = input.pendingDeliveryDraft?.commercialDraft ? input.pendingDeliveryDraft : menuOnlyPending(menuState('ROOT'));
+    return { mode: 'local' as const, answer: whatsappMainMenu, sources: [] as KnowledgeSource[], suggestions, pendingDeliveryDraft: pending };
+  }
+  if (route === 'delivery_note' || route === 'quote') {
+    if (input.pendingDeliveryDraft?.commercialDraft) {
+      return { mode: 'local' as const, answer: 'Ya tenés un borrador abierto. Guardalo o cancelalo antes de iniciar otro documento.', sources: [] as KnowledgeSource[], suggestions, pendingDeliveryDraft: input.pendingDeliveryDraft };
+    }
+    const started = await answerAssistant({
+      ...input,
+      channel: 'whatsapp',
+      message: route === 'quote' ? 'Quiero armar un presupuesto' : 'Quiero armar un remito',
+      pendingDeliveryDraft: undefined
+    });
+    const instruction = route === 'quote'
+      ? 'Podés escribir el cliente y los trabajos/productos del presupuesto.'
+      : 'Podés enviarme un audio con el remito o escribir los trabajos realizados.';
+    return { ...started, answer: `${started.answer}\n\n${instruction}` };
+  }
+  if (route === 'customers') {
+    return { mode: 'local' as const, answer: 'Agregar cliente. Escribí el nombre y, si querés, CUIT, teléfono, email y domicilio. Ejemplo: Mario Alvarez, CUIT 20-12345678-9, teléfono 2923 555555.', sources: [], suggestions, pendingDeliveryDraft: menuOnlyPending(menuState('CUSTOMER_ADD')) };
+  }
+  if (route === 'document_query') {
+    return { mode: 'local' as const, answer: 'Consulta de documentos. Escribí nombre del cliente y fecha (DD/MM/AAAA). Ejemplo: Mario Alvarez 23/07/2026.', sources: [], suggestions, pendingDeliveryDraft: menuOnlyPending(menuState('DOCUMENT_QUERY')) };
+  }
+  if (currentState?.mode === 'CUSTOMER_ADD') {
+    const customer = parseWhatsAppCustomerInput(input.message);
+    if (!customer) return { mode: 'local' as const, answer: 'Necesito al menos el nombre del cliente.', sources: [], suggestions, pendingDeliveryDraft: menuOnlyPending(currentState) };
+    const created = await prisma.customer.create({
+      data: {
+        companyId,
+        legalName: customer.legalName,
+        cuit: customer.cuit && customer.cuit.length === 11 ? customer.cuit : undefined,
+        phone: customer.phone,
+        email: customer.email,
+        address: customer.address
+      },
+      select: { id: true, legalName: true, cuit: true }
+    });
+    return { mode: 'local' as const, answer: `Cliente agregado: ${created.legalName}${created.cuit ? ` · CUIT ${created.cuit}` : ''}.`, sources: [], suggestions };
+  }
+  if (currentState?.mode === 'DOCUMENT_QUERY') {
+    const result = await answerWhatsAppDocumentQuery(companyId, currentState, input.message);
+    return { mode: 'local' as const, answer: result.answer, sources: [], suggestions, pendingDeliveryDraft: result.state ? menuOnlyPending(result.state) : undefined };
+  }
+  return null;
+}
+
 export async function answerAssistant(input: AssistantInput): Promise<AssistantResponse> {
   const company = await resolveCompany(input.companyId);
   const companyId = company?.id;
@@ -1391,6 +1546,11 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
 
   if (!companyId) {
     return { mode: 'local', answer: 'No hay empresa activa cargada para consultar o guardar datos.', sources: [], suggestions };
+  }
+
+  if (input.channel === 'whatsapp') {
+    const whatsappResponse = await answerWhatsAppMenuFlow(input, companyId, suggestions);
+    if (whatsappResponse) return whatsappResponse;
   }
 
   if (isCommercialMenuRequest(input.message) || selectedMenuOption === 'menu') {
@@ -1427,6 +1587,14 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     return {
       mode: 'local',
       answer: `Cancelé el borrador de ${draftKindLabel(input.pendingDeliveryDraft.type)}.`,
+      sources: [],
+      suggestions
+    };
+  }
+  if (!input.pendingDeliveryDraft && conversationResolution.action === 'CANCEL_DOCUMENT') {
+    return {
+      mode: 'local',
+      answer: 'No hay un borrador activo. Si querés, elegí Remito o Presupuesto para empezar uno nuevo.',
       sources: [],
       suggestions
     };
