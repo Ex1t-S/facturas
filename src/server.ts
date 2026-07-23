@@ -39,7 +39,8 @@ export async function buildServer() {
   validateBasicAuthConfiguration({
     username: config.BASIC_AUTH_USERNAME,
     password: config.BASIC_AUTH_PASSWORD,
-    production
+    production,
+    required: config.BASIC_AUTH_REQUIRED
   });
   validateWhatsAppSecurityConfiguration({
     accessToken: config.WHATSAPP_ACCESS_TOKEN,
@@ -99,7 +100,8 @@ export async function buildServer() {
   app.addHook('onRequest', createBasicAuthHook({
     username: config.BASIC_AUTH_USERNAME,
     password: config.BASIC_AUTH_PASSWORD,
-    production
+    production,
+    required: config.BASIC_AUTH_REQUIRED
   }));
   app.addHook('onSend', async (request, reply, payload) => {
     reply.header('X-Request-Id', request.id);

@@ -5,6 +5,7 @@ export type BasicAuthConfiguration = {
   username: string;
   password: string;
   production: boolean;
+  required?: boolean;
 };
 
 export type WhatsAppSecurityConfiguration = {
@@ -27,10 +28,11 @@ function safeEqual(left: string, right: string) {
 export function validateBasicAuthConfiguration(input: BasicAuthConfiguration) {
   const hasUsername = Boolean(input.username.trim());
   const hasPassword = Boolean(input.password);
+  const required = input.required ?? true;
   if (hasUsername !== hasPassword) {
     throw new Error('BASIC_AUTH_USERNAME y BASIC_AUTH_PASSWORD deben configurarse juntos.');
   }
-  if (input.production && (!hasUsername || !hasPassword)) {
+  if (input.production && required && (!hasUsername || !hasPassword)) {
     throw new Error('La autenticación básica es obligatoria en producción.');
   }
   if (hasPassword && input.password.length < 12) {

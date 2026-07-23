@@ -19,6 +19,7 @@ describe('HTTP security helpers', () => {
 
   it('requires complete strong credentials in production', () => {
     expect(() => validateBasicAuthConfiguration({ username: '', password: '', production: true })).toThrow(/obligatoria/);
+    expect(validateBasicAuthConfiguration({ username: '', password: '', production: true, required: false }).enabled).toBe(false);
     expect(() => validateBasicAuthConfiguration({ username: 'fmh', password: '', production: false })).toThrow(/juntos/);
     expect(() => validateBasicAuthConfiguration({ username: 'fmh', password: 'corta', production: false })).toThrow(/12/);
     expect(validateBasicAuthConfiguration({ username: '', password: '', production: false }).enabled).toBe(false);

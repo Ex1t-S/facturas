@@ -35,6 +35,7 @@ const configSchema = z.object({
   OPENAI_VECTOR_STORE_ID: z.string().default(''),
   BASIC_AUTH_USERNAME: z.string().default(''),
   BASIC_AUTH_PASSWORD: z.string().default(''),
+  BASIC_AUTH_REQUIRED: z.coerce.boolean().default(true),
   WHATSAPP_ALLOWED_FROM: z.string().default(''),
   WHATSAPP_TEST_MODE: z.coerce.boolean().default(false),
   SUPPLIER_PUBLIC_SYNC_ENABLED: z.coerce.boolean().default(true),
