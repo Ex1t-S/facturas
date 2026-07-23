@@ -121,7 +121,7 @@ export function parseCommercialDraftMutation(message: string): CommercialDraftMu
     if (parsed !== undefined) return { kind: 'quantity', target: cleanTarget(quantity[1]), quantity: parsed };
   }
 
-  const price = normalized.match(/\b(?:cambia|corrige|pone|pon)\s+(?:el\s+)?precio\s+(?:(?:de|del|de la)\s+)?(.+?)\s+(?:a|por|en)\s+\$?\s*([\d.,]+\s*(?:mil|k)?)/);
+  const price = normalized.match(/\b(?:(?:cambia|corrige|pone|pon)\s+(?:el\s+)?precio|precio)\s+(?:(?:de|del|de la)\s+)?(.+?)\s+(?:a|por|en)\s+\$?\s*([\d.,]+\s*(?:mil|k)?)/);
   if (price?.[1] && price[2]) {
     const parsed = parseSpokenNumber(price[2]);
     if (parsed !== undefined) return { kind: 'price', target: cleanTarget(price[1]), unitPrice: parsed };
@@ -133,6 +133,17 @@ export function parseCommercialDraftMutation(message: string): CommercialDraftMu
 }
 
 function matchingIndexes(items: CommercialDraftItem[], target: string) {
+  if (/^(?:el\s+)?(?:ultimo|ultima)(?:\s+(?:punto|item|renglon|linea))?$/.test(target) || target === 'anterior') {
+    return items.length ? [items.length - 1] : [];
+  }
+  if (/^(?:el\s+)?(?:primero|primer)(?:\s+(?:punto|item|renglon|linea))?$/.test(target)) {
+    return items.length ? [0] : [];
+  }
+  const wordIndex = target.match(/^(?:item\s+)?(un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)$/);
+  if (wordIndex?.[1]) {
+    const index = numberWords[wordIndex[1]]! - 1;
+    return index >= 0 && index < items.length ? [index] : [];
+  }
   const indexMatch = target.match(/^(?:item\s*)?(\d+)$/);
   if (indexMatch) {
     const index = Number(indexMatch[1]) - 1;
@@ -168,7 +179,14 @@ export function applyCommercialDraftMutation(message: string, currentItems: Comm
 
   const items = currentItems.map((item, itemIndex) => {
     if (itemIndex !== index) return item;
-    if (mutation.kind === 'replace') return { ...item, description: mutation.replacement };
+    if (mutation.kind === 'replace') {
+      const current = normalizeCommercialText(item.description);
+      if (current !== mutation.target && current.includes(mutation.target)) {
+        const replaced = replaceNormalizedFragment(item.description, mutation.target, mutation.replacement);
+        if (replaced.status === 'replaced') return { ...item, description: replaced.value };
+      }
+      return { ...item, description: mutation.replacement };
+    }
     if (mutation.kind === 'quantity') return { ...item, quantity: mutation.quantity };
     return { ...item, unitPrice: mutation.unitPrice };
   });
@@ -180,3 +198,4 @@ export function applyCommercialDraftMutation(message: string, currentItems: Comm
       : `${updated.description}: $${updated.unitPrice}`;
   return { status: 'applied', items, message: `Actualicé ${detail}.` };
 }
+import { replaceNormalizedFragment } from './commercialAssistant/normalizer.js';

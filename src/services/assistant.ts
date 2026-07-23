@@ -1,4 +1,4 @@
-import type { Customer } from '../generated/postgres-client/index.js';
+import type { Customer, Prisma } from '../generated/postgres-client/index.js';
 import fs from 'node:fs/promises';
 import { nanoid } from 'nanoid';
 import { config } from '../config.js';
@@ -34,6 +34,12 @@ import {
   normalizeCommercialText,
   type CommercialDraftItem
 } from './commercialConversation.js';
+import { processCommercialMessage } from './commercialAssistant/orchestrator.js';
+import type {
+  CommercialConversationState,
+  CommercialDraft,
+  CommercialCustomer
+} from './commercialAssistant/types.js';
 
 const OPENAI_TIMEOUT_MS = 35_000;
 
@@ -48,6 +54,8 @@ export type AssistantMessage = {
 
 export type AssistantInput = {
   companyId?: string;
+  conversationId?: string;
+  messageId?: string;
   message: string;
   history?: AssistantMessage[];
   pendingDeliveryDraft?: PendingDeliveryDraft;
@@ -93,7 +101,7 @@ export type PendingDeliveryDraft = {
   previewFileName: string;
   previewMimeType: string;
   sourceDeliveryNoteIds?: string[];
-  status?: 'COLLECTING_INFORMATION' | 'READY_FOR_PREVIEW' | 'WAITING_CONFIRMATION' | 'CANCELLED' | 'EXPIRED';
+  status?: 'COLLECTING_INFORMATION' | 'READY_FOR_PREVIEW' | 'WAITING_CONFIRMATION' | 'FINALIZED' | 'CANCELLED' | 'EXPIRED';
   draftVersion?: number;
   previewVersion?: number;
   createdAt?: string;
@@ -107,6 +115,12 @@ export type PendingDeliveryDraft = {
   lastConversationReason?: string;
   awaiting?: 'customer' | 'customer_selection' | 'items' | 'prices' | 'review';
   customerCandidates?: Array<{ id: string; legalName: string; cuit?: string | null; address?: string | null }>;
+  /**
+   * Snapshot v2 used by the deterministic commercial state machine. The
+   * legacy fields above are kept during the additive migration and remain
+   * readable by previous deployments.
+   */
+  commercialDraft?: CommercialDraft;
 };
 
 function withConversationResolution(pending: PendingDeliveryDraft, resolution: DocumentConversationResolution): PendingDeliveryDraft {
@@ -122,7 +136,7 @@ function withConversationResolution(pending: PendingDeliveryDraft, resolution: D
 function wantsCreation(message: string) {
   const normalized = message.toLocaleLowerCase('es-AR');
   if (/\b(lista|listar|pasame|mostrame|mostrar|ver|buscar|busca|quienes)\b/i.test(normalized)) return false;
-  return /\b(arm|cre|gener|hac|prepar|carg|guard)/i.test(normalized);
+  return /\b(arm|cre|gener|hac|prepar|carg)/i.test(normalized);
 }
 
 export function detectDraftIntent(message: string): DraftIntent {
@@ -186,6 +200,7 @@ const conversationalInstruction = /\b(haceme|armame|generame|preparame|prepar[a�
 /** Second line of defense: document descriptions never contain chat control language. */
 export function sanitizeDocumentInstructions(value: string) {
   return value
+    .replace(/^(?:agrega|agregá|agregale|agregále|añade|añadí|sumale|sumále|inclui|incluí|incluye)\s+(?:que\s+)?/i, '')
     .replace(conversationalInstruction, ' ')
     .replace(/\b(?:por\s+los\s+siguientes\s+trabajos|cantidad\s*:\s*\d+\s*trabajos?)\s*:?[\s]*/gi, ' ')
     .replace(/\s+/g, ' ')
@@ -715,7 +730,7 @@ async function createDeliveryNotePreviewDraft(companyId: string, message: string
   };
 }
 
-async function createQuoteDraft(companyId: string, message: string, payload: DraftPayload, fileName?: string, sourceDeliveryNoteIds?: string[]): Promise<AssistantResponse['action'] & { answer: string; sources: KnowledgeSource[] }> {
+async function createQuoteDraft(companyId: string, message: string, payload: DraftPayload, fileName?: string, sourceDeliveryNoteIds?: string[], commercialDraftId?: string): Promise<AssistantResponse['action'] & { answer: string; sources: KnowledgeSource[] }> {
   const customer = await resolveCustomer({
     companyId,
     name: payload.customerName,
@@ -727,10 +742,18 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
   const items = normalizeDraftItems(payload, 0);
   const totals = calculateQuoteTotals(items);
   const quote = await runSerializableTransaction(async (tx) => {
+    if (commercialDraftId) {
+      const existing = await tx.quote.findUnique({
+        where: { commercialDraftId },
+        include: { customer: true, items: true }
+      });
+      if (existing) return existing;
+    }
     const last = await tx.quote.findFirst({ where: { companyId }, orderBy: { number: 'desc' } });
     return tx.quote.create({
       data: {
         companyId,
+        commercialDraftId,
         customerId: customer.id,
         number: (last?.number ?? 0) + 1,
         status: 'DRAFT',
@@ -781,10 +804,10 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
     sourceType: 'ai_generated',
     companyId
   });
-  const document = await prisma.document.create({
-    data: {
+  const documentData = {
       companyId,
-      kind: 'QUOTE',
+      commercialDraftId,
+      kind: 'QUOTE' as const,
       sourceType: 'ai_generated',
       fileName: finalFileName,
       mimeType: 'application/pdf',
@@ -806,8 +829,14 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
           confidence: 0.8
         }
       }
-    }
-  });
+    } satisfies Prisma.DocumentUncheckedCreateInput;
+  const document = commercialDraftId
+    ? await prisma.document.upsert({
+        where: { commercialDraftId },
+        update: {},
+        create: documentData
+      })
+    : await prisma.document.create({ data: documentData });
   if (sourceDeliveryNoteIds?.length) await linkDeliveryNotesToQuote(companyId, quote.id, sourceDeliveryNoteIds);
   return {
     type: 'quote_draft_created',
@@ -825,7 +854,7 @@ async function createQuoteDraft(companyId: string, message: string, payload: Dra
   };
 }
 
-async function createDeliveryNote(companyId: string, message: string, payload: DraftPayload, fileName?: string): Promise<AssistantResponse['action'] & { answer: string; sources: KnowledgeSource[] }> {
+async function createDeliveryNote(companyId: string, message: string, payload: DraftPayload, fileName?: string, commercialDraftId?: string): Promise<AssistantResponse['action'] & { answer: string; sources: KnowledgeSource[] }> {
   const customer = await resolveCustomer({
     companyId,
     name: payload.customerName,
@@ -838,6 +867,7 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
   const deliveryNote = await createDeliveryNoteRecord({
     companyId,
     customerId: customer.id,
+    commercialDraftId,
     items: items.map((item) => ({ description: item.description, quantity: Number(item.quantity || 1), unit: item.unit || 'unidad', unitPrice: item.unitPrice, taxRate: item.taxRate })),
     notes: payload.notes,
     currency: payload.currency ?? 'ARS'
@@ -868,10 +898,10 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
     sourceType: 'ai_generated',
     companyId
   });
-  const document = await prisma.document.create({
-    data: {
+  const documentData = {
       companyId,
-      kind: 'DELIVERY_NOTE',
+      commercialDraftId,
+      kind: 'DELIVERY_NOTE' as const,
       sourceType: 'ai_generated',
       fileName: filename,
       mimeType: 'application/pdf',
@@ -892,8 +922,14 @@ async function createDeliveryNote(companyId: string, message: string, payload: D
           confidence: 0.8
         }
       }
-    }
-  });
+    } satisfies Prisma.DocumentUncheckedCreateInput;
+  const document = commercialDraftId
+    ? await prisma.document.upsert({
+        where: { commercialDraftId },
+        update: {},
+        create: documentData
+      })
+    : await prisma.document.create({ data: documentData });
   await prisma.deliveryNote.update({ where: { id: deliveryNote.id }, data: { documentId: document.id } });
 
   return {
@@ -1061,6 +1097,289 @@ async function answerWithOpenAi(input: AssistantInput, context: string, knowledg
   return data.output_text ?? data.output?.flatMap((item) => item.content ?? []).map((item) => item.text).filter(Boolean).join('\n') ?? null;
 }
 
+function commercialStateFromLegacy(
+  pending: PendingDeliveryDraft,
+  customerId: string | undefined
+): CommercialConversationState {
+  if (pending.status === 'WAITING_CONFIRMATION') return 'WAITING_CONFIRMATION';
+  if (pending.status === 'FINALIZED') return 'FINALIZED';
+  if (pending.status === 'CANCELLED') return 'CANCELLED';
+  if (pending.status === 'EXPIRED') return 'EXPIRED';
+  if (!customerId) return pending.awaiting === 'customer_selection' ? 'SELECTING_CUSTOMER' : 'COLLECTING_CUSTOMER';
+  if (!pending.payload.items.length) return 'COLLECTING_ITEMS';
+  if (
+    pending.type === 'quote' &&
+    pending.payload.items.some((item) => item.unitPrice === undefined)
+  ) {
+    return 'COLLECTING_PRICES';
+  }
+  return 'READY_FOR_PREVIEW';
+}
+
+function hydrateCommercialDraft(value: CommercialDraft): CommercialDraft {
+  return {
+    ...value,
+    createdAt: new Date(value.createdAt),
+    updatedAt: new Date(value.updatedAt),
+    expiresAt: new Date(value.expiresAt),
+    items: value.items.map((item) => ({ ...item })),
+    customerCandidates: value.customerCandidates?.map((customer) => ({ ...customer }))
+  };
+}
+
+function commercialDraftFromPending(input: {
+  pending?: PendingDeliveryDraft;
+  companyId: string;
+  conversationId: string;
+  customers: CommercialCustomer[];
+}): CommercialDraft | null {
+  const pending = input.pending;
+  if (!pending) return null;
+  if (pending.commercialDraft) return hydrateCommercialDraft(pending.commercialDraft);
+  const customer = input.customers.find((candidate) => {
+    const cuitMatches = pending.payload.customerCuit &&
+      candidate.cuit?.replace(/\D/g, '') === pending.payload.customerCuit.replace(/\D/g, '');
+    return cuitMatches ||
+      normalizeText(candidate.legalName) === normalizeText(pending.payload.customerName || '') ||
+      normalizeText(candidate.tradeName || '') === normalizeText(pending.payload.customerName || '');
+  });
+  const now = new Date();
+  const createdAt = pending.createdAt ? new Date(pending.createdAt) : now;
+  const updatedAt = pending.updatedAt ? new Date(pending.updatedAt) : now;
+  const expiresAt = pending.expiresAt
+    ? new Date(pending.expiresAt)
+    : new Date(now.getTime() + config.WHATSAPP_DOCUMENT_DRAFT_TTL_HOURS * 3600_000);
+  const draft: CommercialDraft = {
+    schemaVersion: 2,
+    id: pending.token || nanoid(),
+    conversationId: input.conversationId,
+    companyId: input.companyId,
+    documentType: pending.type === 'quote' ? 'QUOTE' : 'DELIVERY_NOTE',
+    status: commercialStateFromLegacy(pending, customer?.id),
+    customerId: customer?.id,
+    customerName: customer?.legalName || pending.payload.customerName,
+    customerSearchQuery: pending.payload.customerName,
+    customerCandidates: pending.customerCandidates?.map((candidate) => ({
+      id: candidate.id,
+      legalName: candidate.legalName,
+      cuit: candidate.cuit,
+      address: candidate.address
+    })),
+    currency: pending.payload.currency === 'USD' ? 'USD' : 'ARS',
+    items: pending.payload.items.map((item, index) => ({
+      lineId: item.lineId || nanoid(8),
+      position: index + 1,
+      description: item.description,
+      quantity: Number(item.quantity ?? 1),
+      unit: item.unit || 'unidad',
+      unitPrice: item.unitPrice === undefined ? undefined : Number(item.unitPrice),
+      taxRate: item.taxRate === undefined ? undefined : Number(item.taxRate)
+    })),
+    suggestedFileName: pending.suggestedFileName,
+    requestedFileName: pending.suggestedFileName,
+    draftVersion: pending.draftVersion ?? 1,
+    previewVersion: pending.previewVersion,
+    previewStoragePath: pending.previewStoragePath || undefined,
+    previewFileName: pending.previewFileName || undefined,
+    previewMimeType: pending.previewMimeType || undefined,
+    awaiting:
+      pending.awaiting === 'customer' ? 'CUSTOMER' :
+      pending.awaiting === 'customer_selection' ? 'CUSTOMER_SELECTION' :
+      pending.awaiting === 'items' ? 'ITEMS' :
+      pending.awaiting === 'prices' ? 'PRICES' :
+      pending.status === 'WAITING_CONFIRMATION' ? 'CONFIRMATION' :
+      undefined,
+    createdAt,
+    updatedAt,
+    expiresAt
+  };
+  return draft;
+}
+
+function pendingFromCommercialDraft(
+  draft: CommercialDraft,
+  previous: PendingDeliveryDraft | undefined,
+  customers: CommercialCustomer[],
+  renderer?: Pick<PendingDeliveryDraft, 'rendererUsed' | 'rendererError'>
+): PendingDeliveryDraft {
+  const customer = customers.find((candidate) => candidate.id === draft.customerId);
+  const status: PendingDeliveryDraft['status'] =
+    draft.status === 'WAITING_CONFIRMATION' ? 'WAITING_CONFIRMATION' :
+    draft.status === 'FINALIZED' ? 'FINALIZED' :
+    draft.status === 'CANCELLED' ? 'CANCELLED' :
+    draft.status === 'EXPIRED' ? 'EXPIRED' :
+    draft.status === 'READY_FOR_PREVIEW' ? 'READY_FOR_PREVIEW' :
+    'COLLECTING_INFORMATION';
+  const awaiting: PendingDeliveryDraft['awaiting'] =
+    draft.awaiting === 'CUSTOMER' ? 'customer' :
+    draft.awaiting === 'CUSTOMER_SELECTION' ? 'customer_selection' :
+    draft.awaiting === 'ITEMS' ? 'items' :
+    draft.awaiting === 'PRICES' ? 'prices' :
+    draft.awaiting === 'CONFIRMATION' ? 'review' :
+    undefined;
+  return {
+    type: draft.documentType === 'QUOTE' ? 'quote' : 'delivery_note',
+    payload: {
+      customerName: draft.customerName,
+      customerCuit: customer?.cuit || undefined,
+      customerAddress: customer?.address || undefined,
+      currency: draft.currency,
+      notes: previous?.payload.notes,
+      items: draft.items.map((item) => ({
+        lineId: item.lineId,
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        unitPrice: item.unitPrice,
+        taxRate: item.taxRate
+      }))
+    },
+    suggestedFileName: draft.requestedFileName || draft.suggestedFileName,
+    token: draft.id,
+    previewStoragePath: draft.previewStoragePath || '',
+    previewFileName: draft.previewFileName || '',
+    previewMimeType: draft.previewMimeType || 'application/pdf',
+    sourceDeliveryNoteIds: previous?.sourceDeliveryNoteIds,
+    status,
+    draftVersion: draft.draftVersion,
+    previewVersion: draft.previewVersion,
+    createdAt: draft.createdAt.toISOString(),
+    updatedAt: draft.updatedAt.toISOString(),
+    expiresAt: draft.expiresAt.toISOString(),
+    rawSourceMessages: previous?.rawSourceMessages,
+    rendererUsed: renderer?.rendererUsed ?? previous?.rendererUsed,
+    rendererError: renderer?.rendererError ?? previous?.rendererError,
+    awaiting,
+    customerCandidates: draft.customerCandidates?.map((candidate) => ({
+      id: candidate.id,
+      legalName: candidate.legalName,
+      cuit: candidate.cuit,
+      address: candidate.address
+    })),
+    commercialDraft: draft
+  };
+}
+
+async function runCommercialAssistant(
+  input: AssistantInput,
+  companyId: string,
+  suggestions: string[]
+): Promise<AssistantResponse | null> {
+  const customers = await prisma.customer.findMany({
+    where: { companyId },
+    select: { id: true, legalName: true, tradeName: true, cuit: true, address: true }
+  });
+  const conversationId = input.conversationId || `assistant:${companyId}`;
+  const current = commercialDraftFromPending({
+    pending: input.pendingDeliveryDraft,
+    companyId,
+    conversationId,
+    customers
+  });
+  let generatedPreview: AssistantResponse | undefined;
+  let finalizedResponse:
+    | (AssistantResponse['action'] & { answer: string; sources: KnowledgeSource[] })
+    | undefined;
+  const result = await processCommercialMessage({
+    companyId,
+    conversationId,
+    messageId: input.messageId,
+    message: input.message,
+    draft: current,
+    adapters: {
+      customers,
+      defaultCurrency: 'ARS',
+      createId: () => nanoid(),
+      generatePreview: async (draft, fileName) => {
+        const payload: DraftPayload = {
+          customerName: draft.customerName,
+          customerCuit: customers.find((customer) => customer.id === draft.customerId)?.cuit || undefined,
+          customerAddress: customers.find((customer) => customer.id === draft.customerId)?.address || undefined,
+          currency: draft.currency,
+          notes: input.pendingDeliveryDraft?.payload.notes,
+          items: draft.items.map((item) => ({
+            lineId: item.lineId,
+            description: item.description,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: item.unitPrice,
+            taxRate: item.taxRate
+          }))
+        };
+        generatedPreview = draft.documentType === 'QUOTE'
+          ? await createQuotePreviewDraft(companyId, input.message, payload, fileName, input.pendingDeliveryDraft?.sourceDeliveryNoteIds)
+          : await createDeliveryNotePreviewDraft(companyId, input.message, payload, fileName);
+        const pending = generatedPreview.pendingDeliveryDraft;
+        if (!pending || !generatedPreview.previewDocument) throw new Error('La generación del preview no devolvió un PDF.');
+        return {
+          buffer: generatedPreview.previewDocument.buffer,
+          storagePath: pending.previewStoragePath,
+          fileName: generatedPreview.previewDocument.filename,
+          mimeType: generatedPreview.previewDocument.mimeType
+        };
+      },
+      finalizeDocument: async (draft, fileName) => {
+        const customer = customers.find((candidate) => candidate.id === draft.customerId);
+        const payload: DraftPayload = {
+          customerName: draft.customerName,
+          customerCuit: customer?.cuit || undefined,
+          customerAddress: customer?.address || undefined,
+          currency: draft.currency,
+          notes: input.pendingDeliveryDraft?.payload.notes,
+          items: draft.items.map((item) => ({
+            lineId: item.lineId,
+            description: item.description,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: item.unitPrice,
+            taxRate: item.taxRate
+          }))
+        };
+        finalizedResponse = draft.documentType === 'QUOTE'
+          ? await createQuoteDraft(companyId, input.message, payload, fileName, input.pendingDeliveryDraft?.sourceDeliveryNoteIds, draft.id)
+          : await createDeliveryNote(companyId, input.message, payload, fileName, draft.id);
+        if (!finalizedResponse.documentId) throw new Error('La confirmación no devolvió el documento definitivo.');
+        return { documentId: finalizedResponse.documentId };
+      }
+    }
+  });
+  if (!result.handled || result.classification.type === 'BUSINESS_QUERY') return null;
+  const renderer = generatedPreview?.pendingDeliveryDraft
+    ? {
+        rendererUsed: generatedPreview.pendingDeliveryDraft.rendererUsed,
+        rendererError: generatedPreview.pendingDeliveryDraft.rendererError
+      }
+    : undefined;
+  const pending = result.draft
+    ? pendingFromCommercialDraft(result.draft, input.pendingDeliveryDraft, customers, renderer)
+    : undefined;
+  return {
+    mode: config.OPENAI_API_KEY ? 'openai' : 'local',
+    answer: finalizedResponse?.answer || result.answer,
+    sources: finalizedResponse?.sources || [],
+    suggestions,
+    previewDocument: result.preview?.buffer
+      ? {
+          buffer: result.preview.buffer,
+          mimeType: result.preview.mimeType,
+          filename: result.preview.fileName
+        }
+      : undefined,
+    action: finalizedResponse
+      ? {
+          type: finalizedResponse.type,
+          quoteId: finalizedResponse.quoteId,
+          documentId: finalizedResponse.documentId
+        }
+      : result.preview
+        ? { type: 'document_draft_pending' }
+        : result.draft
+          ? { type: 'document_draft_pending' }
+          : undefined,
+    pendingDeliveryDraft: pending
+  };
+}
+
 export async function answerAssistant(input: AssistantInput): Promise<AssistantResponse> {
   const company = await resolveCompany(input.companyId);
   const companyId = company?.id;
@@ -1122,6 +1441,12 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
       pendingDeliveryDraft: withConversationResolution(input.pendingDeliveryDraft, conversationResolution)
     };
   }
+
+  // Commercial creation and every mutation of an active draft go through the
+  // same deterministic classifier/state machine. Legacy code below remains as
+  // a compatibility fallback for non-commercial assistant features.
+  const commercialResponse = await runCommercialAssistant(input, companyId, suggestions);
+  if (commercialResponse) return commercialResponse;
 
   if (input.pendingDeliveryDraft?.awaiting === 'customer_selection' && input.pendingDeliveryDraft.customerCandidates?.length) {
     const selectedIndex = Number(normalizeCommercialText(input.message)) - 1;

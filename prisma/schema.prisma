@@ -126,6 +126,7 @@ model Company {
   engineeringToolValidations    EngineeringToolValidation[]
   engineeringCurationJobs       EngineeringCurationJob[]
   engineeringReviewSessions     EngineeringReviewSession[]
+  commercialDrafts              CommercialDraft[]
 }
 
 model Supplier {
@@ -167,25 +168,26 @@ model SupplierPriceList {
 }
 
 model Customer {
-  id            String              @id @default(cuid())
-  companyId     String
-  legalName     String
-  tradeName     String?
-  cuit          String?
-  taxCondition  String?
-  address       String?
-  contactName   String?
-  phone         String?
-  email         String?
-  paymentTerms  String?
-  notes         String?
-  createdAt     DateTime            @default(now())
-  company       Company             @relation(fields: [companyId], references: [id])
-  quotes        Quote[]
-  invoices      Invoice[]
-  deliveryNotes DeliveryNote[]
-  whatsapp      WhatsAppMessage[]
-  candidates    CustomerCandidate[]
+  id               String              @id @default(cuid())
+  companyId        String
+  legalName        String
+  tradeName        String?
+  cuit             String?
+  taxCondition     String?
+  address          String?
+  contactName      String?
+  phone            String?
+  email            String?
+  paymentTerms     String?
+  notes            String?
+  createdAt        DateTime            @default(now())
+  company          Company             @relation(fields: [companyId], references: [id])
+  quotes           Quote[]
+  invoices         Invoice[]
+  deliveryNotes    DeliveryNote[]
+  whatsapp         WhatsAppMessage[]
+  candidates       CustomerCandidate[]
+  commercialDrafts CommercialDraft[]
 
   @@index([companyId])
 }
@@ -267,6 +269,7 @@ model Quote {
   items             QuoteItem[]
   invoices          Invoice[]
   deliveryNoteLinks DeliveryNoteQuote[]
+  commercialDraftId String?             @unique
 
   @@unique([companyId, number, version])
   @@index([customerId])
@@ -312,6 +315,7 @@ model Document {
   itemCandidates     DocumentItemCandidate[]
   customerCandidates CustomerCandidate[]
   stockMovements     StockMovement[]
+  commercialDraftId  String?                 @unique
 }
 
 model DocumentExtraction {
@@ -445,38 +449,49 @@ model InvoiceItem {
 }
 
 model WhatsAppMessage {
-  id                String                @id @default(cuid())
-  direction         MessageDirection
-  fromNumber        String
-  toNumber          String
-  customerId        String?
-  messageType       String
-  body              String?
-  mediaDocumentId   String?
-  conversationId    String?
-  providerMessageId String?               @unique
-  status            String                @default("received")
-  createdAt         DateTime              @default(now())
-  customer          Customer?             @relation(fields: [customerId], references: [id])
-  mediaDocument     Document?             @relation(fields: [mediaDocumentId], references: [id])
-  conversation      WhatsAppConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  id                 String                @id @default(cuid())
+  direction          MessageDirection
+  fromNumber         String
+  toNumber           String
+  customerId         String?
+  messageType        String
+  body               String?
+  mediaDocumentId    String?
+  conversationId     String?
+  providerMessageId  String?               @unique
+  status             String                @default("received")
+  processingStatus   String                @default("RECEIVED")
+  processingAttempts Int                   @default(0)
+  leaseUntil         DateTime?
+  processedAt        DateTime?
+  providerTimestamp  DateTime?
+  lastError          String?
+  actionType         String?
+  draftId            String?
+  draftVersionBefore Int?
+  draftVersionAfter  Int?
+  createdAt          DateTime              @default(now())
+  customer           Customer?             @relation(fields: [customerId], references: [id])
+  mediaDocument      Document?             @relation(fields: [mediaDocumentId], references: [id])
+  conversation       WhatsAppConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
 
   @@index([conversationId, createdAt])
 }
 
 model WhatsAppConversation {
-  id            String            @id @default(cuid())
-  companyId     String
-  fromNumber    String
-  pendingJson   String?
-  toNumber      String?
-  displayName   String?
-  messageCount  Int               @default(0)
-  lastMessageAt DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  createdAt     DateTime          @default(now())
-  company       Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  messages      WhatsAppMessage[]
+  id               String            @id @default(cuid())
+  companyId        String
+  fromNumber       String
+  pendingJson      String?
+  toNumber         String?
+  displayName      String?
+  messageCount     Int               @default(0)
+  lastMessageAt    DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  createdAt        DateTime          @default(now())
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  messages         WhatsAppMessage[]
+  commercialDrafts CommercialDraft[]
 
   @@unique([companyId, fromNumber])
   @@index([companyId, updatedAt])
@@ -495,22 +510,23 @@ model AuditLog {
 }
 
 model DeliveryNote {
-  id          String              @id @default(cuid())
-  companyId   String
-  customerId  String
-  documentId  String?             @unique
-  number      Int
-  status      DeliveryNoteStatus  @default(PENDING)
-  issueDate   DateTime            @default(now())
-  projectName String?
-  currency    String              @default("ARS")
-  total       Decimal?
-  notes       String?
-  company     Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer    Customer            @relation(fields: [customerId], references: [id])
-  document    Document?           @relation(fields: [documentId], references: [id])
-  items       DeliveryNoteItem[]
-  quoteLinks  DeliveryNoteQuote[]
+  id                String              @id @default(cuid())
+  companyId         String
+  customerId        String
+  documentId        String?             @unique
+  number            Int
+  status            DeliveryNoteStatus  @default(PENDING)
+  issueDate         DateTime            @default(now())
+  projectName       String?
+  currency          String              @default("ARS")
+  total             Decimal?
+  notes             String?
+  company           Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer          Customer            @relation(fields: [customerId], references: [id])
+  document          Document?           @relation(fields: [documentId], references: [id])
+  items             DeliveryNoteItem[]
+  quoteLinks        DeliveryNoteQuote[]
+  commercialDraftId String?             @unique
 
   @@unique([companyId, number])
   @@index([companyId, customerId, status])
@@ -552,6 +568,57 @@ enum DeliveryNoteStatus {
   QUOTED
   INVOICED
   CANCELLED
+}
+
+model CommercialDraft {
+  id                  String                @id
+  conversationId      String
+  companyId           String
+  activeSlot          Int?
+  documentType        String
+  status              String
+  customerId          String?
+  customerSearchQuery String?
+  currency            String?
+  suggestedFileName   String
+  requestedFileName   String?
+  draftVersion        Int                   @default(1)
+  previewVersion      Int?
+  previewStoragePath  String?
+  previewFileName     String?
+  previewMimeType     String?
+  awaiting            String?
+  finalDocumentId     String?
+  legacyPayloadJson   String?
+  expiresAt           DateTime
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  conversation        WhatsAppConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  company             Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer            Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items               CommercialDraftItem[]
+
+  @@unique([conversationId, activeSlot])
+  @@index([companyId, status])
+  @@index([expiresAt])
+}
+
+model CommercialDraftItem {
+  id              String          @id @default(cuid())
+  draftId         String
+  lineId          String
+  position        Int
+  description     String
+  quantity        Decimal
+  unit            String
+  unitPrice       Decimal?
+  taxRate         Decimal?
+  sourceMessageId String?
+  draft           CommercialDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@unique([draftId, lineId])
+  @@unique([draftId, position])
+  @@index([draftId])
 }
 
 model EngineeringKnowledgeDocument {

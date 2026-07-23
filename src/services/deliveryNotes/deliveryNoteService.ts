@@ -6,6 +6,7 @@ import { runSerializableTransaction } from '../transaction.js';
 export type DeliveryNoteInput = {
   companyId: string;
   customerId: string;
+  commercialDraftId?: string;
   documentId?: string;
   items: Array<{ description: string; quantity: number; unit?: string; unitPrice?: number; taxRate?: number }>;
   notes?: string;
@@ -24,6 +25,13 @@ export type DeliveryNoteConversionInput = {
 
 export async function createDeliveryNoteRecord(input: DeliveryNoteInput) {
   return runSerializableTransaction(async (tx) => {
+    if (input.commercialDraftId) {
+      const existing = await tx.deliveryNote.findUnique({
+        where: { commercialDraftId: input.commercialDraftId },
+        include: { customer: true, items: true, document: true }
+      });
+      if (existing) return existing;
+    }
     const last = await tx.deliveryNote.findFirst({
       where: { companyId: input.companyId },
       orderBy: { number: 'desc' },
@@ -33,6 +41,7 @@ export async function createDeliveryNoteRecord(input: DeliveryNoteInput) {
       data: {
         companyId: input.companyId,
         customerId: input.customerId,
+        commercialDraftId: input.commercialDraftId,
         documentId: input.documentId,
         number: (last?.number ?? 0) + 1,
         status: 'PENDING',

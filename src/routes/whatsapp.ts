@@ -3,6 +3,15 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { answerAssistant, type PendingDeliveryDraft } from '../services/assistant.js';
+import {
+  loadPersistedPendingDraft,
+  persistCommercialDraftSnapshot
+} from '../services/commercialAssistant/draftRepository.js';
+import {
+  isOutOfOrderMessage,
+  providerTimestamp,
+  safeProcessingError
+} from '../services/commercialAssistant/webhookPolicy.js';
 import { readStoredDocumentFile, writeDocumentFile } from '../services/documentStorage.js';
 import {
   getWhatsAppMedia,
@@ -37,6 +46,7 @@ const metaWebhookSchema = z.object({
                   id: z.string(),
                   from: z.string(),
                   type: z.string(),
+                  timestamp: z.string().optional(),
                   text: z.object({ body: z.string() }).optional(),
                   audio: z.object({ id: z.string(), mime_type: z.string().optional() }).optional(),
                   document: z.object({ id: z.string(), filename: z.string().optional(), mime_type: z.string().optional() }).optional(),
@@ -98,6 +108,7 @@ type InboundMessage = {
   id: string;
   from: string;
   type: string;
+  timestamp?: string;
   text?: { body: string };
   audio?: { id: string; mime_type?: string };
   document?: { id: string; filename?: string; mime_type?: string };
@@ -106,6 +117,34 @@ type InboundMessage = {
 
 async function processIncomingMessage(input: { message: InboundMessage; phoneNumber: string }) {
   const { message, phoneNumber } = input;
+  let claimed;
+  try {
+    claimed = await prisma.whatsAppMessage.create({
+      data: {
+        direction: 'INBOUND',
+        fromNumber: message.from,
+        toNumber: phoneNumber,
+        providerMessageId: message.id,
+        providerTimestamp: providerTimestamp(message.timestamp),
+        messageType: message.type,
+        body: message.text?.body ?? '',
+        status: 'processing',
+        processingStatus: 'PROCESSING',
+        processingAttempts: 1,
+        leaseUntil: new Date(Date.now() + 60_000)
+      },
+      include: { mediaDocument: true }
+    });
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+    if (code !== 'P2002') throw error;
+    const duplicate = await prisma.whatsAppMessage.findUnique({
+      where: { providerMessageId: message.id },
+      include: { mediaDocument: true }
+    });
+    if (!duplicate) throw error;
+    return { inbound: duplicate, duplicate: true };
+  }
   let mediaDocumentId: string | undefined;
   let body = message.text?.body ?? '';
   const mediaId = message.audio?.id ?? message.document?.id ?? message.image?.id;
@@ -147,21 +186,19 @@ async function processIncomingMessage(input: { message: InboundMessage; phoneNum
     }
   }
 
-  return prisma.whatsAppMessage.upsert({
-    where: { providerMessageId: message.id },
-    update: { body, mediaDocumentId, status: 'processed' },
-    create: {
-      direction: 'INBOUND',
-      fromNumber: message.from,
-      toNumber: phoneNumber,
-      providerMessageId: message.id,
-      messageType: message.type,
+  const inbound = await prisma.whatsAppMessage.update({
+    where: { id: claimed.id },
+    data: {
       body,
       mediaDocumentId,
-      status: 'processed'
+      status: 'processed',
+      processingStatus: 'PROCESSED',
+      processedAt: new Date(),
+      leaseUntil: null
     },
     include: { mediaDocument: true }
   });
+  return { inbound, duplicate: false };
 }
 
 function appLog(error: unknown) {
@@ -273,7 +310,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
 
   async function sendAssistantReply(input: {
     company: { id: string };
-    inbound: { body: string | null };
+    inbound: { id: string; body: string | null };
     fromNumber: string;
     phoneNumber: string;
     conversation: { id: string; pendingJson: string | null };
@@ -297,17 +334,45 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     app.log.info({ conversationId: input.conversation.id, fromNumber: maskedWhatsAppNumber(input.fromNumber) }, 'whatsapp assistant reply started');
     const history = await resolveInboundHistory(input.conversation.id);
     app.log.info({ conversationId: input.conversation.id, history: history.length }, 'whatsapp assistant history loaded');
+    const previousPending =
+      parsePending(input.conversation.pendingJson) ??
+      await loadPersistedPendingDraft(input.conversation.id);
     const assistantResponse = await answerAssistant({
       companyId: input.company.id,
+      conversationId: input.conversation.id,
+      messageId: input.inbound.id,
       message: input.inbound.body ?? '',
       history,
-      pendingDeliveryDraft: parsePending(input.conversation.pendingJson)
+      pendingDeliveryDraft: previousPending
     });
     app.log.info({ conversationId: input.conversation.id, action: assistantResponse.action?.type }, 'whatsapp assistant response generated');
-    await prisma.whatsAppConversation.update({
-      where: { id: input.conversation.id },
-      data: { pendingJson: assistantResponse.pendingDeliveryDraft ? JSON.stringify(assistantResponse.pendingDeliveryDraft) : null }
+    await persistCommercialDraftSnapshot({
+      conversationId: input.conversation.id,
+      pending: assistantResponse.pendingDeliveryDraft,
+      expectedDraftVersion: previousPending?.commercialDraft?.draftVersion ?? previousPending?.draftVersion
     });
+    await prisma.whatsAppMessage.update({
+      where: { id: input.inbound.id },
+      data: {
+        actionType:
+          assistantResponse.pendingDeliveryDraft?.commercialDraft?.status ??
+          assistantResponse.action?.type,
+        draftId: assistantResponse.pendingDeliveryDraft?.commercialDraft?.id,
+        draftVersionBefore:
+          previousPending?.commercialDraft?.draftVersion ??
+          previousPending?.draftVersion,
+        draftVersionAfter:
+          assistantResponse.pendingDeliveryDraft?.commercialDraft?.draftVersion ??
+          assistantResponse.pendingDeliveryDraft?.draftVersion
+      }
+    });
+    app.log.info({
+      conversationId: input.conversation.id,
+      messageId: input.inbound.id,
+      draftId: assistantResponse.pendingDeliveryDraft?.commercialDraft?.id,
+      draftVersion: assistantResponse.pendingDeliveryDraft?.commercialDraft?.draftVersion,
+      action: assistantResponse.action?.type
+    }, 'whatsapp commercial transition persisted');
 
     const publicBaseUrl = config.PUBLIC_BASE_URL.replace(/\/$/, '');
     const draftUrl = assistantResponse.previewDocument
@@ -459,10 +524,31 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       }));
     if (!inbound.conversationId) await prisma.whatsAppMessage.update({ where: { id: inbound.id }, data: { conversationId: conversation.id } });
     try {
+      await prisma.whatsAppMessage.update({
+        where: { id: inbound.id },
+        data: {
+          processingStatus: 'PROCESSING',
+          processingAttempts: { increment: 1 },
+          leaseUntil: new Date(Date.now() + 60_000),
+          lastError: null
+        }
+      });
       await sendAssistantReply({ company, inbound, fromNumber: inbound.fromNumber, phoneNumber: inbound.toNumber, conversation });
+      await prisma.whatsAppMessage.update({
+        where: { id: inbound.id },
+        data: { processingStatus: 'COMPLETED', processedAt: new Date(), leaseUntil: null }
+      });
       return { ok: true };
     } catch (error) {
       app.log.error(error);
+      await prisma.whatsAppMessage.update({
+        where: { id: inbound.id },
+        data: {
+          processingStatus: 'FAILED',
+          lastError: safeProcessingError(error),
+          leaseUntil: null
+        }
+      });
       return reply.code(500).send({ error: error instanceof Error ? error.message : 'Reprocess failed' });
     }
   });
@@ -505,7 +591,6 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     );
     if (wrongPhoneNumber) return reply.code(403).send({ error: 'Unexpected WhatsApp phone number id' });
 
-    void (async () => {
     const company = await prisma.company.findFirst();
 
     for (const entry of payload.entry) {
@@ -516,9 +601,12 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
             app.log.warn({ fromNumber: maskedWhatsAppNumber(message.from) }, 'ignored whatsapp message from non-operator number');
             continue;
           }
-          const duplicate = await prisma.whatsAppMessage.findUnique({ where: { providerMessageId: message.id }, select: { id: true } });
-          if (duplicate) continue;
-          const inbound = await processIncomingMessage({ message, phoneNumber });
+          const claimed = await processIncomingMessage({ message, phoneNumber });
+          if (claimed.duplicate) {
+            app.log.info({ messageId: message.id }, 'ignored duplicate whatsapp message');
+            continue;
+          }
+          const inbound = claimed.inbound;
           if (!company || !inbound.body?.trim()) continue;
 
           const conversation = await prisma.whatsAppConversation.upsert({
@@ -527,11 +615,51 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
             create: { companyId: company.id, fromNumber: message.from, toNumber: phoneNumber, messageCount: 1, lastMessageAt: new Date() }
           });
           await prisma.whatsAppMessage.update({ where: { id: inbound.id }, data: { conversationId: conversation.id } });
+          const latestCompleted = inbound.providerTimestamp
+            ? await prisma.whatsAppMessage.findFirst({
+                where: {
+                  conversationId: conversation.id,
+                  direction: 'INBOUND',
+                  processingStatus: 'COMPLETED',
+                  providerTimestamp: { gt: inbound.providerTimestamp }
+                },
+                select: { providerTimestamp: true },
+                orderBy: { providerTimestamp: 'desc' }
+              })
+            : null;
+          if (isOutOfOrderMessage(inbound.providerTimestamp, latestCompleted?.providerTimestamp)) {
+            await prisma.whatsAppMessage.update({
+              where: { id: inbound.id },
+              data: {
+                processingStatus: 'OUT_OF_ORDER',
+                status: 'ignored',
+                processedAt: new Date(),
+                leaseUntil: null
+              }
+            });
+            app.log.warn({
+              conversationId: conversation.id,
+              messageId: inbound.id
+            }, 'ignored out-of-order whatsapp message');
+            continue;
+          }
 
           try {
             await sendAssistantReply({ company, inbound, fromNumber: message.from, phoneNumber, conversation });
+            await prisma.whatsAppMessage.update({
+              where: { id: inbound.id },
+              data: { processingStatus: 'COMPLETED', processedAt: new Date(), leaseUntil: null }
+            });
           } catch (error) {
             app.log.error(error);
+            await prisma.whatsAppMessage.update({
+              where: { id: inbound.id },
+              data: {
+                processingStatus: 'FAILED',
+                lastError: safeProcessingError(error),
+                leaseUntil: null
+              }
+            });
             const body = 'Recibi el mensaje, pero no pude generar la respuesta automatica. Revisame configuracion de audio/PDF y volve a enviar el pedido.';
             const sent = await sendWhatsAppText({ to: outboundWhatsAppNumber(message.from), body });
             await prisma.whatsAppMessage.create({
@@ -549,7 +677,6 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
         }
       }
     }
-    })().catch((error) => app.log.error(error));
 
     return { ok: true };
   });

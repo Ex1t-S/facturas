@@ -38,6 +38,40 @@ export function resolveDocumentConversationMessage(input: {
 
   if (reminderRequest.test(message)) return { action: 'UNSUPPORTED', confidence: 'HIGH', reason: 'reminder_not_supported' };
   if (unsupportedActionRequest.test(message)) return { action: 'UNSUPPORTED', confidence: 'HIGH', reason: 'external_action_not_supported' };
+  const classified = classifyCommercialAction(
+    input.message,
+    input.hasActiveDraft
+      ? {
+          status: input.waitingConfirmation ? 'WAITING_CONFIRMATION' : 'COLLECTING_ITEMS',
+          awaiting: input.waitingConfirmation ? 'CONFIRMATION' : 'ITEMS'
+        }
+      : null
+  );
+  const deterministic: Partial<Record<typeof classified.type, DocumentConversationAction>> = {
+    START_DRAFT: 'START_DOCUMENT_DRAFT',
+    APPEND_ITEM: 'APPEND_TO_DOCUMENT_DRAFT',
+    APPEND_ITEMS: 'APPEND_TO_DOCUMENT_DRAFT',
+    DELETE_ITEM: 'UPDATE_DOCUMENT_DRAFT',
+    CLEAR_ITEMS: 'UPDATE_DOCUMENT_DRAFT',
+    REPLACE_ITEM_TEXT: 'UPDATE_DOCUMENT_DRAFT',
+    REPLACE_DESCRIPTION: 'UPDATE_DOCUMENT_DRAFT',
+    SET_ITEM_PRICE: 'UPDATE_DOCUMENT_DRAFT',
+    SET_ITEM_QUANTITY: 'UPDATE_DOCUMENT_DRAFT',
+    SET_CURRENCY: 'UPDATE_DOCUMENT_DRAFT',
+    GENERATE_PREVIEW: 'REQUEST_PREVIEW',
+    CONFIRM_DOCUMENT: 'CONFIRM_DOCUMENT',
+    CANCEL_DRAFT: 'CANCEL_DOCUMENT',
+    SHOW_SUMMARY: 'ASK_DRAFT_STATUS',
+    BUSINESS_QUERY: 'QUERY'
+  };
+  const deterministicAction = deterministic[classified.type];
+  if (deterministicAction && classified.rule !== 'commercial_content') {
+    return {
+      action: deterministicAction,
+      confidence: classified.confidence,
+      reason: classified.rule
+    };
+  }
   if (/\b(?:cancela|cancelalo|descartalo|olvidalo|borra ese borrador|empecemos de nuevo|no lo guardes|no quiero guardarlo|no lo quiero guardar|no hace falta guardarlo|dejalo asi)\b/i.test(message)) return { action: 'CANCEL_DOCUMENT', confidence: 'HIGH', reason: 'explicit_cancel' };
   if (/\b(que tenes anotado|como va el remito|mostrame lo que anotaste)\b/i.test(message)) return { action: 'ASK_DRAFT_STATUS', confidence: 'HIGH', reason: 'explicit_status_request' };
   if (/^(?:(?:guardar|guardalo|confirmar|confirmalo)(?:\s+como\s+.+)?|dale|ok|confirmado|esta bien|asi esta bien)[.!\s]*$/i.test(message)) {
@@ -65,3 +99,4 @@ export function unsupportedWhatsAppAnswer(reason?: string) {
     ? 'Por ahora no puedo ejecutar esa acción externa. Puedo ayudarte con remitos, presupuestos o consultas internas.'
     : 'Por ahora no puedo crear recordatorios ni alarmas. Puedo ayudarte con remitos, presupuestos o consultas internas.';
 }
+import { classifyCommercialAction } from './commercialAssistant/actionClassifier.js';
