@@ -16,11 +16,13 @@ import { readStoredDocumentFile, writeDocumentFile } from '../services/documentS
 import {
   getWhatsAppMedia,
   sendWhatsAppDocument,
+  sendWhatsAppInteractiveList,
   sendWhatsAppText,
   transcribeWhatsAppAudio,
   uploadWhatsAppMedia,
   verifyMetaSignature
 } from '../services/whatsapp.js';
+import { whatsappMainMenu, whatsappMainMenuInteractive } from '../services/whatsappMenu.js';
 import { allowedWhatsAppNumbers } from '../security.js';
 
 const whatsappOperatorAllowlist = allowedWhatsAppNumbers(config.WHATSAPP_ALLOWED_FROM);
@@ -48,6 +50,11 @@ const metaWebhookSchema = z.object({
                   type: z.string(),
                   timestamp: z.string().optional(),
                   text: z.object({ body: z.string() }).optional(),
+                  interactive: z.object({
+                    type: z.string().optional(),
+                    button_reply: z.object({ id: z.string(), title: z.string().optional() }).optional(),
+                    list_reply: z.object({ id: z.string(), title: z.string().optional(), description: z.string().optional() }).optional()
+                  }).optional(),
                   audio: z.object({ id: z.string(), mime_type: z.string().optional() }).optional(),
                   document: z.object({ id: z.string(), filename: z.string().optional(), mime_type: z.string().optional() }).optional(),
                   image: z.object({ id: z.string(), mime_type: z.string().optional() }).optional()
@@ -110,6 +117,7 @@ type InboundMessage = {
   type: string;
   timestamp?: string;
   text?: { body: string };
+  interactive?: { type?: string; button_reply?: { id: string; title?: string }; list_reply?: { id: string; title?: string; description?: string } };
   audio?: { id: string; mime_type?: string };
   document?: { id: string; filename?: string; mime_type?: string };
   image?: { id: string; mime_type?: string };
@@ -117,6 +125,8 @@ type InboundMessage = {
 
 async function processIncomingMessage(input: { message: InboundMessage; phoneNumber: string }) {
   const { message, phoneNumber } = input;
+  const interactiveReply = message.interactive?.button_reply ?? message.interactive?.list_reply;
+  const incomingBody = message.text?.body ?? interactiveReply?.id ?? '';
   let claimed;
   try {
     claimed = await prisma.whatsAppMessage.create({
@@ -127,7 +137,7 @@ async function processIncomingMessage(input: { message: InboundMessage; phoneNum
         providerMessageId: message.id,
         providerTimestamp: providerTimestamp(message.timestamp),
         messageType: message.type,
-        body: message.text?.body ?? '',
+        body: incomingBody,
         status: 'processing',
         processingStatus: 'PROCESSING',
         processingAttempts: 1,
@@ -146,7 +156,7 @@ async function processIncomingMessage(input: { message: InboundMessage; phoneNum
     return { inbound: duplicate, duplicate: true };
   }
   let mediaDocumentId: string | undefined;
-  let body = message.text?.body ?? '';
+  let body = incomingBody;
   const mediaId = message.audio?.id ?? message.document?.id ?? message.image?.id;
 
   if (mediaId) {
@@ -387,6 +397,27 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       ? await prisma.document.findUnique({ where: { id: assistantResponse.action.documentId } })
       : null;
     let documentSendFailed = false;
+
+    if (assistantResponse.answer === whatsappMainMenu) {
+      try {
+        const sent = await sendWhatsAppInteractiveList({ to: outboundTo, ...whatsappMainMenuInteractive });
+        await prisma.whatsAppMessage.create({
+          data: {
+            direction: 'OUTBOUND',
+            fromNumber: input.phoneNumber,
+            toNumber: outboundTo,
+            providerMessageId: sent.providerMessageId,
+            messageType: 'interactive',
+            body: assistantResponse.answer,
+            conversationId: input.conversation.id
+          }
+        });
+        app.log.info({ conversationId: input.conversation.id }, 'whatsapp interactive main menu sent');
+        return;
+      } catch (error) {
+        await recordOutboundFailure('interactive', assistantResponse.answer, error);
+      }
+    }
 
     async function storedBuffer(storagePath: string) {
       try {

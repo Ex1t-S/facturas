@@ -8,6 +8,25 @@ export type WhatsAppMenuState = {
 
 export type WhatsAppMenuRoute = 'delivery_note' | 'quote' | 'customers' | 'document_query' | 'menu';
 
+export const whatsappMainMenuInteractive = {
+  type: 'list' as const,
+  header: 'FMH Gesti\u00f3n',
+  body: 'Eleg\u00ed qu\u00e9 quer\u00e9s hacer:',
+  footer: 'Tambi\u00e9n pod\u00e9s escribir o enviar un audio.',
+  button: 'Abrir men\u00fa',
+  sections: [
+    {
+      title: 'Gesti\u00f3n comercial',
+      rows: [
+        { id: 'fmh_menu_remito', title: 'Remito', description: 'Crear y enviar un remito' },
+        { id: 'fmh_menu_presupuesto', title: 'Presupuesto', description: 'Armar un presupuesto' },
+        { id: 'fmh_menu_clientes', title: 'Clientes', description: 'Agregar o consultar clientes' },
+        { id: 'fmh_menu_consultas', title: 'Consultas', description: 'Buscar remitos y presupuestos' }
+      ]
+    }
+  ]
+};
+
 export const whatsappMainMenu = [
   'Menu FMH Gestion',
   '',
@@ -39,6 +58,13 @@ export function isWhatsAppMenuRequest(value: string) {
 
 export function whatsappMenuSelection(value: string, state?: WhatsAppMenuState, history?: Array<{ role: string; content: string }>): WhatsAppMenuRoute | null {
   const normalized = normalizeWhatsAppMenuText(value);
+  const interactiveSelections: Record<string, WhatsAppMenuRoute> = {
+    fmh_menu_remito: 'delivery_note',
+    fmh_menu_presupuesto: 'quote',
+    fmh_menu_clientes: 'customers',
+    fmh_menu_consultas: 'document_query'
+  };
+  if (interactiveSelections[normalized]) return interactiveSelections[normalized];
   if (/^(?:remito|crear remito|armar remito)$/.test(normalized)) return 'delivery_note';
   if (/^(?:presupuesto|crear presupuesto|armar presupuesto)$/.test(normalized)) return 'quote';
   if (/^(?:cliente|clientes|agregar cliente|nuevo cliente)$/.test(normalized)) return 'customers';

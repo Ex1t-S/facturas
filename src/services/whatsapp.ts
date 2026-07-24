@@ -69,6 +69,15 @@ export type WhatsAppSendDocumentInput = {
   caption?: string;
 };
 
+export type WhatsAppInteractiveListInput = {
+  to: string;
+  header?: string;
+  body: string;
+  footer?: string;
+  button: string;
+  sections: Array<{ title?: string; rows: Array<{ id: string; title: string; description?: string }> }>;
+};
+
 async function sendWhatsAppMessage(body: Record<string, unknown>): Promise<{ providerMessageId?: string }> {
   if (!config.WHATSAPP_ACCESS_TOKEN || !config.WHATSAPP_PHONE_NUMBER_ID) {
     throw new Error('WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID are required to send WhatsApp messages');
@@ -97,6 +106,23 @@ export async function sendWhatsAppText(input: WhatsAppSendTextInput): Promise<{ 
     to: input.to,
     type: 'text',
     text: { body: input.body }
+  });
+}
+
+export async function sendWhatsAppInteractiveList(input: WhatsAppInteractiveListInput): Promise<{ providerMessageId?: string }> {
+  return sendWhatsAppMessage({
+    to: input.to,
+    type: 'interactive',
+    interactive: {
+      type: 'list',
+      ...(input.header ? { header: { type: 'text', text: input.header } } : {}),
+      body: { text: input.body },
+      ...(input.footer ? { footer: { text: input.footer } } : {}),
+      action: {
+        button: input.button,
+        sections: input.sections
+      }
+    }
   });
 }
 
