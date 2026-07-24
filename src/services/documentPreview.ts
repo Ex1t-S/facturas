@@ -6,6 +6,7 @@ import { resolveStoredDocumentPath } from './documentStorage.js';
 export type DocumentPreview =
   | { type: 'pdf'; url: string }
   | { type: 'image'; url: string }
+  | { type: 'audio'; url: string }
   | { type: 'html'; html: string }
   | { type: 'unsupported'; message: string };
 
@@ -24,6 +25,10 @@ export function isImageMime(mimeType: string, fileName: string) {
   return mimeType.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(fileName);
 }
 
+export function isAudioMime(mimeType: string, fileName: string) {
+  return mimeType.startsWith('audio/') || /\.(ogg|mp3|wav|m4a|webm)$/i.test(fileName);
+}
+
 export async function buildPreview(document: { id: string; mimeType: string; fileName: string; storagePath: string }, companyId: string): Promise<DocumentPreview> {
   const contentUrl = `/api/documents/${document.id}/content?companyId=${encodeURIComponent(companyId)}`;
   if (isPdfMime(document.mimeType, document.fileName)) {
@@ -32,6 +37,10 @@ export async function buildPreview(document: { id: string; mimeType: string; fil
 
   if (isImageMime(document.mimeType, document.fileName)) {
     return { type: 'image', url: contentUrl };
+  }
+
+  if (isAudioMime(document.mimeType, document.fileName)) {
+    return { type: 'audio', url: contentUrl };
   }
 
   if (isWordMime(document.mimeType, document.fileName)) {

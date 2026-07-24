@@ -731,6 +731,7 @@ function Documents({ data, companyId, notify }: { data: AnyRecord; companyId: st
             </div>
             {preview.data.type === 'pdf' && <iframe title={preview.document.fileName} src={preview.data.url} />}
             {preview.data.type === 'image' && <img src={preview.data.url} alt={preview.document.fileName} />}
+            {preview.data.type === 'audio' && <div className="audioPreview"><audio controls preload="metadata" src={preview.data.url}>Tu navegador no puede reproducir este audio.</audio></div>}
             {preview.data.type === 'html' && <article className="docHtml" dangerouslySetInnerHTML={{ __html: preview.data.html }} />}
             {preview.data.type === 'unsupported' && <Empty title="Vista no disponible" text={preview.data.message || 'Este formato todavia no tiene vista previa.'} />}
           </div>

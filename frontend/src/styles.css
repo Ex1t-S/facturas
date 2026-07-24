@@ -614,6 +614,16 @@ td strong, td small { display: block; }
   object-fit: contain;
   padding: 18px;
 }
+.audioPreview {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  padding: 32px;
+  background: var(--panel-2);
+}
+.audioPreview audio {
+  width: min(620px, 100%);
+}
 .docHtml {
   overflow: auto;
   padding: 32px;
