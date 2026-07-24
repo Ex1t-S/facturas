@@ -12,6 +12,12 @@ analysis/
 prisma/dev.db
 coverage/
 *.log
+*.key
+*.pem
+*.crt
+*.csr
+*.p12
+*.pfx
 .vite/
 .tmp/
 __pycache__/
