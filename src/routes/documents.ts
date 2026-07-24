@@ -7,7 +7,7 @@ import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { calculateQuoteTotals } from '../domain/money.js';
 import { extractDocumentFromFile } from '../services/documentExtraction.js';
-import { buildPreview, isImageMime, isPdfMime } from '../services/documentPreview.js';
+import { buildPreview, isAudioMime, isImageMime, isPdfMime } from '../services/documentPreview.js';
 import { readStoredDocumentFile, resolveStoredDocumentPath, writeDocumentFile } from '../services/documentStorage.js';
 import { importHistoricalDocuments, scanHistoricalDocuments } from '../services/historicalImport.js';
 import { runSerializableTransaction } from '../services/transaction.js';
@@ -377,7 +377,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     if (!document) return reply.code(404).send({ error: 'Document not found' });
 
     const buffer = await readStoredDocumentFile(document.storagePath);
-    const disposition = isPdfMime(document.mimeType, document.fileName) || isImageMime(document.mimeType, document.fileName) ? 'inline' : 'attachment';
+    const disposition = isPdfMime(document.mimeType, document.fileName) || isImageMime(document.mimeType, document.fileName) || isAudioMime(document.mimeType, document.fileName) ? 'inline' : 'attachment';
 
     return reply
       .header('Cache-Control', 'no-store, private')
