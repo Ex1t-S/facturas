@@ -42,7 +42,7 @@ describe('commercial action classifier priority', () => {
     expect(classifyCommercialAction(message, activeDraft).type).toBe(expected);
   });
 
-  it.each(['reiniciar', 'salir', 'empecemos de 0', 'empezamos de cero', 'cancelar borrador', 'no, dejá'])('%s cancels instead of becoming an item', (message) => {
+  it.each(['reiniciar', 'salir', 'cancelar', 'cancelá', 'empecemos de 0', 'empezamos de cero', 'cancelar borrador', 'no, dejá'])('%s cancels instead of becoming an item', (message) => {
     expect(classifyCommercialAction(message, activeDraft).type).toBe('CANCEL_DRAFT');
   });
 

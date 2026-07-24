@@ -53,7 +53,7 @@ export function normalizeWhatsAppMenuText(value: string) {
 }
 
 export function isWhatsAppMenuRequest(value: string) {
-  return /^(?:menu|inicio|opciones|volver|volver al menu|que puedo hacer|ayuda)[.!\s]*$/i.test(normalizeWhatsAppMenuText(value));
+  return /^(?:hola|holas|buenas?|buen dia|buenas tardes|buenas noches|menu|inicio|opciones|volver|volver al menu|que puedo hacer|ayuda)[.!\s]*$/i.test(normalizeWhatsAppMenuText(value));
 }
 
 export function whatsappMenuSelection(value: string, state?: WhatsAppMenuState, history?: Array<{ role: string; content: string }>): WhatsAppMenuRoute | null {

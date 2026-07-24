@@ -80,7 +80,10 @@ export async function loadPersistedPendingDraft(conversationId: string): Promise
   });
   if (!record?.legacyPayloadJson) return undefined;
   try {
-    return JSON.parse(record.legacyPayloadJson) as PendingDeliveryDraft;
+    const pending = JSON.parse(record.legacyPayloadJson) as PendingDeliveryDraft;
+    const status = pending.commercialDraft?.status || pending.status;
+    if (status === 'CANCELLED' || status === 'FINALIZED' || status === 'EXPIRED') return undefined;
+    return pending;
   } catch {
     return undefined;
   }

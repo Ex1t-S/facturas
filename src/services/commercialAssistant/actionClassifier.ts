@@ -16,7 +16,7 @@ export function classifyCommercialAction(
   const active = Boolean(draft && !['FINALIZED', 'CANCELLED', 'EXPIRED'].includes(draft.status));
   const waitingConfirmation = draft?.status === 'WAITING_CONFIRMATION';
 
-  if (/(?:^|\b)(?:cancelar(?:\s+el)?\s+borrador|cancela|cancelalo|descartalo|olvidalo|borra ese borrador|reiniciar|reinicia|reset|salir|salir del borrador|volver a empezar|arranquemos de nuevo|arranquemos de (?:0|cero)|empezar de nuevo|empezar de (?:0|cero)|empecemos de nuevo|empezamos de nuevo|empecemos de (?:0|cero)|empezamos de (?:0|cero)|borrón y cuenta nueva|borron y cuenta nueva|no lo guardes|no quiero guardarlo|no hace falta guardarlo|no[,.]?\s+deja(?:lo)?)(?:$|\b)/.test(folded)) {
+  if (/(?:^|\b)(?:cancelar(?:\s+el)?(?:\s+borrador)?|cancela|cancelalo|descartalo|olvidalo|borra ese borrador|reiniciar|reinicia|reset|salir|salir del borrador|volver a empezar|arranquemos de nuevo|arranquemos de (?:0|cero)|empezar de nuevo|empezar de (?:0|cero)|empecemos de nuevo|empezamos de nuevo|empecemos de (?:0|cero)|empezamos de (?:0|cero)|borrón y cuenta nueva|borron y cuenta nueva|no lo guardes|no quiero guardarlo|no hace falta guardarlo|no[,.]?\s+deja(?:lo)?)(?:$|\b)/.test(folded)) {
     return { type: 'CANCEL_DRAFT', confidence: 'HIGH', rule: 'explicit_cancel' };
   }
 

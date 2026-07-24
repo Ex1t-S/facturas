@@ -4,7 +4,8 @@ import {
   parseWhatsAppDocumentQuery,
   whatsappMainMenuInteractive,
   whatsappMainMenu,
-  whatsappMenuSelection
+  whatsappMenuSelection,
+  isWhatsAppMenuRequest
 } from './whatsappMenu.js';
 
 describe('WhatsApp menu', () => {
@@ -29,6 +30,11 @@ describe('WhatsApp menu', () => {
     expect(whatsappMenuSelection('fmh_menu_presupuesto')).toBe('quote');
     expect(whatsappMenuSelection('fmh_menu_clientes')).toBe('customers');
     expect(whatsappMenuSelection('fmh_menu_consultas')).toBe('document_query');
+  });
+
+  it('recognizes greetings as a safe entry point without treating them as items', () => {
+    expect(isWhatsAppMenuRequest('Hola')).toBe(true);
+    expect(isWhatsAppMenuRequest('buenas')).toBe(true);
   });
 
   it('extracts customer details without requiring every optional field', () => {

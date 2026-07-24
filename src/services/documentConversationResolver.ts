@@ -72,7 +72,7 @@ export function resolveDocumentConversationMessage(input: {
       reason: classified.rule
     };
   }
-  if (/^(?:cancelar(?:\s+el)?\s+borrador|no[,.]?\s+deja(?:lo)?)$/i.test(message)) {
+  if (/^(?:cancelar(?:\s+el)?(?:\s+borrador)?|cancela|cancelalo|descartalo|reiniciar|reinicia|reset|salir|no[,.]?\s+deja(?:lo)?)$/i.test(message)) {
     return { action: 'CANCEL_DOCUMENT', confidence: 'HIGH', reason: 'explicit_cancel' };
   }
   if (/\b(?:cancela|cancelalo|descartalo|olvidalo|borra ese borrador|reiniciar|reinicia|reset|salir|salir del borrador|volver a empezar|arranquemos de nuevo|arranquemos de (?:0|cero)|empezar de nuevo|empezar de (?:0|cero)|empecemos de nuevo|empezamos de nuevo|empecemos de (?:0|cero)|empezamos de (?:0|cero)|borron y cuenta nueva|no lo guardes|no quiero guardarlo|no lo quiero guardar|no hace falta guardarlo|dejalo asi)\b/i.test(message)) return { action: 'CANCEL_DOCUMENT', confidence: 'HIGH', reason: 'explicit_cancel' };

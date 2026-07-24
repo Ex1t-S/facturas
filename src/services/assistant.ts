@@ -1581,16 +1581,9 @@ export async function answerAssistant(input: AssistantInput): Promise<AssistantR
     };
   }
 
-  // La cancelación tiene prioridad sobre cualquier estado de captura
-  // (cliente, ítems, precios o revisión), incluso si todavía no hay PDF.
-  if (input.pendingDeliveryDraft && conversationResolution.action === 'CANCEL_DOCUMENT') {
-    return {
-      mode: 'local',
-      answer: `Cancelé el borrador de ${draftKindLabel(input.pendingDeliveryDraft.type)}.`,
-      sources: [],
-      suggestions
-    };
-  }
+  // La cancelación se procesa dentro de runCommercialAssistant para que la
+  // transición CANCEL_DRAFT se persista también en CommercialDraft. Antes se
+  // devolvía undefined aquí y quedaba un borrador activo fantasma en la base.
   if (!input.pendingDeliveryDraft && conversationResolution.action === 'CANCEL_DOCUMENT') {
     return {
       mode: 'local',

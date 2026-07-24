@@ -218,7 +218,10 @@ function appLog(error: unknown) {
 function parsePending(value: string | null | undefined): PendingDeliveryDraft | undefined {
   if (!value) return undefined;
   try {
-    return JSON.parse(value) as PendingDeliveryDraft;
+    const pending = JSON.parse(value) as PendingDeliveryDraft;
+    const status = pending.commercialDraft?.status || pending.status;
+    if (status === 'CANCELLED' || status === 'FINALIZED' || status === 'EXPIRED') return undefined;
+    return pending;
   } catch {
     return undefined;
   }
