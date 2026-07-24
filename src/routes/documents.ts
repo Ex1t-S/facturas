@@ -119,7 +119,7 @@ function documentMonth(document: { documentDate?: Date | null; createdAt?: Date;
 function shortDocumentName(fileName: string) {
   const base = fileName.replace(/\.[a-z0-9]+$/i, '');
   const canonical = base.match(/^(?:presupuesto|factura(?:-compra)?|remito)[_-](?:19\d{2}|20\d{2})-\d{2}-\d{2}[_-](.+)$/i);
-  if (canonical) return canonical[1].replace(/[_-](?:\d{3}-\d{8})(?:_\d{2})?$/i, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (canonical) return canonical[1].replace(/[_-](?:\d{3}-\d{8})(?:_\d{2})?$/i, '').replace(/_\d{2}$/i, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
   return base
     .replace(/^(presupuesto|factura|fact|remito)\s*/i, '')
     .replace(/[._-]+/g, ' ')
@@ -131,7 +131,7 @@ function safeCustomerName(document: { issuerName?: string | null; fileName?: str
   const candidate = document.issuerName || document.customerCandidates?.find((item) => item.legalName)?.legalName;
   if (candidate) return candidate;
   const canonical = (document.fileName ?? '').replace(/\.[a-z0-9]+$/i, '').match(/^(?:presupuesto|factura(?:-compra)?|remito)[_-](?:19\d{2}|20\d{2})-\d{2}-\d{2}[_-](.+)$/i);
-  if (canonical) return canonical[1].replace(/[_-](?:\d{3}-\d{8})(?:_\d{2})?$/i, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Sin cliente';
+  if (canonical) return canonical[1].replace(/[_-](?:\d{3}-\d{8})(?:_\d{2})?$/i, '').replace(/_\d{2}$/i, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Sin cliente';
   const normalized = (document.fileName ?? '').replace(/\.[a-z0-9]+$/i, '').replace(/^(fact|factura|presupuesto|remito)\s+/i, '').trim();
   const withoutDate = normalized.replace(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|19\d{2}|20\d{2}|\d{1,2})\b/gi, ' ').replace(/\s+/g, ' ').trim();
   return withoutDate ? withoutDate.slice(0, 70) : 'Sin cliente';
