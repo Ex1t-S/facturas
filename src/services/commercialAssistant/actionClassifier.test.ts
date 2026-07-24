@@ -55,6 +55,14 @@ describe('commercial action classifier priority', () => {
     expect(classifyCommercialAction('Techado de galpon con 14 metros', activeDraft).type).toBe('APPEND_ITEM');
   });
 
+  it.each([
+    'Estuvimos limpiando las bateas y subimos bolsas de porlan',
+    'y limpiamos el tambor',
+    'hicimos una reparacion en la noria'
+  ])('%s is recognized as work content without a verb allowlist entry', (message) => {
+    expect(classifyCommercialAction(message, activeDraft).type).toBe('APPEND_ITEM');
+  });
+
   it.each(['guardalo', 'guardalo como remito-mario-2307'])('%s confirms a current preview', (message) => {
     expect(classifyCommercialAction(message, { ...activeDraft, status: 'WAITING_CONFIRMATION' }).type).toBe(
       'CONFIRM_DOCUMENT'

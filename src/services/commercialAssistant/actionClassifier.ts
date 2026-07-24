@@ -1,7 +1,10 @@
 import type { ActionClassification, CommercialDraft } from './types.js';
 import { normalizeCommercialMessage } from './normalizer.js';
 
-const commercialContentSignals = /\b(?:agrega|agregale|anade|sumale|inclui|incluye|trabajo|trabajos|servicio|servicios|repar(?:ar|acion|acion)|mejor(?:ar|a)|limpi(?:ar|eza)|revis(?:ar|ion)|sold(?:ar|adura)|fabric(?:ar|acion)|instal(?:ar|acion)|mont(?:ar|aje)|techad(?:o|a)|galpon|batea|noria|silo|cabezal|rodamientos?|rulemanes?|motor(?:es)?|cinta|sinfin|estructura|chapa|perfil|kg|kilos?|metros?|unidades?|unidad|item|punto|renglon|linea|precio|importe|valor|\$|usd|u\$s|ars)\b/;
+const commercialContentSignals = /\b(?:agrega|agregale|anade|sumale|inclui|incluye|trabajo|trabajos|servicio|servicios|repar\w*|mejor\w*|limpi\w*|revis\w*|sold\w*|fabric\w*|instal\w*|mont\w*|armamos?|estuvimos|hicimos|realizamos|subimos|retiramos|colocamos|caminamos|techad\w*|galpon\w*|batea\w*|noria\w*|silo\w*|cabezal\w*|rodamientos?|rulemanes?|motor(?:es)?|cinta|sinfin|estructura|chapa|perfil|kg|kilos?|metros?|unidades?|unidad|item|punto|renglon|linea|precio|importe|valor|\$|usd|u\$s|ars)\b/;
+// Captura conjugaciones y gerundios no enumerados ("limpiando", "subimos",
+// "hicimos", etc.) sin mantener una lista infinita de verbos comerciales.
+const naturalWorkVerb = /\b[a-z]+(?:amos|emos|imos|ando|iendo|aron|ieron|iste|isteis|abamos|iamos|ariamos|eriamos|iriamos)\b/;
 
 function socialText(folded: string) {
   const clean = folded.replace(/[!?.,;:]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -118,7 +121,7 @@ export function classifyCommercialAction(
     active &&
     ['COLLECTING_ITEMS', 'COLLECTING_PRICES', 'READY_FOR_PREVIEW', 'WAITING_CONFIRMATION'].includes(draft!.status) &&
     folded.length >= 3 &&
-    commercialContentSignals.test(folded)
+    (commercialContentSignals.test(folded) || naturalWorkVerb.test(folded))
   ) {
     return { type: 'APPEND_ITEM', confidence: draft?.awaiting === 'ITEMS' ? 'HIGH' : 'MEDIUM', rule: 'commercial_content' };
   }

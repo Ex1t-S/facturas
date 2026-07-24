@@ -40,6 +40,14 @@ describe('commercial parameter extraction', () => {
     );
   });
 
+  it('extracts natural work descriptions and strips a leading conjunction', () => {
+    const first = classifyCommercialAction('Estuvimos limpiando las bateas y subimos bolsas de porlan', draft);
+    expect(extractDraftItems(extractCommercialContent('Estuvimos limpiando las bateas y subimos bolsas de porlan', first), 'ARS').map((item) => item.description))
+      .toEqual(['Estuvimos limpiando las bateas', 'Subimos bolsas de porlan']);
+    const followUp = classifyCommercialAction('y limpiamos el tambor', draft);
+    expect(extractCommercialContent('y limpiamos el tambor', followUp)).toBe('limpiamos el tambor');
+  });
+
   it.each([
     ['al item uno ponle 20000$', 20_000, { kind: 'INDEX', index: 1 }],
     ['cambia el precio del item 1 a 50000', 50_000, { kind: 'INDEX', index: 1 }],

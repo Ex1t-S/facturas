@@ -41,13 +41,14 @@ export function extractCommercialContent(message: string, classification: Action
     content = content
       .replace(/^(?:agrega|agregá|agregale|agregále|añade|añadí|sumale|sumále|inclui|incluí|incluye)\s+(?:que\s+)?/i, '')
       .replace(/^(?:tambien|también|ademas|además)\s+/i, '')
+      .replace(/^(?:y|e)\s+/i, '')
       .replace(/^le\s+/i, '');
   }
   return content.trim();
 }
 
 function splitCommercialItems(content: string) {
-  const verb = '(?:mejoramos|mejorar|limpiamos|limpiar|reparamos|reparar|soldamos|soldar|fabricamos|fabricar|instalamos|instalar|caminamos|caminar|techado|cambiamos|cambiar|colocamos|colocar|retiramos|retirar|revisamos|revisar)';
+  const verb = '(?:mejoramos|mejorar|limpiamos|limpiando|limpiar|subimos|subir|reparamos|reparar|soldamos|soldar|fabricamos|fabricar|instalamos|instalar|caminamos|caminar|techado|cambiamos|cambiar|colocamos|colocar|retiramos|retirar|revisamos|revisar)';
   return content
     .split(new RegExp(`\\s*[,;\\n]\\s*|\\s+y\\s+(?=${verb}\\b)`, 'i'))
     .map((part) => part.trim())
