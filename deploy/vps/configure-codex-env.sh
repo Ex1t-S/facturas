@@ -16,3 +16,24 @@ EOF
 
 install -m 600 "${TEMP_FILE}" "${ENV_FILE}"
 rm -f "${TEMP_FILE}"
+
+if ! grep -q '^POSTGRES_PASSWORD=' "${ENV_FILE}"; then
+  python3 - "${ENV_FILE}" <<'PY'
+import sys
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+env_path = Path(sys.argv[1])
+lines = env_path.read_text(encoding="utf-8").splitlines()
+database_url = next(
+    (line.split("=", 1)[1].strip().strip('"').strip("'") for line in lines if line.startswith("DATABASE_URL=")),
+    "",
+)
+password = unquote(urlparse(database_url).password or "")
+if not password:
+    raise SystemExit("DATABASE_URL no contiene una contraseña utilizable para POSTGRES_PASSWORD")
+with env_path.open("a", encoding="utf-8") as env_file:
+    env_file.write(f"\nPOSTGRES_PASSWORD={password}\n")
+PY
+  chmod 600 "${ENV_FILE}"
+fi
