@@ -29,6 +29,21 @@ describe('commercial engineering drawings V2', () => {
     expect(Object.values(result.assumedValues).every((item) => item.origin === 'ILLUSTRATIVE_ASSUMPTION')).toBe(true);
   });
 
+  it('generates a reproducible A3 plant layout from the commercial request', () => {
+    const plant = engineeringDesignRequestV2Schema.parse({
+      schemaVersion: '2.0', equipmentType: 'GRAIN_HANDLING_PLANT', projectName: 'Planta ejemplo', customerName: 'Cliente', productOrMaterial: 'trigo', capacity: 400, capacityUnit: 't',
+      requestedDimensions: { siteWidth: 40000, siteLength: 60000, elevatorHeight: 25000, siloCount: 4, siloCapacity: 400 }, siteRestrictions: [], preferredConfiguration: {}, requiredComponents: ['silos', 'sinfines', 'noria'], optionalComponents: [], operatingConditions: {}, userNotes: [], sourceConversationId: null, sourceBudgetId: null
+    });
+    const first = createCommercialEngineeringDrawing(plant);
+    const second = createCommercialEngineeringDrawing(plant);
+    expect(first.result.calculatedValues.totalNominalCapacity.value).toBe(1600);
+    expect(first.result.drawingSpec.drawingNumber).toBe('FMH-PLANTA-4S-40X60');
+    expect(first.scene.sheets[0].entities.some((entity) => entity.type === 'Circle')).toBe(true);
+    expect(first.scene.sheets[0].entities.some((entity) => entity.type === 'Table')).toBe(true);
+    expect(first.svg).toBe(second.svg);
+    expect(first.svg).toContain(MANDATORY_COMMERCIAL_LEGEND);
+  });
+
   it('keeps seeded illustrative geometry reproducible', () => {
     const first = createIllustrativeSilo400T({ seed: 'FMH-SILO-400-001' });
     const second = createIllustrativeSilo400T({ seed: 'FMH-SILO-400-001' });

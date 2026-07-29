@@ -1,11 +1,13 @@
 import { buildSiloCommercialDesign } from './siloDesignPack.js';
 import { buildSiloA3DrawingScene } from './siloDrawing.js';
+import { buildGrainHandlingPlantA3Scene, buildGrainHandlingPlantCommercialDesign } from './plantDesignPack.js';
 import { renderSceneToPdf } from './pdfRenderer.js';
 import { renderSceneToSvg } from './svgRenderer.js';
 import type { CommercialDrawingTitleBlock, EngineeringDesignRequestV2 } from './types.js';
 
 export function createCommercialEngineeringDesign(request: EngineeringDesignRequestV2) {
   if (request.equipmentType === 'SILO') return buildSiloCommercialDesign(request);
+  if (request.equipmentType === 'GRAIN_HANDLING_PLANT') return buildGrainHandlingPlantCommercialDesign(request);
   throw Object.assign(new Error(`El DesignPack ${request.equipmentType} todavía no está implementado en el Hito 1.`), { statusCode: 409, code: 'DESIGN_PACK_NOT_IMPLEMENTED' });
 }
 
@@ -14,6 +16,10 @@ export function createCommercialEngineeringDrawing(
   titleBlockOverrides: Partial<CommercialDrawingTitleBlock> = {}
 ) {
   const result = createCommercialEngineeringDesign(request);
+  if (request.equipmentType === 'GRAIN_HANDLING_PLANT') {
+    const scene = buildGrainHandlingPlantA3Scene(result, request, titleBlockOverrides);
+    return { request, result, scene, svg: renderSceneToSvg(scene) };
+  }
   if (request.equipmentType !== 'SILO') throw new Error('El constructor A3 inicial sólo admite silos.');
   const scene = buildSiloA3DrawingScene(result, {
     project: request.projectName,
