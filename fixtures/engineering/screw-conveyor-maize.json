@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "2.0",
+  "equipmentType": "SCREW_CONVEYOR",
+  "projectName": "Sinfín de maíz",
+  "customerName": "Cliente demostración",
+  "productOrMaterial": "maíz",
+  "capacity": 30,
+  "capacityUnit": "t/h",
+  "requestedDimensions": { "length": 12000 },
+  "siteRestrictions": [],
+  "preferredConfiguration": { "type": "U_TROUGH" },
+  "requiredComponents": [],
+  "optionalComponents": [],
+  "operatingConditions": {},
+  "userNotes": ["Fixture reservado para Hito 2."],
+  "sourceConversationId": null,
+  "sourceBudgetId": null
+}

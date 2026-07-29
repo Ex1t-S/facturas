@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "2.0",
+  "equipmentType": "HOPPER",
+  "projectName": "Tolva orientativa 5 m3",
+  "customerName": "Cliente demostración",
+  "productOrMaterial": "maíz",
+  "capacity": 5,
+  "capacityUnit": "m3",
+  "requestedDimensions": {},
+  "siteRestrictions": [],
+  "preferredConfiguration": { "shape": "SQUARE_TO_ROUND" },
+  "requiredComponents": [],
+  "optionalComponents": [],
+  "operatingConditions": {},
+  "userNotes": ["Fixture reservado para Hito 2."],
+  "sourceConversationId": null,
+  "sourceBudgetId": null
+}

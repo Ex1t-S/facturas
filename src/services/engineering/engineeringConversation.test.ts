@@ -118,6 +118,10 @@ describe('engineering conversational flow', () => {
     expect(classifyEngineeringIntent('Tengo 200 toneladas y 20 patas.', { currentIntent: 'LOAD_PER_SUPPORT' }).intent).toBe('LOAD_PER_SUPPORT');
   });
 
+  it('keeps drawing context for an imperative follow-up', () => {
+    expect(classifyEngineeringIntent('Generalo ahora usando las hipótesis indicadas.', { currentIntent: 'PRELIMINARY_DRAWING' }).intent).toBe('PRELIMINARY_DRAWING');
+  });
+
   it('requires the deterministic support-load tool for a complete support calculation', () => {
     expect(requiredToolForEngineeringIntent('LOAD_PER_SUPPORT')).toBe('calculate_load_per_support');
   });

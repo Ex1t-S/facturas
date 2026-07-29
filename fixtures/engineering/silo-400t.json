@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "2.0",
+  "equipmentType": "SILO",
+  "projectName": "Silo trigo 400 t",
+  "customerName": "Cliente demostración",
+  "productOrMaterial": "trigo",
+  "capacity": 400,
+  "capacityUnit": "t",
+  "requestedDimensions": {
+    "dischargeClearance": 4000
+  },
+  "siteRestrictions": [],
+  "preferredConfiguration": {
+    "siloType": "METALLIC_SUPPORTED",
+    "bottomType": "CONICAL",
+    "roofType": "CONICAL",
+    "supportCount": 8
+  },
+  "requiredComponents": ["ladder", "safetyCage", "platform", "railing"],
+  "optionalComponents": ["inspectionHatch", "ventilation"],
+  "operatingConditions": {},
+  "userNotes": [],
+  "sourceConversationId": null,
+  "sourceBudgetId": null
+}

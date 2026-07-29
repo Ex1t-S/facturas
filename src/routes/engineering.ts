@@ -10,7 +10,7 @@ import { ingestEngineeringKnowledge } from '../services/engineering/engineeringI
 import { projectTypes } from '../services/engineering/engineeringSchemas.js';
 import { answerEngineeringConversation, createEngineeringConversation, getEngineeringConversation, listEngineeringConversations, saveEngineeringCase } from '../services/engineering/engineeringConversation.js';
 import { searchOfficialEngineeringRegulations } from '../services/engineering/regulations.js';
-import { renderPreliminaryEngineeringPdf, renderPreliminaryEngineeringSvg, type EngineeringDrawingSpec } from '../services/engineering/drawing.js';
+import { renderPreliminaryEngineeringPdf, renderPreliminaryEngineeringSvg, resolvePreliminaryEngineeringDrawing, type EngineeringDrawingSpec } from '../services/engineering/drawing.js';
 import { getEngineeringDrawing, getEngineeringDrawingStatus, ingestEngineeringDrawings, listEngineeringDrawings, readEngineeringDrawingFile } from '../services/engineering/drawingLibrary.js';
 import { readStoredDocumentFile } from '../services/documentStorage.js';
 import { engineeringModelConfig, resolveEngineeringModel } from '../services/engineering/engineeringRuntime.js';
@@ -20,6 +20,20 @@ import { searchEngineeringGoldenLibrary } from '../services/engineering/engineer
 import { createEngineeringCurationJob, listEngineeringCurationJobs, curationJobTypes } from '../services/engineering/engineeringCuration.js';
 import { pendingReviewItems, reviewBenchmark, reviewCatalogSection, reviewDrawing, reviewKnowledgeDocument, reviewProgress, reviewProject, runEngineeringGoldenValidation, setReviewSessionStatus, startOrResumeReviewSession, reviewTypes, reviewDecisions } from '../services/engineering/engineeringReview.js';
 import { engineeringFinalizationStatus } from '../services/engineering/engineeringFinalization.js';
+import { designPackRegistry } from '../services/engineering/commercialDrawings/designPacks.js';
+import { bulkMaterialFixtures } from '../services/engineering/commercialDrawings/materials.js';
+import { engineeringDesignRequestV2Schema } from '../services/engineering/commercialDrawings/schemas.js';
+import { createCommercialEngineeringDrawing, createCommercialEngineeringPdf } from '../services/engineering/commercialDrawings/service.js';
+import { codexEngineeringBridgeStatus, interpretEngineeringDesignWithCodex } from '../services/engineering/commercialDrawings/codexDesignBridge.js';
+import {
+  associateCommercialDrawingToQuote,
+  commercialDrawingStatuses,
+  getCommercialEngineeringDrawing,
+  listCommercialEngineeringDrawings,
+  readCommercialDrawingPdf,
+  readCommercialDrawingSvg,
+  saveCommercialEngineeringDrawing
+} from '../services/engineering/commercialDrawings/persistence.js';
 
 const companyQuery = z.object({ companyId: z.string().min(1) });
 const chatSchema = z.object({ companyId: z.string().min(1), message: z.string().trim().min(1).max(6000) });
@@ -28,6 +42,23 @@ const reviewSchema = z.object({ status: z.enum(['VERIFIED', 'CORRECTED', 'REJECT
 const conversationCreateSchema = z.object({ companyId: z.string().min(1), title: z.string().trim().max(120).optional() });
 const conversationMessageSchema = z.object({ companyId: z.string().min(1), message: z.string().trim().min(1).max(12000) });
 const drawingSchema = z.object({ drawingType: z.enum(['SILO', 'HOPPER', 'WAREHOUSE', 'SUPPORT_STRUCTURE']), width: z.number().positive().optional(), length: z.number().positive().optional(), diameter: z.number().positive().optional(), height: z.number().positive().optional(), bodyHeight: z.number().positive().optional(), coneHeight: z.number().positive().optional(), freeHeight: z.number().positive().optional(), lowerOpening: z.number().positive().optional(), roofSlope: z.number().positive().optional(), capacityT: z.number().positive().optional(), supportCount: z.number().int().positive().optional(), customerName: z.string().max(160).optional(), projectName: z.string().max(160).optional(), quoteNumber: z.string().max(80).optional(), notes: z.array(z.string().max(300)).max(20).optional() });
+const titleBlockOverrideSchema = z.object({
+  company: z.string().trim().max(120),
+  project: z.string().trim().max(160),
+  customer: z.string().trim().max(160),
+  drawingName: z.string().trim().max(180),
+  equipment: z.string().trim().max(120),
+  capacity: z.string().trim().max(80),
+  date: z.string().trim().max(40),
+  scale: z.string().trim().max(20),
+  drawnBy: z.string().trim().max(120),
+  reviewedBy: z.string().trim().max(160),
+  approvedBy: z.string().trim().max(160),
+  drawingNumber: z.string().trim().max(80),
+  revision: z.string().trim().max(20),
+  quoteNumber: z.string().trim().max(80),
+  observations: z.string().trim().max(300)
+}).partial().strict();
 const optionalBooleanQuery = z.unknown().optional().transform(parseOptionalBoolean);
 
 function allowedRoot(rootPath: string) {
@@ -153,7 +184,99 @@ export const engineeringRoutes: FastifyPluginAsync = async (app) => {
     const query = z.object({ companyId: z.string().min(1).optional() }).parse(request.query);
     return engineeringFinalizationStatus(query.companyId);
   });
-  app.post('/engineering/drawing', async (request) => { const spec = drawingSchema.parse(request.body) as EngineeringDrawingSpec; return { spec, svg: renderPreliminaryEngineeringSvg(spec) }; });
+  app.get('/engineering/v2/design-packs', async () => designPackRegistry);
+  app.get('/engineering/v2/materials', async () => bulkMaterialFixtures);
+  app.get('/engineering/v2/ai/status', async () => codexEngineeringBridgeStatus());
+  app.post('/engineering/v2/designs/interpret', async (request) => {
+    const body = z.object({
+      description: z.string().trim().min(1).max(12000),
+      conversationId: z.string().nullable().optional(),
+      budgetId: z.string().nullable().optional()
+    }).strict().parse(request.body);
+    return interpretEngineeringDesignWithCodex(body);
+  });
+  app.post('/engineering/v2/designs', async (request) => {
+    const body = z.object({
+      request: engineeringDesignRequestV2Schema,
+      titleBlock: titleBlockOverrideSchema.optional()
+    }).strict().parse(request.body);
+    return createCommercialEngineeringDrawing(body.request, body.titleBlock);
+  });
+  app.post('/engineering/v2/designs/pdf', async (request, reply) => {
+    const body = z.object({
+      request: engineeringDesignRequestV2Schema,
+      titleBlock: titleBlockOverrideSchema.optional()
+    }).strict().parse(request.body);
+    const generated = await createCommercialEngineeringPdf(body.request, body.titleBlock);
+    return reply
+      .type('application/pdf')
+      .header('Content-Disposition', `attachment; filename="${generated.result.drawingSpec.drawingNumber}.pdf"`)
+      .send(generated.pdf);
+  });
+  app.get('/engineering/v2/drawings', async (request) => {
+    const query = z.object({
+      companyId: z.string().min(1),
+      quoteId: z.string().optional(),
+      status: z.enum(commercialDrawingStatuses).optional(),
+      take: z.coerce.number().int().min(1).max(200).default(100)
+    }).parse(request.query);
+    return listCommercialEngineeringDrawings(query);
+  });
+  app.post('/engineering/v2/drawings', async (request, reply) => {
+    const body = z.object({
+      companyId: z.string().min(1),
+      request: engineeringDesignRequestV2Schema,
+      titleBlock: titleBlockOverrideSchema.optional(),
+      generatedBy: z.string().trim().max(120).optional(),
+      status: z.enum(commercialDrawingStatuses).optional()
+    }).strict().parse(request.body);
+    return reply.code(201).send(await saveCommercialEngineeringDrawing(body));
+  });
+  app.get('/engineering/v2/drawings/:id', async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const drawing = await getCommercialEngineeringDrawing(params.id, companyQuery.parse(request.query).companyId);
+    if (!drawing) return reply.code(404).send({ error: 'Plano comercial no encontrado' });
+    return drawing;
+  });
+  app.post('/engineering/v2/drawings/:id/revisions', async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const body = z.object({
+      companyId: z.string().min(1),
+      request: engineeringDesignRequestV2Schema,
+      titleBlock: titleBlockOverrideSchema.optional(),
+      generatedBy: z.string().trim().max(120).optional(),
+      status: z.enum(commercialDrawingStatuses).optional()
+    }).strict().parse(request.body);
+    return reply.code(201).send(await saveCommercialEngineeringDrawing({ ...body, drawingId: params.id }));
+  });
+  app.post('/engineering/v2/drawings/:id/associate-budget', async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const body = z.object({ companyId: z.string().min(1), budgetId: z.string().min(1) }).strict().parse(request.body);
+    return associateCommercialDrawingToQuote({ drawingId: params.id, companyId: body.companyId, quoteId: body.budgetId });
+  });
+  app.get('/engineering/v2/drawing-revisions/:id/svg', async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const revision = await readCommercialDrawingSvg(params.id, companyQuery.parse(request.query).companyId);
+    if (!revision) return reply.code(404).send({ error: 'Revisión no encontrada' });
+    return reply
+      .type('image/svg+xml')
+      .header('Content-Disposition', `inline; filename="${revision.drawing.drawingNumber}-rev-${revision.revision}.svg"`)
+      .send(revision.svg);
+  });
+  app.get('/engineering/v2/drawing-revisions/:id/pdf', async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const revision = await readCommercialDrawingPdf(params.id, companyQuery.parse(request.query).companyId);
+    if (!revision) return reply.code(404).send({ error: 'PDF de revisión no encontrado' });
+    return reply
+      .type('application/pdf')
+      .header('Content-Disposition', `inline; filename="${revision.drawing.drawingNumber}-rev-${revision.revision}.pdf"`)
+      .send(revision.buffer);
+  });
+  app.post('/engineering/drawing', async (request) => {
+    const input = drawingSchema.parse(request.body) as EngineeringDrawingSpec;
+    const drawing = resolvePreliminaryEngineeringDrawing(input);
+    return { ...drawing, svg: renderPreliminaryEngineeringSvg(drawing.spec) };
+  });
   app.post('/engineering/drawing/pdf', async (request, reply) => { const spec = drawingSchema.parse(request.body) as EngineeringDrawingSpec; return reply.type('application/pdf').send(await renderPreliminaryEngineeringPdf(spec)); });
   app.get('/engineering/drawings', async (request) => { const query = z.object({ companyId: z.string(), q: z.string().optional(), projectType: z.string().optional(), customerName: z.string().optional(), take: z.coerce.number().int().min(1).max(300).default(100) }).parse(request.query); return listEngineeringDrawings(query); });
   app.get('/engineering/drawings/status', async (request) => getEngineeringDrawingStatus(companyQuery.parse(request.query).companyId));

@@ -21,9 +21,10 @@ import {
   X
 } from 'lucide-react';
 import { api, dateFmt, postJson } from '../../api';
+import { CommercialDrawingStudio } from './CommercialDrawingStudio';
 
 type AnyRecord = Record<string, any>;
-type EngineeringTab = 'assistant' | 'cases' | 'drawings' | 'library' | 'review' | 'import';
+type EngineeringTab = 'assistant' | 'commercial' | 'cases' | 'drawings' | 'library' | 'review' | 'import';
 
 function jsonArray(value: unknown): unknown[] {
   if (typeof value !== 'string') return [];
@@ -37,6 +38,7 @@ function jsonArray(value: unknown): unknown[] {
 
 const tabItems: Array<{ id: EngineeringTab; label: string; icon: typeof Sparkles }> = [
   { id: 'assistant', label: 'Asistente', icon: Sparkles },
+  { id: 'commercial', label: 'Planos comerciales', icon: DraftingCompass },
   { id: 'cases', label: 'Casos', icon: FolderKanban },
   { id: 'drawings', label: 'Planos FMH', icon: DraftingCompass },
   { id: 'library', label: 'Biblioteca', icon: Library },
@@ -121,6 +123,7 @@ export function EngineeringPage({ companyId }: { companyId: string }) {
     <button className="engineeringMobileMenu" type="button" onClick={() => setMobileNavOpen((open) => !open)} aria-expanded={mobileNavOpen}><Menu size={16} /> Secciones <ChevronDown size={15} /></button>
     {mobileNavOpen && <div className="engineeringMobileNav">{tabItems.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => changeTab(id)}><Icon size={16} />{label}</button>)}</div>}
     {tab === 'assistant' && <AssistantView companyId={companyId} focusConversationId={focusConversationId} onRefresh={() => setRefreshKey((value) => value + 1)} />}
+    {tab === 'commercial' && <CommercialDrawingStudio companyId={companyId} />}
     {tab === 'cases' && <CasesView companyId={companyId} refreshKey={refreshKey} onOpenCase={(id) => { setFocusConversationId(id); changeTab('assistant'); }} />}
     {tab === 'drawings' && <DrawingsView companyId={companyId} />}
     {tab === 'library' && <><LibraryView companyId={companyId} /><GoldenLibraryPanel companyId={companyId} /></>}
@@ -204,16 +207,7 @@ function AssistantView({ companyId, focusConversationId, onRefresh }: { companyI
         capacityT: Number(value('capacity')) || undefined,
         supportCount: Number(value('supportCount')) || undefined
       };
-      const drawingValues = type === 'SILO'
-        ? {
-            ...suppliedValues,
-            diameter: suppliedValues.diameter || 8,
-            bodyHeight: suppliedValues.bodyHeight || 7,
-            coneHeight: suppliedValues.coneHeight || 2,
-            freeHeight: suppliedValues.freeHeight || 4,
-            supportCount: suppliedValues.supportCount || 6
-          }
-        : suppliedValues;
+      const drawingValues = suppliedValues;
       const relevantKeys = type === 'SILO'
         ? ['diameter', 'bodyHeight', 'coneHeight', 'freeHeight', 'capacityT', 'supportCount']
         : type === 'HOPPER'

@@ -3,6 +3,7 @@ import { rectangularHollowSection } from '../../domain/engineering/sections.js';
 import { engineeringAssistantResultSchema, type EngineeringAssistantResult } from './engineeringSchemas.js';
 import { activeInputs, type EngineeringConversationState } from './conversationState.js';
 import { classifyEngineeringIntent, extractEngineeringFacts, normalizeEngineeringText, parseEngineeringNumber, type EngineeringIntent } from './engineeringIntelligence.js';
+import { proposePreliminarySiloGeometry } from './siloGeometry.js';
 
 type KnowledgeLike = { sources?: Array<{ id: string; title: string; type: string; relevance: number; url?: string; excerpt?: string }>; regulations?: Array<{ code: string; title: string; status: string; sourceUrl?: string; sourceType?: 'OFFICIAL' | 'LOCAL_VERIFIED' | 'INTERNAL' | 'SECONDARY' }>; goldenLibrary?: { fmhPrecedents: unknown[]; regulations: unknown[]; benchmarks: unknown[]; sectionCandidates: unknown[]; internationalReferences: unknown[] } };
 
@@ -17,8 +18,13 @@ export function enforcePreliminaryDrawingDisclosure(answer: string, state: Engin
   const needsSiloDefaults = state.currentIntent === 'PRELIMINARY_DRAWING'
     && state.projectType === 'SILO'
     && state.missingData.some((item) => siloGeometryKeys.has(item.key));
-  if (!needsSiloDefaults || /valores ilustrativos/i.test(answer)) return answer;
-  return `${answer}\n\nPara generar la lámina ahora, la plantilla FMH usará como hipótesis valores ilustrativos: Ø 8 m, cuerpo de 7 m, cono de 2 m, altura libre de 4 m y 6 apoyos. No son dimensiones calculadas a partir de la capacidad y deben reemplazarse con datos confirmados.`;
+  if (!needsSiloDefaults || /geometr[ií]a volum[eé]trica|valores ilustrativos/i.test(answer)) return answer;
+  const capacityT = numberOf(valueOf(state, 'capacity'), inputOf(state, 'capacity')?.unit);
+  if (capacityT > 0) {
+    const proposal = proposePreliminarySiloGeometry(capacityT);
+    return `${answer}\n\nComo geometría volumétrica preliminar, la plantilla propone Ø ${format(proposal.diameter)} m, cuerpo de ${format(proposal.bodyHeight)} m y cono de ${format(proposal.coneHeight)} m. Supone trigo a 0,80 t/m³ y 90 % de llenado útil. No es un cálculo estructural ni habilita fabricación.`;
+  }
+  return `${answer}\n\nPara generar la lámina ahora se requieren hipótesis geométricas explícitas. No son dimensiones estructuralmente calculadas y deben reemplazarse con datos confirmados.`;
 }
 
 function sectionDesignations(message: string) {
@@ -147,9 +153,27 @@ export function buildDeterministicEngineeringResult(input: { state: EngineeringC
       freeHeight > 0 && `altura libre ${format(freeHeight, 2)} m`,
       supportCount > 0 && `${supportCount} apoyos`
     ].filter(Boolean).join(', ');
-    answer = missingGeometry.length
-      ? `Sí. Puedo preparar el plano orientativo del silo${knownSummary ? ` con ${knownSummary}` : ''}. Faltan ${missingGeometry.join(', ')}; para no frenarte, la plantilla usará como hipótesis valores ilustrativos: Ø 8 m, cuerpo de 7 m, cono de 2 m, altura libre de 4 m y 6 apoyos. Después reemplazamos sólo los valores que confirmes.`
-      : `Sí. Ya tengo los datos principales (${knownSummary}) y el plano orientativo está listo para generar dentro de la plantilla FMH.`;
+    const proposal = capacityT > 0 ? proposePreliminarySiloGeometry(capacityT) : undefined;
+    answer = missingGeometry.length && proposal
+      ? `Sí. Puedo preparar el plano orientativo del silo con ${format(capacityT, 0)} t. La geometría volumétrica preliminar propone Ø ${format(proposal.diameter)} m, cuerpo de ${format(proposal.bodyHeight)} m y cono de ${format(proposal.coneHeight)} m. Supone trigo a 0,80 t/m³, 90 % de llenado útil, cono de 50° y boca Ø 0,40 m. La estructura soporte, uniones y fundaciones quedan pendientes de cálculo.`
+      : missingGeometry.length
+        ? `Sí. Puedo preparar el plano orientativo del silo${knownSummary ? ` con ${knownSummary}` : ''}, pero necesito una capacidad o geometría para proponer dimensiones volumétricas trazables.`
+        : `Sí. Ya tengo los datos principales (${knownSummary}) y el plano orientativo está listo para generar dentro de la plantilla FMH.`;
+    if (proposal && missingGeometry.length) {
+      assumptions.push(...proposal.assumptions);
+      calculations.push(calculation(
+        'Volumen bruto requerido',
+        'V = capacidad / (densidad aparente × factor de llenado)',
+        [
+          { name: 'capacidad', value: capacityT, unit: 't' },
+          { name: 'densidad aparente', value: proposal.bulkDensityTPerM3, unit: 't/m³' },
+          { name: 'llenado útil', value: proposal.usableFillRatio, unit: 'ratio' }
+        ],
+        proposal.requiredGrossVolumeM3,
+        'm³',
+        `La geometría propuesta entrega ${proposal.proposedGrossVolumeM3} m³ brutos y aproximadamente ${proposal.estimatedUsableCapacityT} t útiles bajo estas hipótesis.`
+      ));
+    }
     warnings.push('El plano es orientativo para análisis y presupuesto. No es apto para fabricación ni reemplaza la memoria de cálculo.');
     nextAction = { label: 'Generar plano orientativo', type: 'GENERATE_DRAWING' };
   } else if (intent === 'SECTION_SELECTION' || intent === 'PRELIMINARY_DESIGN') {

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "2.0",
+  "equipmentType": "GRAIN_HANDLING_PLANT",
+  "projectName": "Planta de dos silos",
+  "customerName": "Cliente demostración",
+  "productOrMaterial": "trigo",
+  "capacity": 800,
+  "capacityUnit": "t",
+  "requestedDimensions": {},
+  "siteRestrictions": [],
+  "preferredConfiguration": { "description": "Dos silos de 400 t descargan a un sinfín común que alimenta una noria." },
+  "requiredComponents": ["2xSILO", "SCREW_CONVEYOR", "BUCKET_ELEVATOR"],
+  "optionalComponents": ["DISTRIBUTOR"],
+  "operatingConditions": {},
+  "userNotes": ["Fixture reservado para Hito 3."],
+  "sourceConversationId": null,
+  "sourceBudgetId": null
+}

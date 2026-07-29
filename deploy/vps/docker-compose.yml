@@ -1,0 +1,41 @@
+services:
+  fmh-postgres:
+    image: postgres:18-alpine
+    container_name: fmh-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fmh
+      POSTGRES_USER: fmh
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - /opt/fmh-gestion-data/postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fmh -d fmh"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [fmh]
+
+  fmh-app:
+    build:
+      context: /opt/fmh-gestion
+      dockerfile: Dockerfile
+    container_name: fmh-app
+    restart: unless-stopped
+    env_file:
+      - /opt/fmh-deploy/app.env
+    environment:
+      CODEX_HOME: /root/.codex
+    depends_on:
+      fmh-postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3002:3000"
+    volumes:
+      - /opt/fmh-gestion-data/uploads:/app/uploads
+      - /opt/fmh-codex-home:/root/.codex
+    networks: [fmh]
+
+networks:
+  fmh:
+    name: fmh-network

@@ -194,6 +194,10 @@ export function classifyEngineeringIntent(rawMessage: string, context?: { projec
     intent = context.currentIntent;
     confidence = 0.98;
   }
+  if (context?.currentIntent && intent === 'GENERAL_QUESTION' && /^(generalo|generala|hacelo|preparalo|armalo|dibujalo|dale)\b/.test(lower)) {
+    intent = context.currentIntent;
+    confidence = 0.96;
+  }
   if (intent === 'GENERAL_QUESTION' && /\b(pandeo|esbeltez|tension|tensión|carga|apoyo|perfil|acero)\b/.test(lower)) confidence = 0.9;
   if (!message.trim()) confidence = 0;
   return { intent, confidence };

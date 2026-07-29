@@ -9,6 +9,8 @@ ENGINEERING_KNOWLEDGE_ROOT=C:\\ruta\\a\\la\\biblioteca
 HISTORICAL_DOCUMENT_ROOT=C:\\ruta\\de\\respaldo
 OPENAI_ENGINEERING_MODEL=gpt-5.6-sol
 OPENAI_API_KEY=
+CODEX_ENGINEERING_BRIDGE_ENABLED=false
+CODEX_ENGINEERING_BRIDGE_ALLOW_PRODUCTION=false
 ```
 
 `ENGINEERING_KNOWLEDGE_ROOT` tiene prioridad y puede quedar vacío para usar `HISTORICAL_DOCUMENT_ROOT`. La API no acepta carpetas fuera de esas raíces configuradas.
@@ -83,3 +85,7 @@ La compra usa las longitudes individuales para optimizar cortes simples, calcula
 - DWG, DOC y XLS/XLSX se registran como `UNSUPPORTED` para no inventar contenido.
 - La integración incremental con OpenAI Vector Store queda preparada en el modelo, pero la búsqueda local sigue siendo la fuente operativa.
 - La agrupación automática de proyectos todavía es básica; la revisión humana queda disponible sobre documentos.
+
+## Puente Codex opcional
+
+Una instalación privada puede usar Codex CLI como intérprete estructurado temporal cuando la API no tenga saldo. Codex no calcula ni dibuja: sólo completa `EngineeringDesignRequestV2`; los DesignPacks determinísticos generan la geometría y el plano. Ver `docs/codex-engineering-bridge.md`.

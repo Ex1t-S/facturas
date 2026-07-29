@@ -10,6 +10,7 @@ WORKDIR /app
 
 COPY package*.json ./
 RUN npm ci --include=dev
+RUN npm install --global @openai/codex@0.146.0
 
 COPY . .
 RUN npx prisma generate \

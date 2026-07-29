@@ -34,6 +34,356 @@
   --sidebar-width: 252px;
 }
 
+/* Ingeniería · estudio de planos comerciales */
+.commercialDrawingStudio {
+  display: grid;
+  gap: 18px;
+}
+
+.commercialStudioGrid {
+  display: grid;
+  grid-template-columns: minmax(390px, .78fr) minmax(560px, 1.22fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.commercialStudioControls,
+.commercialPreviewColumn {
+  display: grid;
+  gap: 14px;
+}
+
+.commercialPreviewColumn {
+  position: sticky;
+  top: 16px;
+}
+
+.commercialStepCard,
+.commercialPreviewCard,
+.commercialValuesCard {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgba(21, 44, 36, .055);
+}
+
+.commercialStepCard {
+  display: grid;
+  gap: 13px;
+  padding: 18px;
+}
+
+.stepHeading {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+}
+
+.stepHeading > span {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  border-radius: 8px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.stepHeading h3,
+.commercialPreviewCard h3,
+.commercialValuesCard h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.stepHeading p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.commercialStepCard textarea {
+  min-height: 90px;
+  padding: 11px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  resize: vertical;
+  color: var(--ink);
+  background: var(--panel);
+  font: inherit;
+  line-height: 1.55;
+}
+
+.commercialStepCard > button {
+  justify-self: start;
+}
+
+.aiAvailable,
+.aiUnavailable {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.aiAvailable {
+  color: var(--success);
+}
+
+.aiUnavailable {
+  color: var(--muted);
+}
+
+.commercialFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.commercialFormGrid label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.commercialFormGrid label > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.commercialFormGrid input,
+.commercialFormGrid select {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--panel);
+  font: inherit;
+  font-size: 12px;
+}
+
+.commercialFormGrid input:focus,
+.commercialFormGrid select:focus,
+.commercialStepCard textarea:focus {
+  border-color: color-mix(in srgb, var(--brand) 65%, white);
+  outline: 3px solid color-mix(in srgb, var(--brand) 10%, transparent);
+}
+
+.commercialActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.commercialAssociation,
+.commercialSaved {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.commercialAssociation {
+  background: #f4f7f5;
+  color: var(--muted);
+}
+
+.commercialSaved {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  background: #edf8f2;
+  color: #17603f;
+  font-weight: 700;
+}
+
+.commercialPreviewCard {
+  overflow: hidden;
+}
+
+.commercialPreviewCard > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 64px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.commercialPreviewCard .eyebrow {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-bottom: 3px;
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.a3Preview {
+  overflow: auto;
+  padding: 18px;
+  background:
+    linear-gradient(45deg, rgba(20, 45, 38, .018) 25%, transparent 25%) 0 0 / 16px 16px,
+    linear-gradient(-45deg, rgba(20, 45, 38, .018) 25%, transparent 25%) 0 8px / 16px 16px,
+    #e9eeec;
+}
+
+.a3Preview svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 620px;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(20, 35, 30, .16);
+}
+
+.commercialPreviewCard .engineeringEmpty {
+  min-height: 430px;
+  border: 0;
+}
+
+.commercialValuesCard {
+  overflow: hidden;
+}
+
+.commercialValuesCard > h3 {
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.technicalValueList {
+  display: grid;
+}
+
+.technicalValueRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 56px;
+  padding: 9px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.technicalValueRow > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.technicalValueRow strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.technicalValueRow small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.technicalValueRow b {
+  color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.technicalValueRow em {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #edf2ef;
+  color: #405149;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.technicalValueRow em.origin-user_input {
+  background: #edf3fb;
+  color: #305d86;
+}
+
+.technicalValueRow em.origin-calculated {
+  background: #e9f6ef;
+  color: #17603f;
+}
+
+.technicalValueRow em.origin-illustrative_assumption {
+  background: #fff4dc;
+  color: #855b12;
+}
+
+.commercialWarnings {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px 16px;
+  background: #fffaf0;
+}
+
+.commercialWarnings h4 {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  margin: 0 0 3px;
+  color: #855b12;
+  font-size: 12px;
+}
+
+.commercialWarnings p {
+  margin: 0;
+  color: #695739;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1180px) {
+  .commercialStudioGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .commercialPreviewColumn {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .commercialFormGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .commercialStepCard {
+    padding: 14px;
+  }
+
+  .technicalValueRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .technicalValueRow em {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
 * {
   scrollbar-color: #aab3b9 transparent;
   scrollbar-width: thin;

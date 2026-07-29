@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "2.0",
+  "equipmentType": "BUCKET_ELEVATOR",
+  "projectName": "Noria comercial básica",
+  "customerName": "Cliente demostración",
+  "productOrMaterial": "trigo",
+  "capacity": 40,
+  "capacityUnit": "t/h",
+  "requestedDimensions": { "totalHeight": 18000 },
+  "siteRestrictions": [],
+  "preferredConfiguration": { "environment": "EXTERIOR" },
+  "requiredComponents": [],
+  "optionalComponents": [],
+  "operatingConditions": {},
+  "userNotes": ["Fixture reservado para Hito 3."],
+  "sourceConversationId": null,
+  "sourceBudgetId": null
+}

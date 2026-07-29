@@ -126,6 +126,7 @@ model Company {
   engineeringToolValidations    EngineeringToolValidation[]
   engineeringCurationJobs       EngineeringCurationJob[]
   engineeringReviewSessions     EngineeringReviewSession[]
+  engineeringCommercialDrawings EngineeringCommercialDrawing[]
   commercialDrafts              CommercialDraft[]
 }
 
@@ -168,26 +169,27 @@ model SupplierPriceList {
 }
 
 model Customer {
-  id               String              @id @default(cuid())
-  companyId        String
-  legalName        String
-  tradeName        String?
-  cuit             String?
-  taxCondition     String?
-  address          String?
-  contactName      String?
-  phone            String?
-  email            String?
-  paymentTerms     String?
-  notes            String?
-  createdAt        DateTime            @default(now())
-  company          Company             @relation(fields: [companyId], references: [id])
-  quotes           Quote[]
-  invoices         Invoice[]
-  deliveryNotes    DeliveryNote[]
-  whatsapp         WhatsAppMessage[]
-  candidates       CustomerCandidate[]
-  commercialDrafts CommercialDraft[]
+  id                            String                         @id @default(cuid())
+  companyId                     String
+  legalName                     String
+  tradeName                     String?
+  cuit                          String?
+  taxCondition                  String?
+  address                       String?
+  contactName                   String?
+  phone                         String?
+  email                         String?
+  paymentTerms                  String?
+  notes                         String?
+  createdAt                     DateTime                       @default(now())
+  company                       Company                        @relation(fields: [companyId], references: [id])
+  quotes                        Quote[]
+  invoices                      Invoice[]
+  deliveryNotes                 DeliveryNote[]
+  whatsapp                      WhatsAppMessage[]
+  candidates                    CustomerCandidate[]
+  commercialDrafts              CommercialDraft[]
+  engineeringCommercialDrawings EngineeringCommercialDrawing[]
 
   @@index([companyId])
 }
@@ -250,26 +252,27 @@ model SupplierProductPrice {
 }
 
 model Quote {
-  id                String              @id @default(cuid())
-  companyId         String
-  customerId        String
-  number            Int
-  version           Int                 @default(1)
-  status            QuoteStatus         @default(DRAFT)
-  issueDate         DateTime            @default(now())
-  validUntil        DateTime?
-  currency          String              @default("ARS")
-  subtotal          Decimal             @default(0)
-  taxTotal          Decimal             @default(0)
-  total             Decimal             @default(0)
-  notes             String?
-  createdById       String?
-  customer          Customer            @relation(fields: [customerId], references: [id])
-  createdBy         User?               @relation(fields: [createdById], references: [id])
-  items             QuoteItem[]
-  invoices          Invoice[]
-  deliveryNoteLinks DeliveryNoteQuote[]
-  commercialDraftId String?             @unique
+  id                            String                         @id @default(cuid())
+  companyId                     String
+  customerId                    String
+  number                        Int
+  version                       Int                            @default(1)
+  status                        QuoteStatus                    @default(DRAFT)
+  issueDate                     DateTime                       @default(now())
+  validUntil                    DateTime?
+  currency                      String                         @default("ARS")
+  subtotal                      Decimal                        @default(0)
+  taxTotal                      Decimal                        @default(0)
+  total                         Decimal                        @default(0)
+  notes                         String?
+  createdById                   String?
+  customer                      Customer                       @relation(fields: [customerId], references: [id])
+  createdBy                     User?                          @relation(fields: [createdById], references: [id])
+  items                         QuoteItem[]
+  invoices                      Invoice[]
+  deliveryNoteLinks             DeliveryNoteQuote[]
+  commercialDraftId             String?                        @unique
+  engineeringCommercialDrawings EngineeringCommercialDrawing[]
 
   @@unique([companyId, number, version])
   @@index([customerId])
@@ -952,14 +955,14 @@ model EngineeringVectorIndex {
 }
 
 model EngineeringConversation {
-  id                 String                @id @default(cuid())
+  id                 String                         @id @default(cuid())
   companyId          String
   userId             String?
-  title              String                @default("Nuevo caso de Ingeniería")
-  status             String                @default("OPEN")
+  title              String                         @default("Nuevo caso de Ingeniería")
+  status             String                         @default("OPEN")
   projectId          String?
-  stateJson          String                @default("{}")
-  summaryJson        String                @default("{}")
+  stateJson          String                         @default("{}")
+  summaryJson        String                         @default("{}")
   previousResponseId String?
   model              String?
   currentIntent      String?
@@ -969,16 +972,17 @@ model EngineeringConversation {
   lastActualModel    String?
   lastLatencyMs      Int?
   lastErrorJson      String?
-  lastFallbackUsed   Boolean               @default(false)
+  lastFallbackUsed   Boolean                        @default(false)
   promptVersion      String?
   archivedAt         DateTime?
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
-  company            Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  project            EngineeringProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt          DateTime                       @default(now())
+  updatedAt          DateTime                       @updatedAt
+  company            Company                        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project            EngineeringProject?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
   messages           EngineeringMessage[]
   engineeringCase    EngineeringCase?
   toolCalls          EngineeringToolCall[]
+  commercialDrawings EngineeringCommercialDrawing[]
 
   @@index([companyId, updatedAt])
   @@index([companyId, status])
@@ -1127,6 +1131,59 @@ model EngineeringDrawingDocument {
   @@index([companyId, status])
   @@index([companyId, projectType])
   @@index([companyId, customerName])
+}
+
+model EngineeringCommercialDrawing {
+  id             String                                 @id @default(cuid())
+  companyId      String
+  customerId     String?
+  quoteId        String?
+  conversationId String?
+  projectName    String
+  drawingNumber  String
+  status         String                                 @default("DRAFT")
+  latestRevision Int                                    @default(0)
+  createdBy      String?
+  createdAt      DateTime                               @default(now())
+  updatedAt      DateTime                               @updatedAt
+  company        Company                                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer       Customer?                              @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  quote          Quote?                                 @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  conversation   EngineeringConversation?               @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  revisions      EngineeringCommercialDrawingRevision[]
+
+  @@unique([companyId, drawingNumber])
+  @@index([companyId, status, updatedAt])
+  @@index([quoteId])
+  @@index([customerId])
+  @@index([conversationId])
+}
+
+model EngineeringCommercialDrawingRevision {
+  id                 String                       @id @default(cuid())
+  drawingId          String
+  revisionNumber     Int
+  revision           String
+  status             String                       @default("DRAFT")
+  designPackId       String
+  designPackVersion  String
+  requestJson        String
+  resultJson         String
+  sceneJson          String
+  assumptionsJson    String                       @default("{}")
+  svg                String
+  pdfStoragePath     String?
+  pdfSha256          String?
+  previewStoragePath String?
+  contentHash        String
+  generatedBy        String?
+  generatedAt        DateTime                     @default(now())
+  drawing            EngineeringCommercialDrawing @relation(fields: [drawingId], references: [id], onDelete: Cascade)
+
+  @@unique([drawingId, revisionNumber])
+  @@unique([drawingId, revision])
+  @@index([drawingId, generatedAt])
+  @@index([contentHash])
 }
 
 model AssistantChat {
