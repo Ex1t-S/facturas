@@ -125,6 +125,7 @@ model Company {
   engineeringToolValidations    EngineeringToolValidation[]
   engineeringCurationJobs       EngineeringCurationJob[]
   engineeringReviewSessions     EngineeringReviewSession[]
+  engineeringCommercialImages   EngineeringCommercialImageDrawing[]
 }
 
 model Supplier {
@@ -185,6 +186,7 @@ model Customer {
   deliveryNotes DeliveryNote[]
   whatsapp      WhatsAppMessage[]
   candidates    CustomerCandidate[]
+  engineeringCommercialImages EngineeringCommercialImageDrawing[]
 
   @@index([companyId])
 }
@@ -266,6 +268,7 @@ model Quote {
   items             QuoteItem[]
   invoices          Invoice[]
   deliveryNoteLinks DeliveryNoteQuote[]
+  engineeringCommercialImages EngineeringCommercialImageDrawing[]
 
   @@unique([companyId, number, version])
   @@index([customerId])
@@ -1067,4 +1070,36 @@ model EngineeringDrawingDocument {
   @@index([companyId, status])
   @@index([companyId, projectType])
   @@index([companyId, customerName])
+}
+
+model EngineeringCommercialImageDrawing {
+  id               String    @id @default(cuid())
+  companyId        String
+  customerId       String?
+  quoteId          String?
+  drawingType      String
+  projectName      String
+  title            String
+  budgetNumber     String?
+  status           String    @default("DRAFT")
+  model            String
+  templateName     String
+  prompt           String
+  requestJson      String
+  evaluationJson   String
+  imageStoragePath String
+  imageSha256      String
+  score            Float
+  attempts         Int
+  generatedBy      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer         Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  quote            Quote?    @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([quoteId])
+  @@index([customerId])
+  @@index([imageSha256])
 }

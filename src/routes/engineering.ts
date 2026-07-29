@@ -12,7 +12,7 @@ import { answerEngineeringConversation, createEngineeringConversation, getEngine
 import { searchOfficialEngineeringRegulations } from '../services/engineering/regulations.js';
 import { renderPreliminaryEngineeringPdf, renderPreliminaryEngineeringSvg, resolvePreliminaryEngineeringDrawing, type EngineeringDrawingSpec } from '../services/engineering/drawing.js';
 import { getEngineeringDrawing, getEngineeringDrawingStatus, ingestEngineeringDrawings, listEngineeringDrawings, readEngineeringDrawingFile } from '../services/engineering/drawingLibrary.js';
-import { readStoredDocumentFile } from '../services/documentStorage.js';
+import { readStoredDocumentFile, safeFileName } from '../services/documentStorage.js';
 import { engineeringModelConfig, resolveEngineeringModel } from '../services/engineering/engineeringRuntime.js';
 import { parseOptionalBoolean } from '../services/engineering/queryParsing.js';
 import { engineeringSourceStatus } from '../services/engineering/engineeringSourceImporter.js';
@@ -34,6 +34,12 @@ import {
   readCommercialDrawingSvg,
   saveCommercialEngineeringDrawing
 } from '../services/engineering/commercialDrawings/persistence.js';
+import {
+  associateCommercialEngineeringImageToQuote,
+  commercialImageDrawingInputSchema,
+  generateCommercialEngineeringDrawing,
+  readCommercialEngineeringImage
+} from '../services/engineering/commercial-image-drawing.js';
 
 const companyQuery = z.object({ companyId: z.string().min(1) });
 const chatSchema = z.object({ companyId: z.string().min(1), message: z.string().trim().min(1).max(6000) });
@@ -187,6 +193,32 @@ export const engineeringRoutes: FastifyPluginAsync = async (app) => {
   app.get('/engineering/v2/design-packs', async () => designPackRegistry);
   app.get('/engineering/v2/materials', async () => bulkMaterialFixtures);
   app.get('/engineering/v2/ai/status', async () => codexEngineeringBridgeStatus());
+  app.get('/engineering/commercial-image-drawing/status', async () => ({
+    configured: Boolean(config.OPENAI_API_KEY.trim()),
+    model: config.OPENAI_ENGINEERING_IMAGE_MODEL,
+    evaluationModel: config.OPENAI_ENGINEERING_IMAGE_EVALUATION_MODEL,
+    quality: config.OPENAI_ENGINEERING_IMAGE_QUALITY,
+    size: config.OPENAI_ENGINEERING_IMAGE_SIZE,
+    template: 'plant-silos-a3-reference.png'
+  }));
+  app.post('/engineering/commercial-image-drawing', async (request, reply) => {
+    const input = commercialImageDrawingInputSchema.parse(request.body);
+    return reply.code(201).send(await generateCommercialEngineeringDrawing(input));
+  });
+  app.get('/engineering/commercial-image-drawings/:id/image', async (request, reply) => {
+    const params = z.object({ id: z.string().min(1) }).parse(request.params);
+    const drawing = await readCommercialEngineeringImage(params.id, companyQuery.parse(request.query).companyId);
+    if (!drawing) return reply.code(404).send({ error: 'Imagen comercial no encontrada' });
+    return reply
+      .type('image/png')
+      .header('Content-Disposition', `inline; filename="${safeFileName(`${drawing.drawingType}-${params.id}.png`)}"`)
+      .send(drawing.buffer);
+  });
+  app.post('/engineering/commercial-image-drawings/:id/associate-budget', async (request) => {
+    const params = z.object({ id: z.string().min(1) }).parse(request.params);
+    const body = z.object({ companyId: z.string().min(1), budgetId: z.string().min(1) }).strict().parse(request.body);
+    return associateCommercialEngineeringImageToQuote({ id: params.id, companyId: body.companyId, quoteId: body.budgetId });
+  });
   app.post('/engineering/v2/designs/interpret', async (request) => {
     const body = z.object({
       description: z.string().trim().min(1).max(12000),

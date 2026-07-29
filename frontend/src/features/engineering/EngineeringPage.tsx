@@ -22,9 +22,10 @@ import {
 } from 'lucide-react';
 import { api, dateFmt, postJson } from '../../api';
 import { CommercialDrawingStudio } from './CommercialDrawingStudio';
+import { CommercialImageDrawingStudio } from './CommercialImageDrawingStudio';
 
 type AnyRecord = Record<string, any>;
-type EngineeringTab = 'assistant' | 'commercial' | 'cases' | 'drawings' | 'library' | 'review' | 'import';
+type EngineeringTab = 'assistant' | 'commercial-image' | 'commercial' | 'cases' | 'drawings' | 'library' | 'review' | 'import';
 
 function jsonArray(value: unknown): unknown[] {
   if (typeof value !== 'string') return [];
@@ -38,6 +39,7 @@ function jsonArray(value: unknown): unknown[] {
 
 const tabItems: Array<{ id: EngineeringTab; label: string; icon: typeof Sparkles }> = [
   { id: 'assistant', label: 'Asistente', icon: Sparkles },
+  { id: 'commercial-image', label: 'Plano visual IA', icon: Sparkles },
   { id: 'commercial', label: 'Planos comerciales', icon: DraftingCompass },
   { id: 'cases', label: 'Casos', icon: FolderKanban },
   { id: 'drawings', label: 'Planos FMH', icon: DraftingCompass },
@@ -123,6 +125,7 @@ export function EngineeringPage({ companyId }: { companyId: string }) {
     <button className="engineeringMobileMenu" type="button" onClick={() => setMobileNavOpen((open) => !open)} aria-expanded={mobileNavOpen}><Menu size={16} /> Secciones <ChevronDown size={15} /></button>
     {mobileNavOpen && <div className="engineeringMobileNav">{tabItems.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => changeTab(id)}><Icon size={16} />{label}</button>)}</div>}
     {tab === 'assistant' && <AssistantView companyId={companyId} focusConversationId={focusConversationId} onRefresh={() => setRefreshKey((value) => value + 1)} />}
+    {tab === 'commercial-image' && <CommercialImageDrawingStudio companyId={companyId} />}
     {tab === 'commercial' && <CommercialDrawingStudio companyId={companyId} />}
     {tab === 'cases' && <CasesView companyId={companyId} refreshKey={refreshKey} onOpenCase={(id) => { setFocusConversationId(id); changeTab('assistant'); }} />}
     {tab === 'drawings' && <DrawingsView companyId={companyId} />}

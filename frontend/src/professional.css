@@ -258,6 +258,365 @@
   border: 0;
 }
 
+.commercialImageStudio {
+  --image-ink: #172129;
+  --image-green: #146b4b;
+}
+
+.commercialImageStudio .sectionHeader {
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.imageApiStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border: 1px solid #d7dfdc;
+  border-radius: 999px;
+  background: #fff;
+  color: #65716d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.imageApiStatus > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a6afac;
+}
+
+.imageApiStatus.ready {
+  border-color: #bad8cb;
+  color: var(--image-green);
+  background: #f1f8f5;
+}
+
+.imageApiStatus.ready > span {
+  background: #2ca878;
+  box-shadow: 0 0 0 4px rgba(44, 168, 120, .12);
+}
+
+.commercialImageNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px 15px;
+  margin-bottom: 18px;
+  border: 1px solid #e6d8ad;
+  border-radius: 12px;
+  background: #fffaf0;
+  color: #725a16;
+}
+
+.commercialImageNotice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.commercialImageNotice div {
+  display: grid;
+  gap: 3px;
+}
+
+.commercialImageNotice strong {
+  font-size: 13px;
+}
+
+.commercialImageNotice span {
+  font-size: 12px;
+  color: #846d2d;
+}
+
+.commercialImageGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(420px, .95fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.commercialImageForm {
+  display: grid;
+  gap: 14px;
+}
+
+.imageFormCard,
+.commercialImagePreview {
+  border: 1px solid #dce3e0;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(27, 45, 38, .045);
+}
+
+.imageFormCard {
+  padding: 18px;
+}
+
+.imageFormCardHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 15px;
+  margin-bottom: 15px;
+  border-bottom: 1px solid #e8eeeb;
+}
+
+.imageFormCardHead > span {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #eaf4ef;
+  color: var(--image-green);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+
+.imageFormCardHead h3 {
+  margin: 0 0 3px;
+  color: var(--image-ink);
+  font-size: 15px;
+}
+
+.imageFormCardHead p {
+  margin: 0;
+  color: #71807a;
+  font-size: 12px;
+}
+
+.commercialImageStudio label {
+  display: grid;
+  gap: 6px;
+}
+
+.commercialImageStudio label > span {
+  color: #58655f;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .015em;
+}
+
+.commercialImageStudio input,
+.commercialImageStudio select,
+.commercialImageStudio textarea {
+  width: 100%;
+  border: 1px solid #ccd6d2;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--image-ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.commercialImageStudio input,
+.commercialImageStudio select {
+  min-height: 40px;
+  padding: 8px 10px;
+}
+
+.commercialImageStudio textarea {
+  padding: 10px 11px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.commercialImageStudio input:focus,
+.commercialImageStudio select:focus,
+.commercialImageStudio textarea:focus {
+  outline: 3px solid rgba(20, 107, 75, .1);
+  border-color: #4d9a7c;
+}
+
+.commercialImageTextGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 13px;
+  margin-top: 13px;
+}
+
+.fullField {
+  grid-column: 1 / -1;
+}
+
+.commercialImageActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 3px 0;
+}
+
+.commercialImageActions .buttonLike {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 9px 14px;
+  border: 1px solid #cdd7d3;
+  border-radius: 9px;
+  background: #fff;
+  color: #25332d;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.commercialImagePreview {
+  position: sticky;
+  top: 20px;
+  overflow: hidden;
+}
+
+.imagePreviewHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 16px;
+  border-bottom: 1px solid #e3e9e6;
+}
+
+.imagePreviewHead > div {
+  display: grid;
+  gap: 2px;
+}
+
+.imagePreviewHead span {
+  color: #7b8983;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.imagePreviewHead strong {
+  color: var(--image-ink);
+  font-size: 14px;
+}
+
+.imagePreviewHead .imageScore {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #eaf5ef;
+  color: var(--image-green);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.imagePreviewCanvas {
+  display: grid;
+  place-items: center;
+  min-height: 440px;
+  padding: 15px;
+  background: #eef2f0;
+}
+
+.imagePreviewCanvas img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid #cbd2cf;
+  background: white;
+  box-shadow: 0 12px 30px rgba(25, 37, 32, .14);
+}
+
+.imagePreviewEmpty {
+  display: grid;
+  place-items: center;
+  max-width: 310px;
+  text-align: center;
+  color: #6d7b75;
+}
+
+.imagePreviewEmpty > span {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 12px;
+  border: 1px solid #cfdbd6;
+  border-radius: 16px;
+  background: #fff;
+  color: var(--image-green);
+}
+
+.imagePreviewEmpty strong {
+  color: #24332d;
+  font-size: 15px;
+}
+
+.imagePreviewEmpty p {
+  margin: 7px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.imagePreviewMeta {
+  display: grid;
+  padding: 5px 16px;
+  border-top: 1px solid #e3e9e6;
+}
+
+.imagePreviewMeta > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 10px 0;
+  border-bottom: 1px solid #edf1ef;
+  font-size: 11px;
+}
+
+.imagePreviewMeta > div:last-child {
+  border-bottom: 0;
+}
+
+.imagePreviewMeta span {
+  color: #7a8782;
+}
+
+.imagePreviewMeta strong {
+  color: #34413c;
+  text-align: right;
+  font-weight: 650;
+}
+
+.regenerateLink {
+  width: calc(100% - 32px);
+  margin: 4px 16px 16px;
+  border-style: dashed;
+  color: var(--image-green);
+}
+
+@media (max-width: 1180px) {
+  .commercialImageGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .commercialImagePreview {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .commercialImageStudio .sectionHeader {
+    display: grid;
+  }
+
+  .commercialImageTextGrid,
+  .commercialImageStudio .commercialFormGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .imagePreviewCanvas {
+    min-height: 260px;
+    padding: 9px;
+  }
+}
+
 .commercialValuesCard {
   overflow: hidden;
 }
