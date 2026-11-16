@@ -1,238 +1,60 @@
 # FMH Gestión
 
-Aplicación para ordenar documentos históricos, presupuestos, remitos, facturas, clientes, inventario de materiales y costos de proveedores para una pyme metalúrgica/agroindustrial argentina.
+Aplicación de gestión para una pyme metalúrgica y agroindustrial argentina. Reúne documentos, presupuestos, remitos, facturas, clientes e inventario en una misma interfaz.
 
-## Qué Incluye
+[Arquitectura](docs/ARCHITECTURE.md) · [Flujos de uso](docs/USER_FLOWS.md) · [Sistema visual](docs/UI_SYSTEM.md)
 
-- Panel operativo con clientes, productos, documentos y presupuestos.
-- Sección Documentos con navegación tipo ficheros:
-  - Presupuestos
-  - Facturas
-  - Remitos
-  - agrupación por año y cliente
-- Vista previa inline de documentos:
-  - PDF embebido
-  - imágenes embebidas
-  - DOCX convertido a HTML
-- Generación de presupuestos FMH en DOCX/PDF.
-- Inventario orientado a materiales, separando trabajos/servicios del listado principal.
-- Asistente comercial con búsqueda en datos internos, preparación de borradores y trazabilidad.
-- Importación de documentos históricos desde carpeta local.
-- Base inicial para sincronizar precios públicos de proveedores.
+## Funcionalidades
 
-La guía del sistema visual y los patrones de nuevas pantallas está en [`docs/UI_SYSTEM.md`](docs/UI_SYSTEM.md).
+| Área | Alcance |
+| --- | --- |
+| Gestión comercial | Clientes, productos, presupuestos, facturas y remitos |
+| Documentos | Organización histórica, navegación por cliente y año, y vista previa |
+| Generación | Presupuestos en DOCX y PDF |
+| Inventario | Materiales, costos y referencias de proveedores |
+| Asistencia | Búsqueda de información interna y preparación de borradores |
 
-## Stack
+El cierre de remitos conserva la relación entre documentos y permite preparar comprobantes para revisión. Esa preparación no equivale a una autorización fiscal automática.
 
-- Backend: Fastify + TypeScript
-- Frontend: React + Vite
-- Base principal: Prisma + PostgreSQL
-- Esquema SQLite: auxiliar/histórico, no recomendado para producción
-- Documentos: Mammoth, PDFKit, DOCX
-- IA: OpenAI Responses API opcional
+## Tecnologías
 
-## Instalación Local
+- **Backend:** Fastify y TypeScript.
+- **Frontend:** React y Vite.
+- **Persistencia:** PostgreSQL y Prisma.
+- **Documentos:** Mammoth, PDFKit y DOCX.
+- **IA opcional:** integración con OpenAI Responses API.
 
-```powershell
+## Desarrollo local
+
+```bash
+git clone https://github.com/Ex1t-S/facturas.git
+cd facturas
+```
+
+Preparar una base PostgreSQL de desarrollo aislada y configurar un archivo local de entorno a partir del ejemplo del repositorio. El historial incluye migraciones de una etapa anterior con SQLite; verificar el baseline antes de inicializar una base nueva.
+
+```bash
 npm install
 npx prisma generate
-npm run build
-npm start
-```
-
-Abrir:
-
-```text
-http://localhost:3000
-```
-
-## Desarrollo
-
-Backend:
-
-```powershell
 npm run dev:backend
 ```
 
-Frontend:
+En otra terminal:
 
-```powershell
+```bash
 npm run dev:frontend
 ```
 
-Validaciones:
+## Comprobaciones disponibles
 
-```powershell
+```bash
 npm run typecheck
 npm test
 npm run build
 ```
 
-## Variables de Entorno
+Los comandos se corresponden con los scripts del proyecto. No se ejecutaron como parte de esta edición de documentación.
 
-Copiar `.env.example` a `.env` y completar según el ambiente.
+## Alcance del repositorio público
 
-Variables principales:
-
-```text
-DATABASE_URL
-PORT
-PUBLIC_BASE_URL
-CORS_ORIGINS
-API_RATE_LIMIT_MAX
-TRUST_PROXY
-UPLOAD_DIR
-HISTORICAL_DOCUMENT_ROOT
-OPENAI_API_KEY
-OPENAI_MODEL
-OPENAI_VECTOR_STORE_ID
-SUPPLIER_PUBLIC_SYNC_ENABLED
-SUPPLIER_PUBLIC_SYNC_INTERVAL_HOURS
-WHATSAPP_VERIFY_TOKEN
-WHATSAPP_APP_SECRET
-WHATSAPP_ACCESS_TOKEN
-WHATSAPP_PHONE_NUMBER_ID
-BASIC_AUTH_USERNAME
-BASIC_AUTH_PASSWORD
-WHATSAPP_ALLOWED_FROM
-ARCA_ENVIRONMENT
-ARCA_CUIT
-ARCA_CERT_PATH
-ARCA_KEY_PATH
-ARCA_POINT_OF_SALE
-```
-
-No subir `.env`, bases SQLite, certificados, claves privadas ni documentos reales.
-
-## Documentos Históricos
-
-La app importa documentos desde:
-
-```text
-HISTORICAL_DOCUMENT_ROOT
-```
-
-Por defecto:
-
-```text
-C:\Users\German\Documents\Adalberto
-```
-
-Endpoint:
-
-```http
-POST /api/documents/import-historical
-```
-
-El importador saltea duplicados por hash y continúa aunque encuentre archivos corruptos o temporales de Word.
-
-## Proveedores y Precios
-
-La app tiene una primera integración de fuentes públicas:
-
-- Sidercon: scraping público de perfiles con precios visibles.
-- Chapaferro: scraping público de productos con precios visibles.
-- Codimat: catálogo/contacto, no se usan precios públicos en cero como costo real.
-- Rattini: proveedor por cotización manual, sin precios públicos.
-
-La sincronización automática se controla con:
-
-```text
-SUPPLIER_PUBLIC_SYNC_ENABLED=true
-SUPPLIER_PUBLIC_SYNC_INTERVAL_HOURS=4
-```
-
-También se puede disparar manualmente desde Inventario o por API:
-
-```http
-POST /api/supplier-public-sync
-```
-
-Los precios públicos deben tratarse como referencia de costo, no como precio definitivo. Para producción conviene priorizar APIs, CSV o listas autorizadas por proveedor.
-
-## GitHub y Producción
-
-Recomendado crear el repositorio como privado porque el proyecto maneja datos fiscales, documentos y variables sensibles.
-
-```powershell
-gh auth login
-git init
-git branch -M main
-git add .
-git commit -m "Initial implementation"
-gh repo create facturas --private --source . --remote origin
-git push -u origin main
-```
-
-Antes de producción:
-
-- Usar base administrada, no SQLite local.
-- Configurar variables de entorno en el hosting.
-- Configurar URL pública para webhooks de WhatsApp.
-- Usar certificados ARCA de homologación antes de producción.
-- Validar permisos y backups de documentos.
-
-## Render + Neon
-
-Se descargaron herramientas locales para preparar un deploy económico:
-
-- Render CLI: `tools/render/render.exe`
-- Neon CLI: `npx neonctl`
-
-Scripts útiles:
-
-```powershell
-npm run render:login
-npm run render:services
-npm run render:blueprint:validate
-npm run neon:auth
-npm run neon:projects
-```
-
-Blueprint inicial:
-
-```text
-render.yaml
-```
-
-Guía corta:
-
-```text
-docs/deploy-render-neon.md
-```
-
-Importante: el runtime principal usa PostgreSQL, pero el historial de migraciones mezcla etapas antiguas de SQLite. Antes del primer despliegue nuevo hay que crear y verificar un baseline PostgreSQL en una base aislada. El migrador histórico destructivo está bloqueado.
-
-## Seguridad de producción
-
-En producción el servidor exige `BASIC_AUTH_USERNAME` y `BASIC_AUTH_PASSWORD` (mínimo 12 caracteres). Configurar además `CORS_ORIGINS` con el dominio exacto. WhatsApp requiere firma, token seguro y `WHATSAPP_ALLOWED_FROM`.
-
-Ver `docs/SECURITY_REVIEW.md`, `docs/ARCHITECTURE.md` y `docs/IMPROVEMENT_ROADMAP.md`.
-
-## Ingeniería FMH
-
-Configurar `ENGINEERING_KNOWLEDGE_ROOT` o reutilizar `HISTORICAL_DOCUMENT_ROOT` y ejecutar:
-
-Para los planos históricos, configurar `ENGINEERING_DRAWINGS_ROOT` y ejecutar `npm run engineering:drawings -- "C:\ruta\de\planos"`. La importación es local, incremental y no envía los PDF a OpenAI.
-
-El Asistente de Ingenieria ahora mantiene conversaciones persistentes, memoria tecnica, predimensionamientos trazables, antecedentes FMH, reglamentos candidatos y casos guardados. También genera cómputos preliminares, BOM, peso, barras comerciales, plan de cortes, stock y costo conocido cuando existen propiedades y precios verificables. Para probarlo, envia mensajes sucesivos sobre un silo de 200 toneladas, el producto y la comparacion entre 4 y 6 apoyos. Ver `docs/engineering-assistant.md`.
-
-```powershell
-npm run engineering:ingest -- "C:\ruta\de\la\biblioteca"
-```
-
-La sección `Ingeniería FMH` permite buscar antecedentes, calcular geometría y masa preliminar, consultar materiales y revisar las fuentes. Ver `docs/engineering-assistant.md`.
-
-## Cierre mensual de remitos
-
-La sección `Remitos` organiza el trabajo por mes, estado y cliente. El cierre permite completar precios y elegir entre crear sólo un presupuesto o preparar una factura A/B en estado `PENDING_CONFIRMATION`.
-
-El cierre:
-
-- no mezcla clientes, meses ni monedas;
-- conserva el vínculo entre remitos, presupuesto y factura;
-- evita duplicar una factura al repetir la operación;
-- registra la acción en `AuditLog`;
-- no autoriza automáticamente el comprobante ante ARCA.
-
-Ver `docs/USER_FLOWS.md` y `docs/REPOSITORY_AUDIT.md`.
+Esta presentación describe las capacidades y la organización técnica del software. Las pruebas y demostraciones deben utilizar datos ficticios. La configuración específica de cada instalación, documentos comerciales reales y credenciales se administran por separado.
